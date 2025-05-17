@@ -76,7 +76,7 @@ impl OutputChunk for EcmascriptBrowserChunk {
 
 #[turbo_tasks::function]
 fn modifier() -> Vc<RcStr> {
-    Vc::cell("ecmascript dev chunk".into())
+    Vc::cell("ecmascript chunk".into())
 }
 
 #[turbo_tasks::value_impl]

@@ -1,4 +1,8 @@
+use std::{cmp::min, sync::LazyLock};
+
 use anyhow::{bail, Context, Result};
+use qstring::QString;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 use turbo_rcstr::RcStr;
@@ -403,32 +407,58 @@ impl ChunkingContext for BrowserChunkingContext {
         ident: Vc<AssetIdent>,
         extension: RcStr,
     ) -> Result<Vc<FileSystemPath>> {
-        let root_path = self.chunk_root_path;
-        let name = match self.content_hashing {
-            None => {
-                ident
-                    .output_name(*self.root_path, extension)
-                    .owned()
-                    .await?
-            }
-            Some(ContentHashing::Direct { length }) => {
-                let Some(asset) = asset else {
-                    bail!("chunk_path requires an asset when content hashing is enabled");
-                };
-                let content = asset.content().await?;
-                if let AssetContent::File(file) = &*content {
-                    let hash = hash_xxh3_hash64(&file.await?);
-                    let length = length as usize;
-                    format!("{hash:0length$x}{extension}").into()
-                } else {
-                    bail!(
-                        "chunk_path requires an asset with file content when content hashing is \
-                         enabled"
-                    );
+        let chunk_root = self.chunk_root_path;
+
+        let query = QString::from(ident.query().await?.as_str());
+
+        let name = ident_to_output_filename(ident, *self.root_path, extension.clone())
+            .owned()
+            .await?;
+
+        if query.is_empty() {
+            return Ok(chunk_root.join(name));
+        }
+
+        match asset {
+            Some(asset) => {
+                match Vc::try_resolve_downcast_type::<EcmascriptBrowserEvaluateChunk>(asset).await?
+                {
+                    Some(_) => {
+                        let name = query.get("name").map_or(name, RcStr::from);
+
+                        if let Some(filename) = query.get("filename") {
+                            let mut filename = filename.to_string();
+                            if NAME_PLACEHOLDER_REGEX.is_match(&filename) {
+                                filename = replace_name_placeholder(&filename, name.as_str());
+                            }
+                            if CONTENT_HASH_PLACEHOLDER_REGEX.is_match(&filename) {
+                                let content = asset.content().await?;
+                                if let AssetContent::File(file) = &*content {
+                                    let content_hash = hash_xxh3_hash64(&file.await?);
+                                    filename = replace_content_hash_placeholder(
+                                        &filename,
+                                        &format!("{:016x}", content_hash),
+                                    );
+                                } else {
+                                    bail!(
+                                        "chunk_path requires an asset with file content when \
+                                         content hashing is enabled"
+                                    );
+                                }
+                            };
+                            Ok(chunk_root.join(filename.into()))
+                        } else {
+                            Ok(chunk_root.join(name))
+                        }
+                    }
+                    /* TODO: support chunkFileName template, need to distinguish the asset is an
+                     * evaluated(entry) chunk or not
+                     */
+                    None => Ok(chunk_root.join(name)),
                 }
             }
-        };
-        Ok(root_path.join(name))
+            None => Ok(chunk_root.join(name)),
+        }
     }
 
     #[turbo_tasks::function]
@@ -705,4 +735,62 @@ impl ChunkingContext for BrowserChunkingContext {
             self.chunk_item_id_from_ident(AsyncLoaderModule::asset_ident_for(module))
         })
     }
+}
+
+#[turbo_tasks::function]
+pub async fn ident_to_output_filename(
+    ident: Vc<AssetIdent>,
+    context_path: Vc<FileSystemPath>,
+    expected_extension: RcStr,
+) -> Result<Vc<RcStr>> {
+    let ident = &*ident.await?;
+    let path = &*ident.path.await?;
+    let mut name = if let Some(inner) = context_path.await?.get_path_to(path) {
+        clean_separators(inner)
+    } else {
+        clean_separators(&ident.path.to_string().await?)
+    };
+    let removed_extension = name.ends_with(&*expected_extension);
+    if removed_extension {
+        name.truncate(name.len() - expected_extension.len());
+    }
+    name += &expected_extension;
+    Ok(Vc::cell(name.into()))
+}
+
+pub fn clean_separators(s: &str) -> String {
+    static SEPARATOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r".*[/#?]").unwrap());
+    SEPARATOR_REGEX.replace_all(s, "").to_string()
+}
+
+static NAME_PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[name\]").unwrap());
+
+pub fn match_name_placeholder(s: &str) -> bool {
+    NAME_PLACEHOLDER_REGEX.is_match(s)
+}
+
+pub fn replace_name_placeholder(s: &str, name: &str) -> String {
+    NAME_PLACEHOLDER_REGEX.replace_all(s, name).to_string()
+}
+
+static CONTENT_HASH_PLACEHOLDER_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[contenthash(?::(?P<len>\d+))?\]").unwrap());
+
+pub fn match_content_hash_placeholder(s: &str) -> bool {
+    CONTENT_HASH_PLACEHOLDER_REGEX.is_match(s)
+}
+
+pub fn replace_content_hash_placeholder(s: &str, hash: &str) -> String {
+    CONTENT_HASH_PLACEHOLDER_REGEX
+        .replace_all(s, |caps: &regex::Captures| {
+            let len = caps.name("len").map(|m| m.as_str()).unwrap_or("");
+            let len = if len.is_empty() {
+                hash.len()
+            } else {
+                len.parse().unwrap_or(hash.len())
+            };
+            let len = min(len, hash.len());
+            hash[..len].to_string()
+        })
+        .to_string()
 }

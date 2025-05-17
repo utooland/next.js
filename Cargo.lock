@@ -9620,6 +9620,8 @@ dependencies = [
  "either",
  "indexmap 2.7.1",
  "indoc",
+ "qstring",
+ "regex",
  "rustc-hash 2.1.0",
  "serde",
  "serde_json",
