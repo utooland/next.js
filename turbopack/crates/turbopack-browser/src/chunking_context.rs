@@ -164,6 +164,16 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn filename(mut self, filename: RcStr) -> Self {
+        self.chunking_context.filename = Some(filename);
+        self
+    }
+
+    pub fn chunk_filename(mut self, chunk_filename: RcStr) -> Self {
+        self.chunking_context.chunk_filename = Some(chunk_filename);
+        self
+    }
+
     pub fn build(self) -> Vc<BrowserChunkingContext> {
         BrowserChunkingContext::new(Value::new(self.chunking_context))
     }
@@ -224,6 +234,10 @@ pub struct BrowserChunkingContext {
     module_id_strategy: ResolvedVc<Box<dyn ModuleIdStrategy>>,
     /// The chunking configs
     chunking_configs: Vec<(ResolvedVc<Box<dyn ChunkType>>, ChunkingConfig)>,
+    /// Evaluate chunk filename template
+    filename: Option<RcStr>,
+    /// Non evaluate chunk filename template
+    chunk_filename: Option<RcStr>,
 }
 
 impl BrowserChunkingContext {
@@ -261,6 +275,8 @@ impl BrowserChunkingContext {
                 manifest_chunks: false,
                 module_id_strategy: ResolvedVc::upcast(DevModuleIdStrategy::new_resolved()),
                 chunking_configs: Default::default(),
+                filename: Default::default(),
+                chunk_filename: Default::default(),
             },
         }
     }
@@ -411,53 +427,47 @@ impl ChunkingContext for BrowserChunkingContext {
 
         let query = QString::from(ident.query().await?.as_str());
 
-        let name = ident_to_output_filename(ident, *self.root_path, extension.clone())
+        let import_name = ident_to_output_filename(ident, *self.root_path, extension.clone())
             .owned()
             .await?;
 
-        if query.is_empty() {
-            return Ok(chunk_root.join(name));
-        }
-
         match asset {
             Some(asset) => {
-                match Vc::try_resolve_downcast_type::<EcmascriptBrowserEvaluateChunk>(asset).await?
-                {
-                    Some(_) => {
-                        let name = query.get("name").map_or(name, RcStr::from);
+                let name = query.get("name").map_or(import_name, RcStr::from);
 
-                        if let Some(filename) = query.get("filename") {
-                            let mut filename = filename.to_string();
-                            if NAME_PLACEHOLDER_REGEX.is_match(&filename) {
-                                filename = replace_name_placeholder(&filename, name.as_str());
-                            }
-                            if CONTENT_HASH_PLACEHOLDER_REGEX.is_match(&filename) {
-                                let content = asset.content().await?;
-                                if let AssetContent::File(file) = &*content {
-                                    let content_hash = hash_xxh3_hash64(&file.await?);
-                                    filename = replace_content_hash_placeholder(
-                                        &filename,
-                                        &format!("{:016x}", content_hash),
-                                    );
-                                } else {
-                                    bail!(
-                                        "chunk_path requires an asset with file content when \
-                                         content hashing is enabled"
-                                    );
-                                }
-                            };
-                            Ok(chunk_root.join(filename.into()))
-                        } else {
-                            Ok(chunk_root.join(name))
+                let filename_template = if query.has("evaluate") {
+                    &self.filename
+                } else {
+                    &self.chunk_filename
+                };
+
+                match filename_template {
+                    Some(filename) => {
+                        let mut filename = filename.to_string();
+                        if NAME_PLACEHOLDER_REGEX.is_match(&filename) {
+                            filename = replace_name_placeholder(&filename, name.as_str());
                         }
+                        if CONTENT_HASH_PLACEHOLDER_REGEX.is_match(&filename) {
+                            let content = asset.content().await?;
+                            if let AssetContent::File(file) = &*content {
+                                let content_hash = hash_xxh3_hash64(&file.await?);
+                                filename = replace_content_hash_placeholder(
+                                    &filename,
+                                    &format!("{:016x}", content_hash),
+                                );
+                            } else {
+                                bail!(
+                                    "chunk_path requires an asset with file content when content \
+                                     hashing is enabled"
+                                );
+                            }
+                        };
+                        Ok(chunk_root.join(filename.into()))
                     }
-                    /* TODO: support chunkFileName template, need to distinguish the asset is an
-                     * evaluated(entry) chunk or not
-                     */
                     None => Ok(chunk_root.join(name)),
                 }
             }
-            None => Ok(chunk_root.join(name)),
+            None => Ok(chunk_root.join(import_name)),
         }
     }
 
@@ -754,7 +764,7 @@ pub async fn ident_to_output_filename(
     if removed_extension {
         name.truncate(name.len() - expected_extension.len());
     }
-    name += &expected_extension;
+    // name += &expected_extension;
     Ok(Vc::cell(name.into()))
 }
 

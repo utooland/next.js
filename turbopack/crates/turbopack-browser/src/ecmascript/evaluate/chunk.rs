@@ -3,6 +3,7 @@ use std::io::Write;
 use anyhow::{bail, Result};
 use either::Either;
 use indoc::writedoc;
+use qstring::QString;
 use serde::Serialize;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ReadRef, ResolvedVc, TryJoinIterExt, Value, ValueToString, Vc};
@@ -202,7 +203,14 @@ impl EcmascriptBrowserEvaluateChunk {
 
     #[turbo_tasks::function]
     async fn ident_for_path(&self) -> Result<Vc<AssetIdent>> {
-        let mut ident = self.ident.owned().await?;
+        let mut query = QString::from(self.ident.query().await?.as_str());
+        query.add_pair(("evaluate", "1"));
+
+        let mut ident = self
+            .ident
+            .with_query(Vc::cell(query.to_string().into()))
+            .owned()
+            .await?;
 
         ident.add_modifier(modifier().to_resolved().await?);
 
