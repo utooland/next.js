@@ -449,10 +449,10 @@ impl ChunkingContext for BrowserChunkingContext {
                 match filename_template {
                     Some(filename) => {
                         let mut filename = filename.to_string();
-                        if NAME_PLACEHOLDER_REGEX.is_match(&filename) {
+                        if match_name_placeholder(&filename) {
                             filename = replace_name_placeholder(&filename, name.as_str());
                         }
-                        if CONTENT_HASH_PLACEHOLDER_REGEX.is_match(&filename) {
+                        if match_content_hash_placeholder(&filename) {
                             let content = asset.content().await?;
                             if let AssetContent::File(file) = &*content {
                                 let content_hash = hash_xxh3_hash64(&file.await?);
