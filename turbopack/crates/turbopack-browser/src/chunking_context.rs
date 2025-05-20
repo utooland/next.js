@@ -423,6 +423,11 @@ impl ChunkingContext for BrowserChunkingContext {
         ident: Vc<AssetIdent>,
         extension: RcStr,
     ) -> Result<Vc<FileSystemPath>> {
+        /* Patch reason:
+         * 1. We need the template feature of output.filename and output.chunkFilename like
+         *    webpack
+         */
+
         let chunk_root = self.chunk_root_path;
 
         let query = QString::from(ident.query().await?.as_str());

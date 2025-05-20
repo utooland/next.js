@@ -88,6 +88,11 @@ impl Chunk for EcmascriptChunk {
             None
         };
 
+        /* Patch reason:
+         * 1. We don't need to hoist the chunk_items path
+         * 2. Below calculation has a little performance overhead
+         */
+
         // // The included chunk items describe the chunk uniquely
         // for &chunk_item in chunk_items.iter() {
         //     if let Some((common_path_vc, common_path_ref)) = common_path.as_mut() {

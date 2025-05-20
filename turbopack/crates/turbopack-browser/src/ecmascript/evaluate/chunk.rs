@@ -203,6 +203,13 @@ impl EcmascriptBrowserEvaluateChunk {
 
     #[turbo_tasks::function]
     async fn ident_for_path(&self) -> Result<Vc<AssetIdent>> {
+        /* Patch reason:
+         * 1. We need to know it is a evaluate chunk or not in BrowserChunkingContext::chunk_path
+         * 2. Determinate that by modifiers may be a litter slower
+         * 3. Now AssetIdent::query is represented by qstring::QString, which has an O(n) query
+         *    complexity
+         */
+
         let mut query = QString::from(self.ident.query().await?.as_str());
         query.add_pair(("evaluate", "1"));
 
