@@ -9618,6 +9618,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "either",
+ "futures",
  "indexmap 2.7.1",
  "indoc",
  "qstring",

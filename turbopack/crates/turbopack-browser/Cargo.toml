@@ -31,6 +31,7 @@ tracing = { workspace = true }
 urlencoding = { workspace = true }
 regex = { workspace = true }
 qstring = { workspace = true }
+futures = { workspace = true }
 
 turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
