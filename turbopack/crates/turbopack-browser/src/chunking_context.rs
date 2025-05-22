@@ -475,7 +475,7 @@ impl ChunkingContext for BrowserChunkingContext {
                         Ok(chunk_root.join(filename.into()))
                     }
                     None => {
-                        let name = format!("{}.{}", name, extension);
+                        let name = format!("{}{}", name, extension);
                         Ok(chunk_root.join(name.into()))
                     },
                 }
