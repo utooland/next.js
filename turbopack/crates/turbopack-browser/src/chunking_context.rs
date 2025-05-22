@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{
-    trace::TraceRawVcs, NonLocalValue, ResolvedVc, TaskInput, TryJoinIterExt, Upcast, Value,
-    ValueToString, Vc,
+    trace::TraceRawVcs, NonLocalValue, ResolvedVc, TaskInput, TryJoinIterExt, Upcast, Value, ValueToString, Vc
 };
 use turbo_tasks_fs::FileSystemPath;
 use turbo_tasks_hash::{hash_xxh3_hash64, DeterministicHash};
@@ -475,7 +474,10 @@ impl ChunkingContext for BrowserChunkingContext {
                         };
                         Ok(chunk_root.join(filename.into()))
                     }
-                    None => Ok(chunk_root.join(name)),
+                    None => {
+                        let name = format!("{}.{}", name, extension);
+                        Ok(chunk_root.join(name.into()))
+                    },
                 }
             }
             None => Ok(chunk_root.join(import_name)),
@@ -762,19 +764,19 @@ impl ChunkingContext for BrowserChunkingContext {
 pub async fn ident_to_output_filename(
     ident: Vc<AssetIdent>,
     context_path: Vc<FileSystemPath>,
-    expected_extension: RcStr,
+    _expected_extension: RcStr,
 ) -> Result<Vc<RcStr>> {
     let ident = &*ident.await?;
     let path = &*ident.path.await?;
-    let mut name = if let Some(inner) = context_path.await?.get_path_to(path) {
+    let name = if let Some(inner) = context_path.await?.get_path_to(path) {
         clean_separators(inner)
     } else {
         clean_separators(&ident.path.to_string().await?)
     };
-    let removed_extension = name.ends_with(&*expected_extension);
-    if removed_extension {
-        name.truncate(name.len() - expected_extension.len());
-    }
+    // let removed_extension = name.ends_with(&*expected_extension);
+    // if removed_extension {
+    //     name.truncate(name.len() - expected_extension.len());
+    // }
     // name += &expected_extension;
     Ok(Vc::cell(name.into()))
 }
