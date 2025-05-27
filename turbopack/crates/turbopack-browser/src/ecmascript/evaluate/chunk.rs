@@ -3,7 +3,6 @@ use std::io::Write;
 use anyhow::{bail, Result};
 use either::Either;
 use indoc::writedoc;
-use qstring::QString;
 use serde::Serialize;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ReadRef, ResolvedVc, TryJoinIterExt, Value, ValueToString, Vc};
