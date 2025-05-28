@@ -4,12 +4,8 @@ pub mod source_map;
 use std::fmt::Write;
 
 use anyhow::{bail, Result};
-use swc_core::common::pass::Either;
 use turbo_rcstr::RcStr;
-use turbo_tasks::{
-    FxIndexSet, ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt, Value, ValueDefault, ValueToString,
-    Vc,
-};
+use turbo_tasks::{FxIndexSet, ResolvedVc, TryJoinIterExt, Value, ValueDefault, ValueToString, Vc};
 use turbo_tasks_fs::{
     rope::{Rope, RopeBuilder},
     File, FileSystem, FileSystemPath,
@@ -35,7 +31,7 @@ use turbopack_core::{
     source_map::{utils::fileify_source_map, GenerateSourceMap, OptionStringifiedSourceMap},
 };
 
-use self::{single_item_chunk::chunk::SingleItemCssChunk, source_map::CssChunkSourceMapAsset};
+use self::source_map::CssChunkSourceMapAsset;
 use crate::{util::stringify_js, ImportAssetReference};
 
 #[turbo_tasks::value]
@@ -262,36 +258,37 @@ impl OutputChunk for CssChunk {
             .map(|chunk_item| chunk_item.id().to_resolved())
             .try_join()
             .await?;
-        let imports_chunk_items: Vec<_> = entries_chunk_items
-            .iter()
-            .map(|&chunk_item| async move {
-                let Some(css_item) = ResolvedVc::try_downcast::<Box<dyn CssChunkItem>>(chunk_item)
-                else {
-                    return Ok(vec![]);
-                };
-                Ok(css_item
-                    .content()
-                    .await?
-                    .imports
-                    .iter()
-                    .filter_map(|import| {
-                        if let CssImport::Internal(_, item) = import {
-                            Some(*item)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect())
-            })
-            .try_join()
-            .await?
-            .into_iter()
-            .flatten()
-            .collect();
 
         /* Patch reason:
-         * 1. We don't need extra single css chunks now
+         * 1. We don't need individual single css chunks now
          */
+
+        // let imports_chunk_items: Vec<_> = entries_chunk_items
+        //     .iter()
+        //     .map(|&chunk_item| async move {
+        //         let Some(css_item) = ResolvedVc::try_downcast::<Box<dyn
+        // CssChunkItem>>(chunk_item)         else {
+        //             return Ok(vec![]);
+        //         };
+        //         Ok(css_item
+        //             .content()
+        //             .await?
+        //             .imports
+        //             .iter()
+        //             .filter_map(|import| {
+        //                 if let CssImport::Internal(_, item) = import {
+        //                     Some(*item)
+        //                 } else {
+        //                     None
+        //                 }
+        //             })
+        //             .collect())
+        //     })
+        //     .try_join()
+        //     .await?
+        //     .into_iter()
+        //     .flatten()
+        //     .collect();
 
         // let module_chunks = if entries_chunk_items.len() > 1 {
         //     content
