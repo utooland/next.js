@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{
-    trace::TraceRawVcs, NonLocalValue, ResolvedVc, TaskInput, TryJoinIterExt, Upcast, Value, ValueToString, Vc
+    trace::TraceRawVcs, NonLocalValue, ResolvedVc, TaskInput, TryJoinIterExt, Upcast, Value,
+    ValueToString, Vc,
 };
 use turbo_tasks_fs::FileSystemPath;
 use turbo_tasks_hash::{hash_xxh3_hash64, DeterministicHash};
@@ -434,12 +435,12 @@ impl ChunkingContext for BrowserChunkingContext {
             .owned()
             .await?;
 
-        match asset {
+        let mut filename = match asset {
             Some(asset) => {
                 let ident = ident.await?;
                 let query = QString::from(ident.query.await?.as_str());
 
-                let name = query.get("name").map_or(import_name, RcStr::from);
+                let name = query.get("name").unwrap_or(import_name.as_str());
 
                 let evaluate = stream::iter(&ident.modifiers)
                     .any(async |m| m.await.is_ok_and(|m| m.contains("evaluate")))
@@ -454,9 +455,11 @@ impl ChunkingContext for BrowserChunkingContext {
                 match filename_template {
                     Some(filename) => {
                         let mut filename = filename.to_string();
+
                         if match_name_placeholder(&filename) {
-                            filename = replace_name_placeholder(&filename, name.as_str());
+                            filename = replace_name_placeholder(&filename, name);
                         }
+
                         if match_content_hash_placeholder(&filename) {
                             let content = asset.content().await?;
                             if let AssetContent::File(file) = &*content {
@@ -472,16 +475,20 @@ impl ChunkingContext for BrowserChunkingContext {
                                 );
                             }
                         };
-                        Ok(chunk_root.join(filename.into()))
+
+                        filename
                     }
-                    None => {
-                        let name = format!("{}{}", name, extension);
-                        Ok(chunk_root.join(name.into()))
-                    },
+                    None => name.to_string(),
                 }
             }
-            None => Ok(chunk_root.join(import_name)),
+            None => import_name.to_string(),
+        };
+
+        if !filename.ends_with(extension.as_str()) {
+            filename.push_str(&extension);
         }
+
+        Ok(chunk_root.join(filename.into()))
     }
 
     #[turbo_tasks::function]
