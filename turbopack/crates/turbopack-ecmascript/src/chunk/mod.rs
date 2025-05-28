@@ -81,33 +81,28 @@ impl Chunk for EcmascriptChunk {
     #[turbo_tasks::function]
     async fn ident(&self) -> Result<Vc<AssetIdent>> {
         let chunk_items = &*self.content.included_chunk_items().await?;
-        let common_path = if let Some(chunk_item) = chunk_items.first() {
+        let mut common_path = if let Some(chunk_item) = chunk_items.first() {
             let path = chunk_item.asset_ident().path().to_resolved().await?;
             Some((path, path.await?))
         } else {
             None
         };
 
-        /* Patch reason:
-         * 1. We don't need to hoist the chunk_items path
-         * 2. Below calculation has a little performance overhead
-         */
-
-        // // The included chunk items describe the chunk uniquely
-        // for &chunk_item in chunk_items.iter() {
-        //     if let Some((common_path_vc, common_path_ref)) = common_path.as_mut() {
-        //         let path = chunk_item.asset_ident().path().await?;
-        //         while !path.is_inside_or_equal_ref(common_path_ref) {
-        //             let parent = common_path_vc.parent().to_resolved().await?;
-        //             if parent == *common_path_vc {
-        //                 common_path = None;
-        //                 break;
-        //             }
-        //             *common_path_vc = parent;
-        //             *common_path_ref = (*common_path_vc).await?;
-        //         }
-        //     }
-        // }
+        // The included chunk items describe the chunk uniquely
+        for &chunk_item in chunk_items.iter() {
+            if let Some((common_path_vc, common_path_ref)) = common_path.as_mut() {
+                let path = chunk_item.asset_ident().path().await?;
+                while !path.is_inside_or_equal_ref(common_path_ref) {
+                    let parent = common_path_vc.parent().to_resolved().await?;
+                    if parent == *common_path_vc {
+                        common_path = None;
+                        break;
+                    }
+                    *common_path_vc = parent;
+                    *common_path_ref = (*common_path_vc).await?;
+                }
+            }
+        }
 
         let chunk_item_key = chunk_item_key().to_resolved().await?;
         let assets = chunk_items
