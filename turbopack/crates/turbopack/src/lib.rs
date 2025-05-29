@@ -674,6 +674,7 @@ async fn externals_tracing_module_context(ty: ExternalType) -> Result<Vc<ModuleA
             ExternalType::CommonJs => vec!["require".into()],
             ExternalType::EcmaScriptModule => vec!["import".into()],
             ExternalType::Url => vec![],
+            ExternalType::Global => vec![],
         },
         ..Default::default()
     };
@@ -994,6 +995,7 @@ pub async fn replace_external(
                 CachedExternalType::EcmaScriptViaRequire
             }
         }
+        ExternalType::Global => CachedExternalType::Global,
         ExternalType::Url => {
             // we don't want to wrap url externals.
             return Ok(None);
