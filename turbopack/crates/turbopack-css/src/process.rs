@@ -265,7 +265,10 @@ pub async fn finalize_css(
                 _ => bail!("this case should be filtered out while parsing"),
             };
 
-            let origin_source_map = origin_source_map.await?.as_ref().map(|rope| rope.clone());
+            /*
+             * Ignore origin_source_map when it's not valid, and then fallback to lightningcss
+             * generated sourcemap in next steps
+             */
 
             let origin_source_map = origin_source_map.as_ref().and_then(|rope| {
                 rope.to_str().ok().and_then(|cow| {
