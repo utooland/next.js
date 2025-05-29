@@ -270,7 +270,7 @@ pub async fn finalize_css(
              * generated sourcemap in next steps
              */
 
-            let origin_source_map = origin_source_map.as_ref().and_then(|rope| {
+            let origin_source_map = origin_source_map.await?.as_ref().and_then(|rope| {
                 rope.to_str().ok().and_then(|cow| {
                     if cow.is_empty() {
                         None
