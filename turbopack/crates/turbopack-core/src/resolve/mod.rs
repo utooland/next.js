@@ -449,6 +449,7 @@ pub enum ExternalType {
     CommonJs,
     EcmaScriptModule,
     Global,
+    Script,
 }
 
 impl Display for ExternalType {
@@ -458,6 +459,7 @@ impl Display for ExternalType {
             ExternalType::EcmaScriptModule => write!(f, "esm"),
             ExternalType::Url => write!(f, "url"),
             ExternalType::Global => write!(f, "global"),
+            ExternalType::Script => write!(f, "script"),
         }
     }
 }
@@ -2779,6 +2781,7 @@ async fn resolve_import_map_result(
                             node_esm_resolve_options(alias_lookup_path.root())
                         }
                         ExternalType::Global => options,
+                        ExternalType::Script => options,
                     },
                 )
                 .await?
