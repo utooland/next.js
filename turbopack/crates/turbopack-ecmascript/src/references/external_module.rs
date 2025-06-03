@@ -22,6 +22,7 @@ use crate::{
     references::async_module::{AsyncModule, OptionAsyncModule},
     runtime_functions::{
         TURBOPACK_EXPORT_NAMESPACE, TURBOPACK_EXTERNAL_IMPORT, TURBOPACK_EXTERNAL_REQUIRE,
+        TURBOPACK_LOAD_BY_URL,
     },
     utils::StringifyJs,
     EcmascriptModuleContent, EcmascriptOptions,
@@ -50,6 +51,7 @@ pub enum CachedExternalType {
     EcmaScriptViaRequire,
     EcmaScriptViaImport,
     Global,
+    Script,
 }
 
 impl Display for CachedExternalType {
@@ -59,6 +61,7 @@ impl Display for CachedExternalType {
             CachedExternalType::EcmaScriptViaRequire => write!(f, "esm_require"),
             CachedExternalType::EcmaScriptViaImport => write!(f, "esm_import"),
             CachedExternalType::Global => write!(f, "global"),
+            CachedExternalType::Script => write!(f, "script"),
         }
     }
 }
@@ -99,12 +102,67 @@ impl CachedExternalModule {
             }
             CachedExternalType::Global => {
                 writeln!(
-                    code,
                     // TODO: change after v15.4
                     // the latest code of turbopack remove the global access: https://github.com/vercel/next.js/blob/canary/turbopack/crates/turbopack-ecmascript/src/chunk/item.rs#L90
+                    code,
                     "const mod = global[{}];",
                     StringifyJs(&self.request)
                 )?;
+            }
+            CachedExternalType::Script => {
+                // Parse the request format: "variableName@url"
+                // e.g., "foo@https://test.test.com"
+                if let Some(at_index) = self.request.rfind('@') {
+                    let variable_name = &self.request[..at_index];
+                    let url = &self.request[at_index + 1..];
+                    
+                    // Wrap the loading and variable access in a try-catch block
+                    writeln!(code, "let mod;")?;
+                    writeln!(code, "try {{")?;
+                    
+                    // First load the URL
+                    writeln!(
+                        code,
+                        "  await {TURBOPACK_LOAD_BY_URL}({});",
+                        StringifyJs(url)
+                    )?;
+                    
+                    // Then get the variable from global with existence check
+                    writeln!(
+                        code,
+                        "  if (typeof global[{}] === 'undefined') {{",
+                        StringifyJs(variable_name)
+                    )?;
+                    writeln!(
+                        code,
+                        "    throw new Error('Variable {} is not available on global object after loading {}');",
+                        StringifyJs(variable_name),
+                        StringifyJs(url)
+                    )?;
+                    writeln!(code, "  }}")?;
+                    writeln!(
+                        code,
+                        "  mod = global[{}];",
+                        StringifyJs(variable_name)
+                    )?;
+                    
+                    // Catch and re-throw errors with more context
+                    writeln!(code, "}} catch (error) {{")?;
+                    writeln!(
+                        code,
+                        "  throw new Error('Failed to load external URL module {}: ' + (error.message || error));",
+                        StringifyJs(&self.request)
+                    )?;
+                    writeln!(code, "}}")?;
+                } else {
+                    // Invalid format - throw error
+                    writeln!(
+                        code,
+                        "throw new Error('Invalid URL external format. Expected \"variable@url\", got: {}');",
+                        StringifyJs(&self.request)
+                    )?;
+                    writeln!(code, "const mod = undefined;")?;
+                }
             }
             _ => {
                 writeln!(
@@ -153,7 +211,8 @@ impl Module for CachedExternalModule {
     #[turbo_tasks::function]
     async fn is_self_async(&self) -> Result<Vc<bool>> {
         Ok(Vc::cell(
-            self.external_type == CachedExternalType::EcmaScriptViaImport,
+            self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Script,
         ))
     }
 }
@@ -199,11 +258,14 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
     #[turbo_tasks::function]
     fn get_async_module(&self) -> Vc<OptionAsyncModule> {
         Vc::cell(
-            if self.external_type == CachedExternalType::EcmaScriptViaImport {
+            if self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Script
+            {
                 Some(
                     AsyncModule {
                         has_top_level_await: true,
-                        import_externals: true,
+                        import_externals: self.external_type
+                            == CachedExternalType::EcmaScriptViaImport,
                     }
                     .resolved_cell(),
                 )
