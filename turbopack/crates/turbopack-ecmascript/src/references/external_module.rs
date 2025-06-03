@@ -112,7 +112,7 @@ impl CachedExternalModule {
             CachedExternalType::Script => {
                 // Parse the request format: "variableName@url"
                 // e.g., "foo@https://test.test.com"
-                if let Some(at_index) = self.request.rfind('@') {
+                if let Some(at_index) = self.request.find('@') {
                     let variable_name = &self.request[..at_index];
                     let url = &self.request[at_index + 1..];
                     
