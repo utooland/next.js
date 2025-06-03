@@ -10,7 +10,7 @@ use turbo_tasks_fs::{
     rope::{Rope, RopeBuilder},
     File, FileSystem, FileSystemPath,
 };
-use turbo_tasks_hash::{encode_hex, Xxh3Hash64Hasher};
+use turbo_tasks_hash::{encode_hex, DeterministicHash, Xxh3Hash64Hasher};
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{
