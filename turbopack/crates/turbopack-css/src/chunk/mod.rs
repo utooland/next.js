@@ -160,7 +160,7 @@ impl CssChunk {
 
             let mut hasher = Xxh3Hash64Hasher::new();
             chunk_item_idents.iter().for_each(|ident| {
-                hasher.write_value(ident.as_str());
+                ident.ddeterministic_hash(&mut hash);
             });
 
             let hash = hasher.finish();
