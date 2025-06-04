@@ -771,20 +771,19 @@ impl ChunkingContext for BrowserChunkingContext {
 pub async fn ident_to_output_filename(
     ident: Vc<AssetIdent>,
     context_path: Vc<FileSystemPath>,
-    _expected_extension: RcStr,
+    expected_extension: RcStr,
 ) -> Result<Vc<RcStr>> {
     let ident = &*ident.await?;
     let path = &*ident.path.await?;
-    let name = if let Some(inner) = context_path.await?.get_path_to(path) {
+    let mut name = if let Some(inner) = context_path.await?.get_path_to(path) {
         clean_separators(inner)
     } else {
         clean_separators(&ident.path.to_string().await?)
     };
-    // let removed_extension = name.ends_with(&*expected_extension);
-    // if removed_extension {
-    //     name.truncate(name.len() - expected_extension.len());
-    // }
-    // name += &expected_extension;
+    let removed_extension = name.ends_with(&*expected_extension);
+    if removed_extension {
+        name.truncate(name.len() - expected_extension.len());
+    }
     Ok(Vc::cell(name.into()))
 }
 
