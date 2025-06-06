@@ -101,13 +101,27 @@ impl CachedExternalModule {
                 )?;
             }
             CachedExternalType::Global => {
-                writeln!(
-                    // TODO: change after v15.4
-                    // the latest code of turbopack remove the global access: https://github.com/vercel/next.js/blob/canary/turbopack/crates/turbopack-ecmascript/src/chunk/item.rs#L90
-                    code,
-                    "const mod = global[{}];",
-                    StringifyJs(&self.request)
-                )?;
+                if self.request.is_empty() {
+                    writeln!(code, "const mod = {{}};")?;
+                } else if self.request.contains('/') {
+                    // Handle requests with '/' by splitting into nested global access
+                    let global_access = self
+                        .request
+                        .split('/')
+                        .fold("global".to_string(), |acc, part| {
+                            format!("{}[{}]", acc, StringifyJs(part))
+                        });
+
+                    writeln!(code, "const mod = {};", global_access)?;
+                } else {
+                    writeln!(
+                        // TODO: change after v15.4
+                        // the latest code of turbopack remove the global access: https://github.com/vercel/next.js/blob/canary/turbopack/crates/turbopack-ecmascript/src/chunk/item.rs#L90
+                        code,
+                        "const mod = global[{}];",
+                        StringifyJs(&self.request)
+                    )?;
+                }
             }
             CachedExternalType::Script => {
                 // Parse the request format: "variableName@url"
@@ -115,18 +129,18 @@ impl CachedExternalModule {
                 if let Some(at_index) = self.request.find('@') {
                     let variable_name = &self.request[..at_index];
                     let url = &self.request[at_index + 1..];
-                    
+
                     // Wrap the loading and variable access in a try-catch block
                     writeln!(code, "let mod;")?;
                     writeln!(code, "try {{")?;
-                    
+
                     // First load the URL
                     writeln!(
                         code,
                         "  await {TURBOPACK_LOAD_BY_URL}({});",
                         StringifyJs(url)
                     )?;
-                    
+
                     // Then get the variable from global with existence check
                     writeln!(
                         code,
@@ -135,22 +149,20 @@ impl CachedExternalModule {
                     )?;
                     writeln!(
                         code,
-                        "    throw new Error('Variable {} is not available on global object after loading {}');",
+                        "    throw new Error('Variable {} is not available on global object after \
+                         loading {}');",
                         StringifyJs(variable_name),
                         StringifyJs(url)
                     )?;
                     writeln!(code, "  }}")?;
-                    writeln!(
-                        code,
-                        "  mod = global[{}];",
-                        StringifyJs(variable_name)
-                    )?;
-                    
+                    writeln!(code, "  mod = global[{}];", StringifyJs(variable_name))?;
+
                     // Catch and re-throw errors with more context
                     writeln!(code, "}} catch (error) {{")?;
                     writeln!(
                         code,
-                        "  throw new Error('Failed to load external URL module {}: ' + (error.message || error));",
+                        "  throw new Error('Failed to load external URL module {}: ' + \
+                         (error.message || error));",
                         StringifyJs(&self.request)
                     )?;
                     writeln!(code, "}}")?;
@@ -158,7 +170,8 @@ impl CachedExternalModule {
                     // Invalid format - throw error
                     writeln!(
                         code,
-                        "throw new Error('Invalid URL external format. Expected \"variable@url\", got: {}');",
+                        "throw new Error('Invalid URL external format. Expected \"variable@url\", \
+                         got: {}');",
                         StringifyJs(&self.request)
                     )?;
                     writeln!(code, "const mod = undefined;")?;
