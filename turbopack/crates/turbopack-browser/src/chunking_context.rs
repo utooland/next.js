@@ -431,7 +431,8 @@ impl ChunkingContext for BrowserChunkingContext {
 
         let chunk_root = self.chunk_root_path;
 
-        let import_name = ident_to_output_filename(ident, *self.root_path, extension.clone())
+        let output_name = ident
+            .output_name(*self.root_path, extension.clone())
             .owned()
             .await?;
 
@@ -440,7 +441,7 @@ impl ChunkingContext for BrowserChunkingContext {
                 let ident = ident.await?;
                 let query = QString::from(ident.query.await?.as_str());
 
-                let name = query.get("name").unwrap_or(import_name.as_str());
+                let name = query.get("name").unwrap_or(output_name.as_str());
 
                 let evaluate = stream::iter(&ident.modifiers)
                     .any(async |m| m.await.is_ok_and(|m| m.contains("evaluate")))
@@ -481,7 +482,7 @@ impl ChunkingContext for BrowserChunkingContext {
                     None => name.to_string(),
                 }
             }
-            None => import_name.to_string(),
+            None => output_name.to_string(),
         };
 
         if !filename.ends_with(extension.as_str()) {
@@ -765,26 +766,6 @@ impl ChunkingContext for BrowserChunkingContext {
             self.chunk_item_id_from_ident(AsyncLoaderModule::asset_ident_for(module))
         })
     }
-}
-
-#[turbo_tasks::function]
-pub async fn ident_to_output_filename(
-    ident: Vc<AssetIdent>,
-    context_path: Vc<FileSystemPath>,
-    expected_extension: RcStr,
-) -> Result<Vc<RcStr>> {
-    let ident = &*ident.await?;
-    let path = &*ident.path.await?;
-    let mut name = if let Some(inner) = context_path.await?.get_path_to(path) {
-        clean_separators(inner)
-    } else {
-        clean_separators(&ident.path.to_string().await?)
-    };
-    let removed_extension = name.ends_with(&*expected_extension);
-    if removed_extension {
-        name.truncate(name.len() - expected_extension.len());
-    }
-    Ok(Vc::cell(name.into()))
 }
 
 pub fn clean_separators(s: &str) -> String {
