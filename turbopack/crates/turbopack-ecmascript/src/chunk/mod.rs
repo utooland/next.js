@@ -12,7 +12,6 @@ use anyhow::Result;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt, Value, ValueToString, Vc};
 use turbo_tasks_fs::FileSystem;
-use turbo_tasks_hash::{encode_hex, DeterministicHash, Xxh3Hash64Hasher};
 use turbopack_core::{
     chunk::{Chunk, ChunkItem, ChunkItems, ChunkingContext, ModuleIds},
     ident::AssetIdent,
@@ -82,29 +81,28 @@ impl Chunk for EcmascriptChunk {
     #[turbo_tasks::function]
     async fn ident(&self) -> Result<Vc<AssetIdent>> {
         let chunk_items = &*self.content.included_chunk_items().await?;
-
-        let chunk_path = if chunk_items.is_empty() {
-            None
+        let mut common_path = if let Some(chunk_item) = chunk_items.first() {
+            let path = chunk_item.asset_ident().path().to_resolved().await?;
+            Some((path, path.await?))
         } else {
-            let chunk_item_idents = chunk_items
-                .iter()
-                .map(async |chunk_item| chunk_item.asset_ident().to_string().await)
-                .try_join()
-                .await?;
-
-            let mut hasher = Xxh3Hash64Hasher::new();
-            chunk_item_idents.iter().for_each(|ident| {
-                ident.deterministic_hash(&mut hasher);
-            });
-
-            let hash = hasher.finish();
-            let hex_hash = encode_hex(hash);
-            Some(
-                self.chunking_context
-                    .chunk_root_path()
-                    .join(hex_hash.into()),
-            )
+            None
         };
+
+        // The included chunk items describe the chunk uniquely
+        for &chunk_item in chunk_items.iter() {
+            if let Some((common_path_vc, common_path_ref)) = common_path.as_mut() {
+                let path = chunk_item.asset_ident().path().await?;
+                while !path.is_inside_or_equal_ref(common_path_ref) {
+                    let parent = common_path_vc.parent().to_resolved().await?;
+                    if parent == *common_path_vc {
+                        common_path = None;
+                        break;
+                    }
+                    *common_path_vc = parent;
+                    *common_path_ref = (*common_path_vc).await?;
+                }
+            }
+        }
 
         let chunk_item_key = chunk_item_key().to_resolved().await?;
         let assets = chunk_items
@@ -119,8 +117,8 @@ impl Chunk for EcmascriptChunk {
             .await?;
 
         let ident = AssetIdent {
-            path: if let Some(chunk_path) = chunk_path {
-                chunk_path.to_resolved().await?
+            path: if let Some((common_path, _)) = common_path {
+                common_path
             } else {
                 ServerFileSystem::new().root().to_resolved().await?
             },
