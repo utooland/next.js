@@ -1,7 +1,6 @@
 use std::{cmp::min, sync::LazyLock};
 
 use anyhow::{bail, Context, Result};
-use futures::stream::{self, StreamExt};
 use qstring::QString;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -439,13 +438,30 @@ impl ChunkingContext for BrowserChunkingContext {
         let mut filename = match asset {
             Some(asset) => {
                 let ident = ident.await?;
+
+                let modifiers = ident
+                    .modifiers
+                    .iter()
+                    .map(async |m| Ok((*m.await?).clone()))
+                    .try_join()
+                    .await?;
+
+                let mut evaluate = false;
+                let mut dev_chunk_list = false;
+                modifiers.iter().for_each(|m| {
+                    if m.contains("evaluate") {
+                        evaluate = true;
+                    }
+                    if m.contains("dev chunk list") {
+                        dev_chunk_list = true;
+                    }
+                });
                 let query = QString::from(ident.query.await?.as_str());
-
-                let name = query.get("name").unwrap_or(output_name.as_str());
-
-                let evaluate = stream::iter(&ident.modifiers)
-                    .any(async |m| m.await.is_ok_and(|m| m.contains("evaluate")))
-                    .await;
+                let name = if dev_chunk_list {
+                    output_name.as_str()
+                } else {
+                    query.get("name").unwrap_or(output_name.as_str())
+                };
 
                 let filename_template = if evaluate {
                     &self.filename
