@@ -36,7 +36,7 @@ use crate::{
 /// * Contains the Turbopack browser runtime code; and
 /// * Evaluates a list of runtime entries.
 #[turbo_tasks::value(shared)]
-pub(crate) struct EcmascriptBrowserEvaluateChunk {
+pub struct EcmascriptBrowserEvaluateChunk {
     chunking_context: ResolvedVc<BrowserChunkingContext>,
     ident: ResolvedVc<AssetIdent>,
     other_chunks: ResolvedVc<OutputAssets>,
@@ -68,8 +68,13 @@ impl EcmascriptBrowserEvaluateChunk {
     }
 
     #[turbo_tasks::function]
-    fn chunks_data(&self) -> Vc<ChunksData> {
+    pub fn chunks_data(&self) -> Vc<ChunksData> {
         ChunkData::from_assets(self.chunking_context.output_root(), *self.other_chunks)
+    }
+
+    #[turbo_tasks::function]
+    pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
+        *self.evaluatable_assets
     }
 
     #[turbo_tasks::function]
