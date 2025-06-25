@@ -78,6 +78,16 @@ impl EcmascriptBrowserEvaluateChunk {
     }
 
     #[turbo_tasks::function]
+    pub fn module_graph(&self) -> Vc<ModuleGraph> {
+        *self.module_graph
+    }
+
+    #[turbo_tasks::function]
+    pub fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
+        Vc::upcast(*self.chunking_context)
+    }
+
+    #[turbo_tasks::function]
     async fn code(self: Vc<Self>) -> Result<Vc<Code>> {
         let this = self.await?;
         let chunking_context = this.chunking_context.await?;
