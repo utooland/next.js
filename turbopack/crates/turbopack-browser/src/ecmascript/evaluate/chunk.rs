@@ -73,6 +73,11 @@ impl EcmascriptBrowserEvaluateChunk {
     }
 
     #[turbo_tasks::function]
+    pub fn ident(&self) -> Vc<AssetIdent> {
+        *self.ident
+    }
+
+    #[turbo_tasks::function]
     pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
         *self.evaluatable_assets
     }
