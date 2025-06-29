@@ -1,4 +1,9 @@
 use anyhow::Result;
+use swc_core::{
+    common::DUMMY_SP,
+    ecma::ast::{ArrayLit, Expr, KeyValueProp, ObjectLit, Prop, PropName, Str},
+    quote,
+};
 use turbo_rcstr::RcStr;
 use turbo_tasks::{FxIndexMap, ResolvedVc, Vc};
 use turbo_tasks_fs::FileSystemPath;
@@ -103,9 +108,13 @@ macro_rules! free_var_references {
 #[turbo_tasks::value(serialization = "auto_for_input")]
 #[derive(Debug, Clone, Hash)]
 pub enum CompileTimeDefineValue {
+    Null,
     Bool(bool),
+    Number(serde_json::Number),
     String(RcStr),
-    JSON(RcStr),
+    Array(Vec<CompileTimeDefineValue>),
+    Object(Vec<(RcStr, CompileTimeDefineValue)>),
+    Unknown(RcStr),
 }
 
 impl From<bool> for CompileTimeDefineValue {
@@ -134,7 +143,64 @@ impl From<&str> for CompileTimeDefineValue {
 
 impl From<serde_json::Value> for CompileTimeDefineValue {
     fn from(value: serde_json::Value) -> Self {
-        Self::JSON(value.to_string().into())
+        match value {
+            serde_json::Value::Null => Self::Null,
+            serde_json::Value::Bool(b) => Self::Bool(b),
+            serde_json::Value::Number(n) => Self::Number(n.clone()),
+            serde_json::Value::String(s) => Self::String(s.into()),
+            serde_json::Value::Array(a) => Self::Array(a.into_iter().map(|i| i.into()).collect()),
+            serde_json::Value::Object(m) => {
+                Self::Object(m.into_iter().map(|(k, v)| (k.into(), v.into())).collect())
+            }
+        }
+    }
+}
+
+impl From<CompileTimeDefineValue> for Expr {
+    fn from(value: CompileTimeDefineValue) -> Self {
+        match value {
+            CompileTimeDefineValue::Null => {
+                quote!("(\"TURBOPACK compile-time value\", null)" as Expr)
+            }
+            CompileTimeDefineValue::Bool(true) => {
+                quote!("(\"TURBOPACK compile-time value\", true)" as Expr)
+            }
+            CompileTimeDefineValue::Bool(false) => {
+                quote!("(\"TURBOPACK compile-time value\", false)" as Expr)
+            }
+            CompileTimeDefineValue::Number(ref n) => {
+                quote!("(\"TURBOPACK compile-time value\", $e)" as Expr, e: Expr = n.as_f64().unwrap().into())
+            }
+            CompileTimeDefineValue::String(ref s) => {
+                quote!("(\"TURBOPACK compile-time value\", $e)" as Expr, e: Expr = s.to_string().into())
+            }
+            CompileTimeDefineValue::Array(a) => {
+                quote!("(\"TURBOPACK compile-time value\", $e)" as Expr, e: Expr = Expr::Array(ArrayLit {
+                    span: DUMMY_SP,
+                    elems: a.into_iter().map(|i| Some(Expr::from(i).into())).collect(),
+                }))
+            }
+            CompileTimeDefineValue::Object(m) => {
+                quote!("(\"TURBOPACK compile-time value\", $e)" as Expr, e: Expr = Expr::Object(ObjectLit {
+                    span: DUMMY_SP,
+                    props: m
+                        .into_iter()
+                        .map(|(k, v)| {
+                            swc_core::ecma::ast::PropOrSpread::Prop(
+                                Prop::KeyValue(KeyValueProp {
+                                    key: PropName::Str(Str::from(k.as_str())),
+                                    value: Expr::from(v).into(),
+                                })
+                                .into(),
+                            )
+                        })
+                        .collect(),
+                }))
+            }
+            CompileTimeDefineValue::Unknown(ref s) => {
+                quote!("(\"TURBOPACK compile-time value\", JSON.parse($e))" as Expr, e: Expr = s.to_string().into())
+            }
+        }
     }
 }
 

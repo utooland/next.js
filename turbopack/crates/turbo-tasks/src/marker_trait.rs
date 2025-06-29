@@ -40,7 +40,7 @@ macro_rules! impl_auto_marker_trait {
         $crate::marker_trait::impl_marker_trait!($trait: ::std::path::Path, ::std::path::PathBuf);
         $crate::marker_trait::impl_marker_trait!(
             $trait:
-            ::serde_json::Value, ::serde_json::Map<String, ::serde_json::Value>
+            ::serde_json::Value, ::serde_json::Map<String, ::serde_json::Value>, ::serde_json::Number,
         );
 
         $crate::marker_trait::impl_marker_trait_fn_ptr!($trait: E D C B A Z Y X W V U T);
@@ -122,7 +122,7 @@ macro_rules! impl_marker_trait_fn_ptr {
 
 /// Create an implementation for every possible tuple where every element implements `$trait`.
 ///
-/// Must be passed a sequence of identifier fo the tuple's generic parameters. This will only
+/// Must be passed a sequence of identifier to the tuple's generic parameters. This will only
 /// generate implementations up to the length of the passed in sequence.
 ///
 /// Based on stdlib's internal `tuple_impls!` macro.

@@ -577,9 +577,26 @@ impl From<ConstantValue> for JsValue {
 impl From<&CompileTimeDefineValue> for JsValue {
     fn from(v: &CompileTimeDefineValue) -> Self {
         match v {
-            CompileTimeDefineValue::String(s) => JsValue::Constant(s.as_str().into()),
+            CompileTimeDefineValue::Null => JsValue::Constant(ConstantValue::Null),
             CompileTimeDefineValue::Bool(b) => JsValue::Constant((*b).into()),
-            CompileTimeDefineValue::JSON(_) => {
+            CompileTimeDefineValue::Number(n) => {
+                JsValue::Constant(ConstantValue::Num(ConstantNumber(n.as_f64().unwrap())))
+            }
+            CompileTimeDefineValue::String(s) => JsValue::Constant(s.as_str().into()),
+            CompileTimeDefineValue::Array(a) => JsValue::Array {
+                total_nodes: a.len() as u32,
+                items: a.iter().map(Into::into).collect(),
+                mutable: false,
+            },
+            CompileTimeDefineValue::Object(m) => JsValue::Object {
+                total_nodes: m.len() as u32,
+                parts: m
+                    .iter()
+                    .map(|(k, v)| ObjectPart::KeyValue(k.clone().into(), v.into()))
+                    .collect(),
+                mutable: false,
+            },
+            CompileTimeDefineValue::Unknown(_) => {
                 JsValue::unknown_empty(false, "compile time injected JSON")
             }
         }

@@ -1,6 +1,5 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use swc_core::quote;
 use turbo_tasks::{debug::ValueDebugFormat, trace::TraceRawVcs, NonLocalValue, Value, Vc};
 use turbopack_core::{
     chunk::ChunkingContext, compile_time_info::CompileTimeDefineValue, module_graph::ModuleGraph,
@@ -33,12 +32,8 @@ impl ConstantValueCodeGen {
         let value = self.value.clone();
 
         let visitor = create_visitor!(self.path, visit_mut_expr(expr: &mut Expr) {
-            *expr = match value {
-                CompileTimeDefineValue::Bool(true) => quote!("(\"TURBOPACK compile-time value\", true)" as Expr),
-                CompileTimeDefineValue::Bool(false) => quote!("(\"TURBOPACK compile-time value\", false)" as Expr),
-                CompileTimeDefineValue::String(ref s) => quote!("(\"TURBOPACK compile-time value\", $e)" as Expr, e: Expr = s.to_string().into()),
-                CompileTimeDefineValue::JSON(ref s) => quote!("(\"TURBOPACK compile-time value\", JSON.parse($e))" as Expr, e: Expr = s.to_string().into()),
-            };
+            // TODO: avoid this clone
+            *expr = value.clone().into();
         });
 
         Ok(CodeGeneration::visitors(vec![visitor]))

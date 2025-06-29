@@ -1,4 +1,4 @@
-use std::iter::once;
+use std::{iter::once, str::FromStr};
 
 use anyhow::{bail, Result};
 use turbo_rcstr::RcStr;
@@ -354,11 +354,10 @@ fn defines(define_env: &FxIndexMap<RcStr, RcStr>) -> CompileTimeDefines {
                     .collect::<Vec<_>>(),
             )
             .or_insert_with(|| {
-                let val = serde_json::from_str(v);
+                let val = serde_json::Value::from_str(v);
                 match val {
-                    Ok(serde_json::Value::Bool(v)) => CompileTimeDefineValue::Bool(v),
-                    Ok(serde_json::Value::String(v)) => CompileTimeDefineValue::String(v.into()),
-                    _ => CompileTimeDefineValue::JSON(v.clone()),
+                    Ok(v) => v.into(),
+                    _ => CompileTimeDefineValue::Unknown(v.clone()),
                 }
             });
     }
