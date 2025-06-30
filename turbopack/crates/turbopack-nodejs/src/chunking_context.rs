@@ -325,6 +325,9 @@ impl ChunkingContext for NodeJsChunkingContext {
             .output_name(self.root_path.clone(), prefix, extension)
             .owned()
             .await?;
+        if !name.ends_with(extension.as_str()) {
+            name.push_str(&extension);
+        }
         Ok(root_path.join(&name)?.cell())
     }
 

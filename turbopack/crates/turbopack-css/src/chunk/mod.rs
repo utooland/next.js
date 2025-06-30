@@ -4,11 +4,8 @@ pub mod source_map;
 use std::fmt::Write;
 
 use anyhow::{Result, bail};
-use swc_core::common::pass::Either;
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{
-    FxIndexSet, ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt, ValueDefault, ValueToString, Vc,
-};
+use turbo_tasks::{FxIndexSet, ResolvedVc, TryJoinIterExt, ValueDefault, ValueToString, Vc};
 use turbo_tasks_fs::{
     File, FileSystem, FileSystemPath,
     rope::{Rope, RopeBuilder},
@@ -35,7 +32,7 @@ use turbopack_core::{
     source_map::{GenerateSourceMap, OptionStringifiedSourceMap, utils::fileify_source_map},
 };
 
-use self::{single_item_chunk::chunk::SingleItemCssChunk, source_map::CssChunkSourceMapAsset};
+use self::source_map::CssChunkSourceMapAsset;
 use crate::{ImportAssetReference, util::stringify_js};
 
 #[turbo_tasks::value]
@@ -316,7 +313,7 @@ impl OutputChunk for CssChunk {
         };
         Ok(OutputChunkRuntimeInfo {
             included_ids: Some(ResolvedVc::cell(included_ids)),
-            module_chunks: Some(ResolvedVc::cell(module_chunks)),
+            module_chunks: None,
             ..Default::default()
         }
         .cell())
