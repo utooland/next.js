@@ -4,11 +4,8 @@ pub mod source_map;
 use std::fmt::Write;
 
 use anyhow::{Result, bail};
-use swc_core::common::pass::Either;
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{
-    FxIndexSet, ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt, ValueDefault, ValueToString, Vc,
-};
+use turbo_tasks::{FxIndexSet, ResolvedVc, TryJoinIterExt, ValueDefault, ValueToString, Vc};
 use turbo_tasks_fs::{
     File, FileSystem, FileSystemPath,
     rope::{Rope, RopeBuilder},
@@ -35,7 +32,7 @@ use turbopack_core::{
     source_map::{GenerateSourceMap, OptionStringifiedSourceMap, utils::fileify_source_map},
 };
 
-use self::{single_item_chunk::chunk::SingleItemCssChunk, source_map::CssChunkSourceMapAsset};
+use self::source_map::CssChunkSourceMapAsset;
 use crate::{ImportAssetReference, util::stringify_js};
 
 #[turbo_tasks::value]
@@ -261,52 +258,59 @@ impl OutputChunk for CssChunk {
             .map(|chunk_item| chunk_item.id().to_resolved())
             .try_join()
             .await?;
-        let imports_chunk_items: Vec<_> = entries_chunk_items
-            .iter()
-            .map(|&chunk_item| async move {
-                let Some(css_item) = ResolvedVc::try_downcast::<Box<dyn CssChunkItem>>(chunk_item)
-                else {
-                    return Ok(vec![]);
-                };
-                Ok(css_item
-                    .content()
-                    .await?
-                    .imports
-                    .iter()
-                    .filter_map(|import| {
-                        if let CssImport::Internal(_, item) = import {
-                            Some(*item)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect())
-            })
-            .try_join()
-            .await?
-            .into_iter()
-            .flatten()
-            .collect();
-        let module_chunks = if entries_chunk_items.len() > 1 {
-            content
-                .chunk_items
-                .iter()
-                .chain(imports_chunk_items.iter())
-                .map(|item| {
-                    Vc::upcast::<Box<dyn OutputAsset>>(SingleItemCssChunk::new(
-                        *self.chunking_context,
-                        **item,
-                    ))
-                    .to_resolved()
-                })
-                .try_join()
-                .await?
-        } else {
-            Vec::new()
-        };
+
+        /* Patch reason:
+         * 1. We don't need individual single css chunks now
+         */
+
+        // let imports_chunk_items: Vec<_> = entries_chunk_items
+        //     .iter()
+        //     .map(|&chunk_item| async move {
+        //         let Some(css_item) = ResolvedVc::try_downcast::<Box<dyn
+        // CssChunkItem>>(chunk_item)         else {
+        //             return Ok(vec![]);
+        //         };
+        //         Ok(css_item
+        //             .content()
+        //             .await?
+        //             .imports
+        //             .iter()
+        //             .filter_map(|import| {
+        //                 if let CssImport::Internal(_, item) = import {
+        //                     Some(*item)
+        //                 } else {
+        //                     None
+        //                 }
+        //             })
+        //             .collect())
+        //     })
+        //     .try_join()
+        //     .await?
+        //     .into_iter()
+        //     .flatten()
+        //     .collect();
+
+        // let module_chunks = if entries_chunk_items.len() > 1 {
+        //     content
+        //         .chunk_items
+        //         .iter()
+        //         .chain(imports_chunk_items.iter())
+        //         .map(|item| {
+        //             Vc::upcast::<Box<dyn OutputAsset>>(SingleItemCssChunk::new(
+        //                 *self.chunking_context,
+        //                 **item,
+        //             ))
+        //             .to_resolved()
+        //         })
+        //         .try_join()
+        //         .await?
+        // } else {
+        //     Vec::new()
+        // };
+
         Ok(OutputChunkRuntimeInfo {
             included_ids: Some(ResolvedVc::cell(included_ids)),
-            module_chunks: Some(ResolvedVc::cell(module_chunks)),
+            module_chunks: None,
             ..Default::default()
         }
         .cell())
@@ -330,28 +334,34 @@ impl OutputAsset for CssChunk {
         let this = self.await?;
         let content = this.content.await?;
         let mut references = content.referenced_output_assets.owned().await?;
-        let single_item_chunks = content.chunk_items.len() > 1;
-        references.extend(
-            content
-                .chunk_items
-                .iter()
-                .map(|item| async {
-                    let references = item.references().await?.into_iter().copied();
-                    Ok(if single_item_chunks {
-                        Either::Left(
-                            references.chain(std::iter::once(ResolvedVc::upcast(
-                                SingleItemCssChunk::new(*this.chunking_context, **item)
-                                    .to_resolved()
-                                    .await?,
-                            ))),
-                        )
-                    } else {
-                        Either::Right(references)
-                    })
-                })
-                .try_flat_join()
-                .await?,
-        );
+
+        /* Patch reason:
+         * 1. We don't need extra single css chunks now
+         */
+
+        // let single_item_chunks = content.chunk_items.len() > 1;
+        // references.extend(
+        //     content
+        //         .chunk_items
+        //         .iter()
+        //         .map(|item| async {
+        //             let references = item.references().await?.into_iter().copied();
+        //             Ok(if single_item_chunks {
+        //                 Either::Left(
+        //                     references.chain(std::iter::once(ResolvedVc::upcast(
+        //                         SingleItemCssChunk::new(*this.chunking_context, **item)
+        //                             .to_resolved()
+        //                             .await?,
+        //                     ))),
+        //                 )
+        //             } else {
+        //                 Either::Right(references)
+        //             })
+        //         })
+        //         .try_flat_join()
+        //         .await?,
+        // );
+
         if *this
             .chunking_context
             .reference_chunk_source_maps(Vc::upcast(self))

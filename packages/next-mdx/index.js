@@ -26,6 +26,9 @@ module.exports =
     /**
      * @type {import('next').NextConfig}
      */
+    /**
+     * @type {import('next').NextConfig}
+     */
     let nextConfig = Object.assign({}, inputConfig, {
       webpack(config, options) {
         config.resolve.alias['next-mdx-import-source-file'] = [
