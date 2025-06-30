@@ -9539,6 +9539,8 @@ dependencies = [
  "anyhow",
  "either",
  "indoc",
+ "qstring",
+ "regex",
  "serde",
  "serde_json",
  "serde_qs",
