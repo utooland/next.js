@@ -95,6 +95,10 @@ impl RawVc {
     /// stored in the persistent cache.
     ///
     /// See [`TaskPersistence`] for more details.
+    /// Returns `true` if the task this `RawVc` reads from cannot be serialized and will not be
+    /// stored in the persistent cache.
+    ///
+    /// See [`TaskPersistence`] for more details.
     pub fn is_transient(&self) -> bool {
         match self {
             RawVc::TaskOutput(task) | RawVc::TaskCell(task, ..) => task.is_transient(),
