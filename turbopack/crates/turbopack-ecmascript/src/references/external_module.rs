@@ -103,7 +103,7 @@ impl CachedExternalModule {
                     let global_access = self
                         .request
                         .split('/')
-                        .fold("global".to_string(), |acc, part| {
+                        .fold("globalThis".to_string(), |acc, part| {
                             format!("{}[{}]", acc, StringifyJs(part))
                         });
 
