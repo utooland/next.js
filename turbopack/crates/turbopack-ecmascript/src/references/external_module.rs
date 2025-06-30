@@ -117,6 +117,16 @@ impl CachedExternalModule {
             CachedExternalType::Global => {
                 if self.request.is_empty() {
                     writeln!(code, "const mod = {{}};")?;
+                } else if self.request.contains('/') {
+                    // Handle requests with '/' by splitting into nested global access
+                    let global_access = self
+                        .request
+                        .split('/')
+                        .fold("globalThis".to_string(), |acc, part| {
+                            format!("{}[{}]", acc, StringifyJs(part))
+                        });
+
+                    writeln!(code, "const mod = {global_access};")?;
                 } else {
                     writeln!(
                         code,
