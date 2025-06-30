@@ -124,7 +124,7 @@ fn parse_code_to_expr(code: String) -> Expr {
     );
     parse_file_as_expr(
         &fm,
-        Syntax::Typescript(Default::default()),
+        Syntax::Es(Default::default()),
         EsVersion::latest(),
         None,
         &mut vec![],
