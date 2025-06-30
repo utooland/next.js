@@ -139,6 +139,8 @@
     "@types/node-fetch": "2.6.1",
     "@types/react": "19.1.1",
     "@types/react-dom": "19.1.2",
+    "@types/react": "19.1.1",
+    "@types/react-dom": "19.1.2",
     "@types/relay-runtime": "14.1.13",
     "@types/string-hash": "1.1.1",
     "@types/trusted-types": "2.0.3",

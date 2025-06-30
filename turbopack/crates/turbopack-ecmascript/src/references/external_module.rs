@@ -98,10 +98,22 @@ impl CachedExternalModule {
             CachedExternalType::Global => {
                 if self.request.is_empty() {
                     writeln!(code, "const mod = {{}};")?;
+                } else if self.request.contains('/') {
+                    // Handle requests with '/' by splitting into nested global access
+                    let global_access = self
+                        .request
+                        .split('/')
+                        .fold("global".to_string(), |acc, part| {
+                            format!("{}[{}]", acc, StringifyJs(part))
+                        });
+
+                    writeln!(code, "const mod = {};", global_access)?;
                 } else {
                     writeln!(
+                        // TODO: change after v15.4
+                        // the latest code of turbopack remove the global access: https://github.com/vercel/next.js/blob/canary/turbopack/crates/turbopack-ecmascript/src/chunk/item.rs#L90
                         code,
-                        "const mod = globalThis[{}];",
+                        "const mod = global[{}];",
                         StringifyJs(&self.request)
                     )?;
                 }
@@ -160,7 +172,7 @@ impl CachedExternalModule {
                     writeln!(code, "const mod = undefined;")?;
                 }
             }
-            CachedExternalType::EcmaScriptViaRequire | CachedExternalType::CommonJs => {
+            _ => {
                 writeln!(
                     code,
                     "const mod = {TURBOPACK_EXTERNAL_REQUIRE}({}, () => require({}));",
@@ -209,7 +221,8 @@ impl Module for CachedExternalModule {
     #[turbo_tasks::function]
     fn is_self_async(&self) -> Result<Vc<bool>> {
         Ok(Vc::cell(
-            self.external_type == CachedExternalType::EcmaScriptViaImport,
+            self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Script,
         ))
     }
 }
@@ -255,11 +268,14 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
     #[turbo_tasks::function]
     fn get_async_module(&self) -> Vc<OptionAsyncModule> {
         Vc::cell(
-            if self.external_type == CachedExternalType::EcmaScriptViaImport {
+            if self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Script
+            {
                 Some(
                     AsyncModule {
                         has_top_level_await: true,
-                        import_externals: true,
+                        import_externals: self.external_type
+                            == CachedExternalType::EcmaScriptViaImport,
                     }
                     .resolved_cell(),
                 )

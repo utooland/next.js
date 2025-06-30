@@ -292,11 +292,14 @@ impl ChunkingContext for NodeJsChunkingContext {
         extension: RcStr,
     ) -> Result<Vc<FileSystemPath>> {
         let root_path = *self.chunk_root_path;
-        let name = ident
-            .output_name(*self.root_path, extension)
-            .owned()
-            .await?;
-        Ok(root_path.join(name))
+        let mut name = ident
+            .output_name(*self.root_path, extension.clone())
+            .await?
+            .to_string();
+        if !name.ends_with(extension.as_str()) {
+            name.push_str(&extension);
+        }
+        Ok(root_path.join(name.into()))
     }
 
     #[turbo_tasks::function]
