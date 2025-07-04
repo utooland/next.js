@@ -80,7 +80,7 @@ describe.each(
              |                ^",
            "stack": [
              "SyncIO app/client.tsx (5:16)",
-             "LogSafely <anonymous> (0:0)",
+             "LogSafely <anonymous>",
            ],
          }
         `)
@@ -178,15 +178,15 @@ describe.each(
              "label": "Console Error",
              "source": null,
              "stack": [
-               "RequestData [Server] <anonymous> (1:29)",
-               "section <anonymous> (1:16)",
-               "main <anonymous> (1:13)",
                "<FIXME-file-protocol>",
-               "main <anonymous> (1:13)",
-               "body <anonymous> (1:13)",
-               "html <anonymous> (1:13)",
-               "Root [Server] <anonymous> (1:22)",
-               "LogSafely <anonymous> (0:0)",
+               "section <anonymous>",
+               "main <anonymous>",
+               "<FIXME-file-protocol>",
+               "main <anonymous>",
+               "body <anonymous>",
+               "html <anonymous>",
+               "Root [Server] <anonymous>",
+               "LogSafely <anonymous>",
              ],
            }
           `)
@@ -196,19 +196,19 @@ describe.each(
              "description": "Route "/": A component accessed data, headers, params, searchParams, or a short-lived cache without a Suspense boundary nor a "use cache" above it. We don't have the exact line number added to error messages yet but you can see which component in the stack below. See more info: https://nextjs.org/docs/messages/next-prerender-missing-suspense",
              "environmentLabel": "Server",
              "label": "Console Error",
-             "source": "app/page.tsx (27:9) @ Page
-           > 27 |         <RequestData />
-                |         ^",
+             "source": "app/page.tsx (33:16) @ RequestData
+           > 33 | async function RequestData() {
+                |                ^",
              "stack": [
-               "RequestData [Server] <anonymous> (1:29)",
-               "section <anonymous> (1:16)",
-               "main <anonymous> (1:13)",
+               "RequestData app/page.tsx (33:16)",
+               "section <anonymous>",
+               "main <anonymous>",
                "Page app/page.tsx (27:9)",
-               "main <anonymous> (1:13)",
-               "body <anonymous> (1:13)",
-               "html <anonymous> (1:13)",
-               "Root [Server] <anonymous> (1:22)",
-               "LogSafely <anonymous> (0:0)",
+               "main <anonymous>",
+               "body <anonymous>",
+               "html <anonymous>",
+               "Root [Server] <anonymous>",
+               "LogSafely <anonymous>",
              ],
            }
           `)
@@ -352,7 +352,7 @@ describe.each(
              |                ^",
            "stack": [
              "SyncIO app/client.tsx (5:16)",
-             "LogSafely <anonymous> (0:0)",
+             "LogSafely <anonymous>",
            ],
          }
         `)

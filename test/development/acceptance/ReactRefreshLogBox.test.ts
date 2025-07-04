@@ -41,7 +41,7 @@ describe('ReactRefreshLogBox', () => {
         }
       `
     )
-    await session.evaluate(() => document.querySelector('a').click())
+    await browser.elementByCss('a').click()
 
     if (isReact18) {
       await expect(browser).toDisplayRedbox(`
@@ -54,8 +54,6 @@ describe('ReactRefreshLogBox', () => {
             |                           ^",
          "stack": [
            "onClick index.js (8:27)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -70,8 +68,6 @@ describe('ReactRefreshLogBox', () => {
             |                           ^",
          "stack": [
            "onClick index.js (8:27)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -279,7 +275,7 @@ describe('ReactRefreshLogBox', () => {
            |                                                   ^",
            "stack": [
              "FunctionDefault FunctionDefault.js (1:51)",
-             "Set.forEach <anonymous> (0:0)",
+             "Set.forEach <anonymous>",
              "<FIXME-file-protocol>",
              "<FIXME-file-protocol>",
            ],
@@ -293,7 +289,7 @@ describe('ReactRefreshLogBox', () => {
            |                                                   ^",
            "stack": [
              "FunctionDefault FunctionDefault.js (1:51)",
-             "Set.forEach <anonymous> (0:0)",
+             "Set.forEach <anonymous>",
              "<FIXME-file-protocol>",
              "<FIXME-file-protocol>",
            ],
@@ -311,7 +307,7 @@ describe('ReactRefreshLogBox', () => {
            |                                                   ^",
          "stack": [
            "FunctionDefault FunctionDefault.js (1:51)",
-           "Set.forEach <anonymous> (0:0)",
+           "Set.forEach <anonymous>",
            "${isTurbopack ? '<FIXME-file-protocol>' : '<FIXME-next-dist-dir>'}",
            "${isTurbopack ? '<FIXME-file-protocol>' : '<FIXME-next-dist-dir>'}",
          ],
@@ -480,7 +476,7 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
            "stack": [
              "ClickCount.render Child.js (4:11)",
-             "Set.forEach <anonymous> (0:0)",
+             "Set.forEach <anonymous>",
              "<FIXME-file-protocol>",
              "<FIXME-file-protocol>",
            ],
@@ -494,7 +490,7 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
            "stack": [
              "ClickCount.render Child.js (4:11)",
-             "Set.forEach <anonymous> (0:0)",
+             "Set.forEach <anonymous>",
              "<FIXME-file-protocol>",
              "<FIXME-file-protocol>",
            ],
@@ -512,7 +508,7 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "ClickCount.render Child.js (4:11)",
-           "Set.forEach <anonymous> (0:0)",
+           "Set.forEach <anonymous>",
            "${isTurbopack ? '<FIXME-file-protocol>' : '<FIXME-next-dist-dir>'}",
            "${isTurbopack ? '<FIXME-file-protocol>' : '<FIXME-next-dist-dir>'}",
          ],
@@ -654,7 +650,7 @@ describe('ReactRefreshLogBox', () => {
     )
 
     await session.assertNoRedbox()
-    await session.evaluate(() => document.querySelector('button').click())
+    await browser.elementByCss('button').click()
 
     if (isReact18) {
       await expect(browser).toDisplayRedbox(`
@@ -667,8 +663,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -683,8 +677,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -709,7 +701,7 @@ describe('ReactRefreshLogBox', () => {
     )
 
     await session.assertNoRedbox()
-    await session.evaluate(() => document.querySelector('button').click())
+    await browser.elementByCss('button').click()
 
     if (isReact18) {
       await expect(browser).toDisplayRedbox(`
@@ -722,8 +714,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -738,8 +728,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -764,7 +752,7 @@ describe('ReactRefreshLogBox', () => {
     )
 
     await session.assertNoRedbox()
-    await session.evaluate(() => document.querySelector('button').click())
+    await browser.elementByCss('button').click()
 
     if (isReact18) {
       await expect(browser).toDisplayRedbox(`
@@ -777,8 +765,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -793,8 +779,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -819,7 +803,7 @@ describe('ReactRefreshLogBox', () => {
     )
 
     await session.assertNoRedbox()
-    await session.evaluate(() => document.querySelector('button').click())
+    await browser.elementByCss('button').click()
 
     if (isReact18) {
       await expect(browser).toDisplayRedbox(`
@@ -832,8 +816,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -848,8 +830,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -874,7 +854,7 @@ describe('ReactRefreshLogBox', () => {
     )
 
     await session.assertNoRedbox()
-    await session.evaluate(() => document.querySelector('button').click())
+    await browser.elementByCss('button').click()
 
     if (isReact18) {
       await expect(browser).toDisplayRedbox(`
@@ -887,8 +867,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -903,8 +881,6 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "Index.useCallback[boom] index.js (5:11)",
-           "UtilityScript.evaluate <anonymous> (236:17)",
-           "UtilityScript.<anonymous> <anonymous> (1:44)",
          ],
        }
       `)
@@ -1245,7 +1221,7 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "<unknown> pages/index.js (3:11)",
-           "Array.map <anonymous> (0:0)",
+           "Array.map <anonymous>",
            "Page pages/index.js (2:13)",
          ],
        }
@@ -1261,7 +1237,7 @@ describe('ReactRefreshLogBox', () => {
            |           ^",
          "stack": [
            "eval pages/index.js (3:11)",
-           "Array.map <anonymous> (0:0)",
+           "Array.map <anonymous>",
            "Page pages/index.js (2:13)",
          ],
        }

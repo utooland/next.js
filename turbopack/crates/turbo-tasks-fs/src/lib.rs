@@ -32,7 +32,7 @@ use std::{
     io::{self, BufRead, BufReader, ErrorKind, Read},
     mem::take,
     path::{MAIN_SEPARATOR, Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Duration,
 };
 
@@ -547,7 +547,7 @@ impl Debug for DiskFileSystem {
 
 #[turbo_tasks::value_impl]
 impl FileSystem for DiskFileSystem {
-    #[turbo_tasks::function(fs, invalidator)]
+    #[turbo_tasks::function(fs)]
     async fn read(&self, fs_path: FileSystemPath) -> Result<Vc<FileContent>> {
         mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
@@ -573,7 +573,7 @@ impl FileSystem for DiskFileSystem {
         Ok(content.cell())
     }
 
-    #[turbo_tasks::function(fs, invalidator)]
+    #[turbo_tasks::function(fs)]
     async fn raw_read_dir(&self, fs_path: FileSystemPath) -> Result<Vc<RawDirectoryContent>> {
         mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
@@ -628,7 +628,7 @@ impl FileSystem for DiskFileSystem {
         Ok(RawDirectoryContent::new(entries))
     }
 
-    #[turbo_tasks::function(fs, invalidator)]
+    #[turbo_tasks::function(fs)]
     async fn read_link(&self, fs_path: FileSystemPath) -> Result<Vc<LinkContent>> {
         mark_session_dependent();
         let full_path = self.to_sys_path(fs_path.clone()).await?;
@@ -715,7 +715,7 @@ impl FileSystem for DiskFileSystem {
         .cell())
     }
 
-    #[turbo_tasks::function(fs, invalidator)]
+    #[turbo_tasks::function(fs)]
     async fn write(&self, fs_path: FileSystemPath, content: Vc<FileContent>) -> Result<()> {
         mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
@@ -786,8 +786,12 @@ impl FileSystem for DiskFileSystem {
                         #[cfg(target_family = "unix")]
                         f.set_permissions(file.meta.permissions.into())?;
                         f.flush()?;
-                        #[cfg(feature = "write_version")]
-                        {
+
+                        static WRITE_VERSION: LazyLock<bool> = LazyLock::new(|| {
+                            std::env::var_os("TURBO_ENGINE_WRITE_VERSION")
+                                .is_some_and(|v| v == "1" || v == "true")
+                        });
+                        if *WRITE_VERSION {
                             let mut full_path = full_path.to_owned();
                             let hash = hash_xxh3_hash64(file);
                             let ext = full_path.extension();
@@ -842,7 +846,7 @@ impl FileSystem for DiskFileSystem {
         Ok(())
     }
 
-    #[turbo_tasks::function(fs, invalidator)]
+    #[turbo_tasks::function(fs)]
     async fn write_link(&self, fs_path: FileSystemPath, target: Vc<LinkContent>) -> Result<()> {
         mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
@@ -965,7 +969,7 @@ impl FileSystem for DiskFileSystem {
         Ok(())
     }
 
-    #[turbo_tasks::function(fs, invalidator)]
+    #[turbo_tasks::function(fs)]
     async fn metadata(&self, fs_path: FileSystemPath) -> Result<Vc<FileMeta>> {
         mark_session_dependent();
         let full_path = self.to_sys_path(fs_path).await?;
@@ -1110,6 +1114,16 @@ impl FileSystemPath {
         file_name
     }
 
+    /// Returns true if this path has the given extension
+    ///
+    /// slightly faster than `self.extension_ref() == Some(extension)` as we can simply match a
+    /// suffix
+    pub fn has_extension(&self, extension: &str) -> bool {
+        debug_assert!(!extension.contains('/') && extension.starts_with('.'));
+        self.path.ends_with(extension)
+    }
+
+    /// Returns the extension (without a leading `.`)
     pub fn extension_ref(&self) -> Option<&str> {
         let (_, extension) = self.split_extension();
         extension
@@ -1898,7 +1912,8 @@ impl FileContent {
     pub fn parse_json_ref(&self) -> FileJsonContent {
         match self {
             FileContent::Content(file) => {
-                let de = &mut serde_json::Deserializer::from_reader(file.read());
+                let content = file.content.clone().into_bytes();
+                let de = &mut serde_json::Deserializer::from_slice(&content);
                 match serde_path_to_error::deserialize(de) {
                     Ok(data) => FileJsonContent::Content(data),
                     Err(e) => FileJsonContent::Unparsable(Box::new(

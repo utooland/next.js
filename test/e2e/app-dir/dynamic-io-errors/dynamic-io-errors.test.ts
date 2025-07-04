@@ -44,7 +44,7 @@ describe.each(
            "label": "Console Error",
            "source": null,
            "stack": [
-             "LogSafely <anonymous> (0:0)",
+             "LogSafely <anonymous>",
            ],
          }
         `)
@@ -126,13 +126,13 @@ describe.each(
              "label": "Console Error",
              "source": null,
              "stack": [
-               "Dynamic [Server] <anonymous> (1:25)",
                "<FIXME-file-protocol>",
-               "main <anonymous> (1:13)",
-               "body <anonymous> (1:13)",
-               "html <anonymous> (1:13)",
-               "Root [Server] <anonymous> (1:22)",
-               "LogSafely <anonymous> (0:0)",
+               "<FIXME-file-protocol>",
+               "main <anonymous>",
+               "body <anonymous>",
+               "html <anonymous>",
+               "Root [Server] <anonymous>",
+               "LogSafely <anonymous>",
              ],
            }
           `)
@@ -142,17 +142,17 @@ describe.each(
              "description": "Route "/": A component accessed data, headers, params, searchParams, or a short-lived cache without a Suspense boundary nor a "use cache" above it. We don't have the exact line number added to error messages yet but you can see which component in the stack below. See more info: https://nextjs.org/docs/messages/next-prerender-missing-suspense",
              "environmentLabel": "Server",
              "label": "Console Error",
-             "source": "app/page.tsx (15:7) @ Page
-           > 15 |       <Dynamic />
-                |       ^",
+             "source": "app/page.tsx (20:16) @ Dynamic
+           > 20 | async function Dynamic() {
+                |                ^",
              "stack": [
-               "Dynamic [Server] <anonymous> (1:25)",
+               "Dynamic app/page.tsx (20:16)",
                "Page app/page.tsx (15:7)",
-               "main <anonymous> (1:13)",
-               "body <anonymous> (1:13)",
-               "html <anonymous> (1:13)",
-               "Root [Server] <anonymous> (1:22)",
-               "LogSafely <anonymous> (0:0)",
+               "main <anonymous>",
+               "body <anonymous>",
+               "html <anonymous>",
+               "Root [Server] <anonymous>",
+               "LogSafely <anonymous>",
              ],
            }
           `)
@@ -283,7 +283,7 @@ describe.each(
            "label": "Console Error",
            "source": null,
            "stack": [
-             "LogSafely <anonymous> (0:0)",
+             "LogSafely <anonymous>",
            ],
          }
         `)
@@ -393,7 +393,7 @@ describe.each(
            "label": "Console Error",
            "source": null,
            "stack": [
-             "LogSafely <anonymous> (0:0)",
+             "LogSafely <anonymous>",
            ],
          }
         `)
@@ -470,7 +470,7 @@ describe.each(
            "label": "Console Error",
            "source": null,
            "stack": [
-             "LogSafely <anonymous> (0:0)",
+             "LogSafely <anonymous>",
            ],
          }
         `)
@@ -579,14 +579,14 @@ describe.each(
            >  7 | export function IndirectionTwo({ children }) {
                 |                                  ^",
                "stack": [
-                 "FetchingComponent [Server] <anonymous> (1:35)",
+                 "<FIXME-file-protocol>",
                  "IndirectionTwo app/indirection.tsx (7:34)",
                  "<FIXME-file-protocol>",
-                 "main <anonymous> (1:13)",
-                 "body <anonymous> (1:13)",
-                 "html <anonymous> (1:13)",
-                 "Root [Server] <anonymous> (1:22)",
-                 "LogSafely <anonymous> (0:0)",
+                 "main <anonymous>",
+                 "body <anonymous>",
+                 "html <anonymous>",
+                 "Root [Server] <anonymous>",
+                 "LogSafely <anonymous>",
                ],
              },
              {
@@ -595,13 +595,13 @@ describe.each(
                "label": "Console Error",
                "source": null,
                "stack": [
-                 "FetchingComponent [Server] <anonymous> (1:35)",
                  "<FIXME-file-protocol>",
-                 "main <anonymous> (1:13)",
-                 "body <anonymous> (1:13)",
-                 "html <anonymous> (1:13)",
-                 "Root [Server] <anonymous> (1:22)",
-                 "LogSafely <anonymous> (0:0)",
+                 "<FIXME-file-protocol>",
+                 "main <anonymous>",
+                 "body <anonymous>",
+                 "html <anonymous>",
+                 "Root [Server] <anonymous>",
+                 "LogSafely <anonymous>",
                ],
              },
            ]
@@ -613,35 +613,35 @@ describe.each(
                "description": "Route "/": A component accessed data, headers, params, searchParams, or a short-lived cache without a Suspense boundary nor a "use cache" above it. We don't have the exact line number added to error messages yet but you can see which component in the stack below. See more info: https://nextjs.org/docs/messages/next-prerender-missing-suspense",
                "environmentLabel": "Server",
                "label": "Console Error",
-               "source": "app/indirection.tsx (7:34) @ IndirectionTwo
-           >  7 | export function IndirectionTwo({ children }) {
-                |                                  ^",
+               "source": "app/page.tsx (35:16) @ FetchingComponent
+           > 35 | async function FetchingComponent({
+                |                ^",
                "stack": [
-                 "FetchingComponent [Server] <anonymous> (1:35)",
+                 "FetchingComponent app/page.tsx (35:16)",
                  "IndirectionTwo app/indirection.tsx (7:34)",
                  "Page app/page.tsx (16:9)",
-                 "main <anonymous> (1:13)",
-                 "body <anonymous> (1:13)",
-                 "html <anonymous> (1:13)",
-                 "Root [Server] <anonymous> (1:22)",
-                 "LogSafely <anonymous> (0:0)",
+                 "main <anonymous>",
+                 "body <anonymous>",
+                 "html <anonymous>",
+                 "Root [Server] <anonymous>",
+                 "LogSafely <anonymous>",
                ],
              },
              {
                "description": "Route "/": A component accessed data, headers, params, searchParams, or a short-lived cache without a Suspense boundary nor a "use cache" above it. We don't have the exact line number added to error messages yet but you can see which component in the stack below. See more info: https://nextjs.org/docs/messages/next-prerender-missing-suspense",
                "environmentLabel": "Server",
                "label": "Console Error",
-               "source": "app/page.tsx (16:9) @ Page
-           > 16 |         <FetchingComponent nonce="a" cached={true} />
-                |         ^",
+               "source": "app/page.tsx (35:16) @ FetchingComponent
+           > 35 | async function FetchingComponent({
+                |                ^",
                "stack": [
-                 "FetchingComponent [Server] <anonymous> (1:35)",
+                 "FetchingComponent app/page.tsx (35:16)",
                  "Page app/page.tsx (16:9)",
-                 "main <anonymous> (1:13)",
-                 "body <anonymous> (1:13)",
-                 "html <anonymous> (1:13)",
-                 "Root [Server] <anonymous> (1:22)",
-                 "LogSafely <anonymous> (0:0)",
+                 "main <anonymous>",
+                 "body <anonymous>",
+                 "html <anonymous>",
+                 "Root [Server] <anonymous>",
+                 "LogSafely <anonymous>",
                ],
              },
            ]
