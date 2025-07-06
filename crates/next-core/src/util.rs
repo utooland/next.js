@@ -66,7 +66,9 @@ pub fn defines(define_env: &FxIndexMap<RcStr, Option<RcStr>>) -> CompileTimeDefi
                         Ok(serde_json::Value::String(v)) => {
                             CompileTimeDefineValue::String(v.into())
                         }
-                        _ => CompileTimeDefineValue::JSON(v.clone()),
+                        // TODO: will cause build error here
+                        _ => todo!()
+                        // _ => CompileTimeDefineValue::JSON(v.clone()),
                     }
                 } else {
                     CompileTimeDefineValue::Undefined
