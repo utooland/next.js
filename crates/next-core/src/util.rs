@@ -66,7 +66,7 @@ pub fn defines(define_env: &FxIndexMap<RcStr, Option<RcStr>>) -> CompileTimeDefi
                         Ok(serde_json::Value::String(v)) => {
                             CompileTimeDefineValue::String(v.into())
                         }
-                        _ => CompileTimeDefineValue::JSON(v.clone()),
+                        _ => CompileTimeDefineValue::Evaluate(v.clone()),
                     }
                 } else {
                     CompileTimeDefineValue::Undefined
