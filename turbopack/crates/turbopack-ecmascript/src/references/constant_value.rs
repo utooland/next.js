@@ -3,13 +3,14 @@ use std::{path::PathBuf, str::FromStr};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use swc_core::{
-    common::{DUMMY_SP, SourceMap, sync::Lrc},
+    common::{DUMMY_SP, FileName, SourceMap, sync::Lrc},
     ecma::{
         ast::{ArrayLit, EsVersion, Expr, KeyValueProp, ObjectLit, Prop, PropName, Str},
         parser::{Syntax, parse_file_as_expr},
     },
     quote,
 };
+use turbo_rcstr::RcStr;
 use turbo_tasks::{NonLocalValue, TaskInput, Vc, debug::ValueDebugFormat, trace::TraceRawVcs};
 use turbopack_core::{chunk::ChunkingContext, compile_time_info::CompileTimeDefineValue};
 
@@ -105,20 +106,13 @@ fn define_env_to_expr(value: CompileTimeDefineValue) -> Expr {
         CompileTimeDefineValue::Undefined => {
             quote!("(\"TURBOPACK compile-time value\", void 0)" as Expr)
         }
-        CompileTimeDefineValue::Evaluate(ref s) => parse_code_to_expr(s.to_string()),
+        CompileTimeDefineValue::Evaluate(ref s) => parse_single_expr_lit(s.clone()),
     }
 }
 
-fn parse_code_to_expr(code: String) -> Expr {
+fn parse_single_expr_lit(expr_lit: RcStr) -> Expr {
     let cm = Lrc::new(SourceMap::default());
-    let fm = cm.new_source_file(
-        Lrc::new(
-            PathBuf::from_str("__compile_time_define_value_internal__.js")
-                .unwrap()
-                .into(),
-        ),
-        code.clone(),
-    );
+    let fm = cm.new_source_file(FileName::Anon.into(), expr_lit.clone());
     parse_file_as_expr(
         &fm,
         Syntax::Es(Default::default()),
@@ -127,7 +121,7 @@ fn parse_code_to_expr(code: String) -> Expr {
         &mut vec![],
     )
     .map_or(
-        quote!("$s" as Expr, s: Expr = code.into()),
+        quote!("(\"Failed parsed TURBOPACK compile-time value\", $s)" as Expr, s: Expr = expr_lit.as_str().into()),
         |expr| quote!("(\"TURBOPACK compile-time value\", $e)" as Expr, e: Expr = *expr),
     )
 }
