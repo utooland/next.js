@@ -114,6 +114,16 @@ pub enum ExportUsage {
     Evaluation,
 }
 
+impl Display for ExportUsage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExportUsage::Named(name) => write!(f, "export {name}"),
+            ExportUsage::All => write!(f, "all"),
+            ExportUsage::Evaluation => write!(f, "evaluation"),
+        }
+    }
+}
+
 #[turbo_tasks::value_impl]
 impl ExportUsage {
     #[turbo_tasks::function]
@@ -476,6 +486,7 @@ pub enum ExternalType {
     EcmaScriptModule,
     Global,
     Script,
+    Umd,
 }
 
 impl Display for ExternalType {
@@ -486,6 +497,7 @@ impl Display for ExternalType {
             ExternalType::Url => write!(f, "url"),
             ExternalType::Global => write!(f, "global"),
             ExternalType::Script => write!(f, "script"),
+            ExternalType::Umd => write!(f, "umd"),
         }
     }
 }
@@ -2768,7 +2780,10 @@ async fn resolve_import_map_result(
                         ExternalType::EcmaScriptModule => {
                             node_esm_resolve_options(alias_lookup_path.root().await?.clone_value())
                         }
-                        ExternalType::Script | ExternalType::Url | ExternalType::Global => options,
+                        ExternalType::Script
+                        | ExternalType::Url
+                        | ExternalType::Global
+                        | ExternalType::Umd => options,
                     },
                 )
                 .await?

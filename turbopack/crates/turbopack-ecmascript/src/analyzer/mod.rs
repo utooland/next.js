@@ -188,6 +188,7 @@ pub enum ConstantValue {
     Null,
     BigInt(Box<BigInt>),
     Regex(Box<(Atom, Atom)>),
+    Evaluate(RcStr),
 }
 
 impl ConstantValue {
@@ -206,25 +207,27 @@ impl ConstantValue {
         }
     }
 
-    pub fn is_truthy(&self) -> bool {
+    pub fn is_truthy(&self) -> Option<bool> {
         match self {
-            Self::Undefined | Self::False | Self::Null => false,
-            Self::True | Self::Regex(..) => true,
-            Self::Str(s) => !s.is_empty(),
-            Self::Num(ConstantNumber(n)) => *n != 0.0,
-            Self::BigInt(n) => !n.is_zero(),
+            Self::Undefined | Self::False | Self::Null => Some(false),
+            Self::True | Self::Regex(..) => Some(true),
+            Self::Str(s) => Some(!s.is_empty()),
+            Self::Num(ConstantNumber(n)) => Some(*n != 0.0),
+            Self::BigInt(n) => Some(!n.is_zero()),
+            Self::Evaluate(_) => None,
         }
     }
 
-    pub fn is_nullish(&self) -> bool {
+    pub fn is_nullish(&self) -> Option<bool> {
         match self {
-            Self::Undefined | Self::Null => true,
+            Self::Undefined | Self::Null => Some(true),
             Self::Str(..)
             | Self::Num(..)
             | Self::True
             | Self::False
             | Self::BigInt(..)
-            | Self::Regex(..) => false,
+            | Self::Regex(..) => Some(false),
+            Self::Evaluate(_) => None,
         }
     }
 
@@ -236,7 +239,16 @@ impl ConstantValue {
     }
 
     pub fn is_value_type(&self) -> bool {
-        !matches!(self, Self::Regex(..))
+        match self {
+            ConstantValue::Undefined
+            | ConstantValue::Null
+            | ConstantValue::Str(_)
+            | ConstantValue::Num(_)
+            | ConstantValue::True
+            | ConstantValue::False
+            | ConstantValue::BigInt(_) => true,
+            ConstantValue::Regex(_) | ConstantValue::Evaluate(_) => false,
+        }
     }
 }
 
@@ -286,6 +298,7 @@ impl Display for ConstantValue {
             ConstantValue::Num(ConstantNumber(n)) => write!(f, "{n}"),
             ConstantValue::BigInt(n) => write!(f, "{n}"),
             ConstantValue::Regex(regex) => write!(f, "/{}/{}", regex.0, regex.1),
+            ConstantValue::Evaluate(eval) => write!(f, "{eval}"),
         }
     }
 }
@@ -2230,7 +2243,7 @@ impl JsValue {
     /// Some if we know if or if not the value is truthy.
     pub fn is_truthy(&self) -> Option<bool> {
         match self {
-            JsValue::Constant(c) => Some(c.is_truthy()),
+            JsValue::Constant(c) => c.is_truthy(),
             JsValue::Concat(..) => self.is_empty_string().map(|x| !x),
             JsValue::Url(..)
             | JsValue::Array { .. }
@@ -2311,7 +2324,7 @@ impl JsValue {
     /// don't know. Returns Some if we know if or if not the value is nullish.
     pub fn is_nullish(&self) -> Option<bool> {
         match self {
-            JsValue::Constant(c) => Some(c.is_nullish()),
+            JsValue::Constant(c) => c.is_nullish(),
             JsValue::Concat(..)
             | JsValue::Url(..)
             | JsValue::Array { .. }

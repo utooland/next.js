@@ -46,16 +46,18 @@ if ("TURBOPACK compile-time truthy", 1) {
 if ("TURBOPACK compile-time truthy", 1) {
     console.log('something');
 }
-if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
-;
+if (("TURBOPACK compile-time value", "development") === 'production') {
+    console.log('production');
+}
 var p = process;
 console.log(("TURBOPACK compile-time value", {
     "test": ("TURBOPACK compile-time value", true)
 }));
 console.log(("TURBOPACK compile-time value", "value"));
 console.log(("TURBOPACK compile-time value", "development"));
-if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
-;
+if (("TURBOPACK compile-time value", "development") === 'production') {
+    console.log('production');
+}
 ("TURBOPACK compile-time falsy", 0) ? "TURBOPACK unreachable" : console.log('development');
 // TODO short-circuit is not implemented yet
 ("TURBOPACK compile-time value", "development") != 'production' && console.log('development');

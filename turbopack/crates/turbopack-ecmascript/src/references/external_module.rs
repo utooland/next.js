@@ -47,6 +47,7 @@ pub enum CachedExternalType {
     EcmaScriptViaImport,
     Global,
     Script,
+    Umd,
 }
 
 impl Display for CachedExternalType {
@@ -57,6 +58,7 @@ impl Display for CachedExternalType {
             CachedExternalType::EcmaScriptViaImport => write!(f, "esm_import"),
             CachedExternalType::Global => write!(f, "global"),
             CachedExternalType::Script => write!(f, "script"),
+            CachedExternalType::Umd => write!(f, "umd"),
         }
     }
 }
@@ -98,6 +100,16 @@ impl CachedExternalModule {
             CachedExternalType::Global => {
                 if self.request.is_empty() {
                     writeln!(code, "const mod = {{}};")?;
+                } else if self.request.contains(' ') {
+                    // Handle requests with '/' by splitting into nested global access
+                    let global_access = self
+                        .request
+                        .split(' ')
+                        .fold("globalThis".to_string(), |acc, part| {
+                            format!("{}[{}]", acc, StringifyJs(part))
+                        });
+
+                    writeln!(code, "const mod = {global_access};")?;
                 } else {
                     writeln!(
                         code,
@@ -105,6 +117,22 @@ impl CachedExternalModule {
                         StringifyJs(&self.request)
                     )?;
                 }
+            }
+            CachedExternalType::Umd => {
+                // request format is: "root React commonjs react"
+                let parts = self.request.split(' ').collect::<Vec<_>>();
+                let global_name = parts[1];
+                let module_name = parts[3];
+
+                writeln!(
+                    code,
+                    "let mod; if (typeof exports === 'object' && typeof module === 'object') {{ \
+                     mod = {TURBOPACK_EXTERNAL_REQUIRE}({}, () => require({})); }} else {{ mod = \
+                     globalThis[{}] }}",
+                    StringifyJs(module_name),
+                    StringifyJs(module_name),
+                    StringifyJs(global_name),
+                )?;
             }
             CachedExternalType::Script => {
                 // Parse the request format: "variableName@url"
@@ -209,7 +237,8 @@ impl Module for CachedExternalModule {
     #[turbo_tasks::function]
     fn is_self_async(&self) -> Result<Vc<bool>> {
         Ok(Vc::cell(
-            self.external_type == CachedExternalType::EcmaScriptViaImport,
+            self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Script,
         ))
     }
 }
@@ -255,11 +284,14 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
     #[turbo_tasks::function]
     fn get_async_module(&self) -> Vc<OptionAsyncModule> {
         Vc::cell(
-            if self.external_type == CachedExternalType::EcmaScriptViaImport {
+            if self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Script
+            {
                 Some(
                     AsyncModule {
                         has_top_level_await: true,
-                        import_externals: true,
+                        import_externals: self.external_type
+                            == CachedExternalType::EcmaScriptViaImport,
                     }
                     .resolved_cell(),
                 )
