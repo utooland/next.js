@@ -30,11 +30,11 @@ if ("TURBOPACK compile-time truthy", 1) {
         ("TURBOPACK compile-time value", null)
     ]));
 }
-if ("TURBOPACK compile-time value", 1 + 1) {
-    console.log('DEFINED_EVALED', ("TURBOPACK compile-time value", 1 + 1));
+if ("TURBOPACK compile-time truthy", 1) {
+    console.log('DEFINED_EVALUATE', ("TURBOPACK compile-time value", 1 + 1));
 }
 if ("TURBOPACK compile-time truthy", 1) {
-    console.log('DEFINED_EVALED_NESTED', ("TURBOPACK compile-time value", [
+    console.log('DEFINED_EVALUATE_NESTED', ("TURBOPACK compile-time value", [
         ("TURBOPACK compile-time value", true),
         ("TURBOPACK compile-time value", void 0),
         ("TURBOPACK compile-time value", ()=>1)
