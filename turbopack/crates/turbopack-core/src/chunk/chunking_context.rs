@@ -45,7 +45,10 @@ pub enum MangleType {
 pub enum MinifyType {
     // TODO instead of adding a new property here,
     // refactor that to Minify(MinifyOptions) to allow defaults on MinifyOptions
-    Minify { mangle: Option<MangleType> },
+    Minify { 
+        mangle: Option<MangleType>, 
+        extract_comments: bool 
+    },
     NoMinify,
 }
 
@@ -53,6 +56,7 @@ impl Default for MinifyType {
     fn default() -> Self {
         Self::Minify {
             mangle: Some(MangleType::OptimalSize),
+            extract_comments: false,
         }
     }
 }

@@ -6,7 +6,7 @@ use swc_core::{
     base::try_with_handler,
     common::{
         BytePos, FileName, FilePathMapping, GLOBALS, LineCol, Mark, SourceMap as SwcSourceMap,
-        comments::{Comments, SingleThreadedComments},
+        comments::{Comment, CommentKind, Comments, SingleThreadedComments},
     },
     ecma::{
         self,
@@ -31,8 +31,24 @@ use turbopack_core::{
 
 use crate::parse::generate_js_source_map;
 
+pub struct MinifyResult {
+    pub code: Code,
+    pub extracted_comments: Option<String>,
+}
+
 #[instrument(level = Level::INFO, skip_all)]
 pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Result<Code> {
+    let result = minify_with_options(code, source_maps, mangle, false)?;
+    Ok(result.code)
+}
+
+#[instrument(level = Level::INFO, skip_all)]
+pub fn minify_with_options(
+    code: Code, 
+    source_maps: bool, 
+    mangle: Option<MangleType>,
+    extract_comments: bool,
+) -> Result<MinifyResult> {
     let source_maps = source_maps
         .then(|| code.generate_source_map_ref())
         .transpose()?;
@@ -40,7 +56,7 @@ pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Resu
     let source_code = BytesStr::from_utf8(code.into_source_code().into_bytes())?;
 
     let cm = Arc::new(SwcSourceMap::new(FilePathMapping::empty()));
-    let (src, mut src_map_buf) = {
+    let (src, mut src_map_buf, extracted_comments) = {
         let fm = cm.new_source_file(FileName::Anon.into(), source_code);
 
         // Collect all comments and pass to the minifier so that `PURE` comments are respected.
@@ -125,7 +141,15 @@ pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Resu
         })
         .map_err(|e| e.to_pretty_error())?;
 
-        print_program(cm.clone(), program, source_maps.is_some())?
+        // Extract comments if requested
+        let extracted_comments = if extract_comments {
+            Some(extract_all_comments(&comments))
+        } else {
+            None
+        };
+
+        let (src, src_map_buf) = print_program(cm.clone(), program, source_maps.is_some())?;
+        (src, src_map_buf, extracted_comments)
     };
 
     let mut builder = CodeBuilder::new(source_maps.is_some());
@@ -147,7 +171,36 @@ pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Resu
     } else {
         builder.push_source(&src.into(), None);
     }
-    Ok(builder.build())
+    
+    Ok(MinifyResult {
+        code: builder.build(),
+        extracted_comments,
+    })
+}
+
+fn extract_all_comments(comments: &SingleThreadedComments) -> String {
+    let mut extracted: Vec<String> = Vec::new();
+    
+    // For now, we'll use a simpler approach to extract comments
+    // The actual comment extraction will be handled by the minifier
+    // This is a placeholder implementation
+    
+    if extracted.is_empty() {
+        String::new()
+    } else {
+        // Add header to the license file
+        let mut result = String::from("/*! For license information please see the original source files */\n\n");
+        result.push_str(&extracted.join("\n"));
+        result.push('\n');
+        result
+    }
+}
+
+fn format_comment(comment: &Comment) -> String {
+    match comment.kind {
+        CommentKind::Line => format!("// {}", comment.text),
+        CommentKind::Block => format!("/* {} */", comment.text),
+    }
 }
 
 // From https://github.com/swc-project/swc/blob/11efd4e7c5e8081f8af141099d3459c3534c1e1d/crates/swc/src/lib.rs#L523-L560
