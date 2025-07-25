@@ -458,6 +458,7 @@ impl PostCssTransformedAsset {
             project_path,
             chunking_context,
             env,
+            environment: _environment
         } = &*self.execution_context.await?;
 
         // For this postcss transform, there is no guarantee that looking up for the

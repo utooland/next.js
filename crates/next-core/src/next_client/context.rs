@@ -301,6 +301,18 @@ pub async fn get_client_module_options_context(
         ..postcss_transform_options.clone()
     };
     let enable_postcss_transform = Some(postcss_transform_options.resolved_cell());
+    
+    // Postcss for browser environment
+    let browser_postcss_transform_options = PostCssTransformOptions {
+        postcss_package: Some(
+            get_postcss_package_mapping(project_path.clone())
+                .to_resolved()
+                .await?,
+        ),
+        config_location: PostCssConfigLocation::ProjectPathOrLocalPath,
+        ..Default::default()
+    };
+    let enable_browser_postcss_transform = Some(browser_postcss_transform_options.resolved_cell());
     let enable_foreign_postcss_transform = Some(postcss_foreign_transform_options.resolved_cell());
 
     let source_maps = if *next_config.client_source_maps(mode).await? {
@@ -322,6 +334,7 @@ pub async fn get_client_module_options_context(
         execution_context: Some(execution_context),
         tree_shaking_mode: tree_shaking_mode_for_user_code,
         enable_postcss_transform,
+        enable_browser_postcss_transform,
         side_effect_free_packages: next_config.optimize_package_imports().owned().await?,
         keep_last_successful_parse: next_mode.is_development(),
         ..Default::default()

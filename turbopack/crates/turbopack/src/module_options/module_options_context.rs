@@ -13,7 +13,11 @@ use turbopack_ecmascript::{TreeShakingMode, references::esm::UrlRewriteBehavior}
 pub use turbopack_mdx::MdxTransformOptions;
 use turbopack_node::{
     execution_context::ExecutionContext,
-    transforms::{postcss::PostCssTransformOptions, webpack::WebpackLoaderItems},
+    transforms::{
+        postcss::PostCssTransformOptions, 
+        webpack::WebpackLoaderItems,
+        browser_postcss::BrowserPostCssTransformOptions,
+    },
 };
 
 use super::ModuleRule;
@@ -139,6 +143,7 @@ pub struct ModuleOptionsContext {
     pub css: CssOptionsContext,
 
     pub enable_postcss_transform: Option<ResolvedVc<PostCssTransformOptions>>,
+    pub enable_browser_postcss_transform: Option<ResolvedVc<BrowserPostCssTransformOptions>>,
     pub enable_webpack_loaders: Option<ResolvedVc<WebpackLoadersOptions>>,
     // [Note]: currently mdx, and mdx_rs have different configuration entrypoint from next.config.js,
     // however we might want to unify them in the future.

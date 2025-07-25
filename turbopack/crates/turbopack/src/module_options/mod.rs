@@ -15,16 +15,22 @@ use turbo_tasks::{ResolvedVc, Vc};
 use turbo_tasks_fs::{FileSystemPath, glob::Glob};
 use turbopack_core::{
     chunk::SourceMapsType,
+    environment::ExecutionEnvironment,
     ident::Layer,
     reference_type::{CssReferenceSubType, ReferenceType, UrlReferenceSubType},
     resolve::options::{ImportMap, ImportMapping},
 };
+use turbopack_node::execution_context::NodeExecutionEnvironment;
 use turbopack_css::CssModuleAssetType;
 use turbopack_ecmascript::{
     EcmascriptInputTransform, EcmascriptInputTransforms, EcmascriptOptions, SpecifiedModuleType,
 };
 use turbopack_mdx::MdxTransform;
-use turbopack_node::transforms::{postcss::PostCssTransform, webpack::WebpackLoaders};
+use turbopack_node::transforms::{
+    postcss::PostCssTransform, 
+    webpack::WebpackLoaders,
+    browser_postcss::BrowserPostCssTransform,
+};
 use turbopack_wasm::source::WebAssemblySourceType;
 
 use crate::{
@@ -137,6 +143,7 @@ impl ModuleOptions {
                     ..
                 },
             ref enable_postcss_transform,
+            ref enable_browser_postcss_transform,
             ref enable_webpack_loaders,
             environment,
             ref module_rules,
@@ -458,45 +465,100 @@ impl ModuleOptions {
                 ),
             ]);
         } else {
-            if let Some(options) = enable_postcss_transform {
-                let options = options.await?;
-                let execution_context = execution_context
-                    .context("execution_context is required for the postcss_transform")?;
+            // 根据环境选择 PostCSS 转换器
+            let is_browser_environment = if let Some(execution_context) = execution_context {
+                matches!(
+                    *execution_context.environment().await?,
+                    NodeExecutionEnvironment::WebWorker | NodeExecutionEnvironment::ServiceWorker
+                )
+            } else {
+                false
+            };
+            
+            if is_browser_environment {
+                // 在浏览器环境中使用浏览器版本的 PostCSS 转换器
+                if let Some(browser_options) = enable_browser_postcss_transform {
+                    let browser_options = browser_options.await?;
+                    let execution_context = execution_context
+                        .context("execution_context is required for the browser_postcss_transform")?;
 
-                let import_map = if let Some(postcss_package) = options.postcss_package {
-                    package_import_map_from_import_mapping("postcss".into(), *postcss_package)
-                } else {
-                    package_import_map_from_context(
-                        rcstr!("postcss"),
-                        path.clone()
-                            .context("need_path in ModuleOptions::new is incorrect")?,
-                    )
-                };
+                    let import_map = if let Some(postcss_package) = browser_options.postcss_package {
+                        package_import_map_from_import_mapping("postcss".into(), *postcss_package)
+                    } else {
+                        package_import_map_from_context(
+                            rcstr!("postcss"),
+                            path.clone()
+                                .context("need_path in ModuleOptions::new is incorrect")?,
+                        )
+                    };
 
-                rules.push(ModuleRule::new(
-                    RuleCondition::Any(vec![
-                        RuleCondition::ResourcePathEndsWith(".css".to_string()),
-                        RuleCondition::ContentTypeStartsWith("text/css".to_string()),
-                    ]),
-                    vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
-                        ResolvedVc::upcast(
-                            PostCssTransform::new(
-                                node_evaluate_asset_context(
+                    rules.push(ModuleRule::new(
+                        RuleCondition::Any(vec![
+                            RuleCondition::ResourcePathEndsWith(".css".to_string()),
+                            RuleCondition::ContentTypeStartsWith("text/css".to_string()),
+                        ]),
+                        vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                            ResolvedVc::upcast(
+                                BrowserPostCssTransform::new(
+                                    node_evaluate_asset_context(
+                                        *execution_context,
+                                        Some(import_map),
+                                        None,
+                                        Layer::new(rcstr!("browser_postcss")),
+                                        true,
+                                    ),
                                     *execution_context,
-                                    Some(import_map),
-                                    None,
-                                    Layer::new(rcstr!("postcss")),
-                                    true,
-                                ),
-                                *execution_context,
-                                options.config_location,
-                                matches!(css_source_maps, SourceMapsType::Full),
-                            )
-                            .to_resolved()
-                            .await?,
-                        ),
-                    ]))],
-                ));
+                                    browser_options.config_location,
+                                    matches!(css_source_maps, SourceMapsType::Full),
+                                )
+                                .to_resolved()
+                                .await?,
+                            ),
+                        ]))],
+                    ));
+                }
+            } else {
+                // 在 Node.js 环境中使用原有的 PostCSS 转换器
+                if let Some(options) = enable_postcss_transform {
+                    let options = options.await?;
+                    let execution_context = execution_context
+                        .context("execution_context is required for the postcss_transform")?;
+
+                    let import_map = if let Some(postcss_package) = options.postcss_package {
+                        package_import_map_from_import_mapping("postcss".into(), *postcss_package)
+                    } else {
+                        package_import_map_from_context(
+                            rcstr!("postcss"),
+                            path.clone()
+                                .context("need_path in ModuleOptions::new is incorrect")?,
+                        )
+                    };
+
+                    rules.push(ModuleRule::new(
+                        RuleCondition::Any(vec![
+                            RuleCondition::ResourcePathEndsWith(".css".to_string()),
+                            RuleCondition::ContentTypeStartsWith("text/css".to_string()),
+                        ]),
+                        vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                            ResolvedVc::upcast(
+                                PostCssTransform::new(
+                                    node_evaluate_asset_context(
+                                        *execution_context,
+                                        Some(import_map),
+                                        None,
+                                        Layer::new(rcstr!("postcss")),
+                                        true,
+                                    ),
+                                    *execution_context,
+                                    options.config_location,
+                                    matches!(css_source_maps, SourceMapsType::Full),
+                                )
+                                .to_resolved()
+                                .await?,
+                            ),
+                        ]))],
+                    ));
+                }
             }
 
             rules.extend([
