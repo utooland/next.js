@@ -1,6 +1,6 @@
 use std::hash::Hasher;
 
-use twox_hash::xxh3::{self, HasherExt};
+use twox_hash::{XxHash3_64, XxHash3_128};
 
 use crate::{DeterministicHash, DeterministicHasher};
 
@@ -16,7 +16,7 @@ pub fn hash_xxh3_hash64<T: DeterministicHash>(input: T) -> u64 {
 pub fn hash_xxh3_hash128<T: DeterministicHash>(input: T) -> u128 {
     // this isn't fully compatible with the 64-bit Hasher/DeterministicHasher APIs, so just use a
     // private impl for this
-    struct Xxh3Hash128Hasher(xxh3::Hash128);
+    struct Xxh3Hash128Hasher(XxHash3_128);
 
     impl DeterministicHasher for Xxh3Hash128Hasher {
         fn finish(&self) -> u64 {
@@ -28,18 +28,18 @@ pub fn hash_xxh3_hash128<T: DeterministicHash>(input: T) -> u128 {
         }
     }
 
-    let mut hasher = Xxh3Hash128Hasher(xxh3::Hash128::with_seed(0));
+    let mut hasher = Xxh3Hash128Hasher(XxHash3_128::with_seed(0));
     input.deterministic_hash(&mut hasher);
-    hasher.0.finish_ext()
+    hasher.0.finish_128()
 }
 
 /// Xxh3Hash64 hasher.
-pub struct Xxh3Hash64Hasher(xxh3::Hash64);
+pub struct Xxh3Hash64Hasher(XxHash3_64);
 
 impl Xxh3Hash64Hasher {
     /// Create a new hasher.
     pub fn new() -> Self {
-        Self(xxh3::Hash64::with_seed(0))
+        Self(XxHash3_64::with_seed(0))
     }
 
     /// Uses the DeterministicHash trait to hash the input in a
