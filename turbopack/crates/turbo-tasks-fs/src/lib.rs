@@ -850,6 +850,10 @@ impl FileSystem for DiskFileSystem {
     }
 
     #[turbo_tasks::function(fs)]
+    #[cfg_attr(
+        all(target_family = "wasm", target_os = "unknown"),
+        allow(unused_variables)
+    )]
     async fn write_link(&self, fs_path: FileSystemPath, target: Vc<LinkContent>) -> Result<()> {
         // You might be tempted to use `mark_session_dependent` here, but
         // `write_link` purely declares a side effect and does not need to be reexecuted in the next
@@ -873,6 +877,7 @@ impl FileSystem for DiskFileSystem {
 
             // TODO(sokra) preform a untracked read here, register an invalidator and get
             // all existing invalidators
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             let old_content = match retry_blocking(full_path.clone().into_owned(), |path| {
                 std::fs::read_link(path)
             })
@@ -886,6 +891,9 @@ impl FileSystem for DiskFileSystem {
                 Ok(res) => Some((res.is_absolute(), res)),
                 Err(_) => None,
             };
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            let old_content = Option::<(bool, PathBuf)>::None;
+
             let is_equal = match (&*content, &old_content) {
                 (LinkContent::Link { target, link_type }, Some((old_is_absolute, old_target))) => {
                     Path::new(&**target) == old_target
@@ -926,6 +934,7 @@ impl FileSystem for DiskFileSystem {
                         PathBuf::from(unix_to_sys(target).as_ref())
                     };
                     let full_path = full_path.into_owned();
+                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     retry_blocking(target_path, move |target_path| {
                         let _span = tracing::info_span!(
                             "write symlink",
