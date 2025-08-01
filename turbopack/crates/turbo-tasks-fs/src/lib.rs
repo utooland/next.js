@@ -659,7 +659,7 @@ impl FileSystem for DiskFileSystem {
             .with_context(|| format!("reading directory item in {}", full_path.display()))?
         {
             let file_name: RcStr = e.file_name().to_string_lossy().to_string().into();
-            let entry = match e.file_type() {
+            let entry = match e.file_type().await {
                 Ok(t) if t.is_file() => RawDirectoryEntry::File,
                 Ok(t) if t.is_dir() => RawDirectoryEntry::Directory,
                 Ok(t) if t.is_symlink() => RawDirectoryEntry::Symlink,
