@@ -652,21 +652,25 @@ impl FileSystem for DiskFileSystem {
             }
         };
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        let mut entries = AutoMap::<RcStr, RawDirectoryEntry>::new();
-        while let Some(e) = read_dir
-            .next_entry()
-            .await
-            .with_context(|| format!("reading directory item in {}", full_path.display()))?
-        {
-            let file_name: RcStr = e.file_name().to_string_lossy().to_string().into();
-            let entry = match e.file_type().await {
-                Ok(t) if t.is_file() => RawDirectoryEntry::File,
-                Ok(t) if t.is_dir() => RawDirectoryEntry::Directory,
-                Ok(t) if t.is_symlink() => RawDirectoryEntry::Symlink,
-                Ok(_) => RawDirectoryEntry::Other,
-                Err(err) => return Err(err.into()),
-            };
-        }
+        let entries = {
+            let mut entries = AutoMap::<RcStr, RawDirectoryEntry>::new();
+            while let Some(e) = read_dir
+                .next_entry()
+                .await
+                .with_context(|| format!("reading directory item in {}", full_path.display()))?
+            {
+                let file_name: RcStr = e.file_name().to_string_lossy().to_string().into();
+                let entry = match e.file_type().await {
+                    Ok(t) if t.is_file() => RawDirectoryEntry::File,
+                    Ok(t) if t.is_dir() => RawDirectoryEntry::Directory,
+                    Ok(t) if t.is_symlink() => RawDirectoryEntry::Symlink,
+                    Ok(_) => RawDirectoryEntry::Other,
+                    Err(err) => return Err(err.into()),
+                };
+                entries.insert(file_name, entry);
+            }
+            entries
+        };
 
         Ok(RawDirectoryContent::new(entries))
     }
