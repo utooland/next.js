@@ -6422,6 +6422,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "send_wrapper"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
+dependencies = [
+ "futures-core",
+]
+
+[[package]]
 name = "seq-macro"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8714,6 +8723,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-fs-ext"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ef61f3c4e2040f0af9370b2b9e971b2b2175974e5ec9832336ae6c2ab4f8960"
+dependencies = [
+ "bitflags 2.9.1",
+ "cfg-if",
+ "futures",
+ "js-sys",
+ "pin-project-lite",
+ "send_wrapper",
+ "tokio",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "tokio-macros"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9415,6 +9442,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+ "tokio-fs-ext",
  "tracing",
  "triomphe 0.1.12",
  "turbo-rcstr",
@@ -10658,6 +10686,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "555d470ec0bc3bb57890405e5d4322cc9ea83cebb085523ced7be4144dac1e61"
 dependencies = [
  "cfg-if",
+ "futures-core",
  "js-sys",
  "once_cell",
  "wasm-bindgen",

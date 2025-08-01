@@ -52,6 +52,9 @@ turbo-tasks = { workspace = true }
 turbo-tasks-hash = { workspace = true }
 urlencoding = { workspace = true }
 
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+tokio-fs-ext = "0.3.1"
+
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
 rstest = { workspace = true }

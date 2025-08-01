@@ -554,6 +554,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let content = match retry_blocking(full_path.clone(), |path: &Path| File::from_path(path))
             .concurrency_limited(&self.inner.semaphore)
             .instrument(tracing::info_span!(
@@ -570,6 +571,15 @@ impl FileSystem for DiskFileSystem {
                 bail!(anyhow!(e).context(format!("reading file {}", full_path.display())))
             }
         };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let content = match tokio_fs_ext::read(full_path.clone()).await {
+            Ok(buf) => Ok(FileContent::from(File::from_bytes(buf))),
+            Err(e) if e.kind() == ErrorKind::NotFound || e.kind() == ErrorKind::InvalidFilename => {
+                Ok(FileContent::NotFound)
+            }
+            Err(e) => Err(anyhow!(e).context(format!("reading file {}", full_path.display()))),
+        }?;
         Ok(content.cell())
     }
 
@@ -581,6 +591,7 @@ impl FileSystem for DiskFileSystem {
 
         // we use the sync std function here as it's a lot faster (600%) in
         // node-file-trace
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let read_dir = match retry_blocking(full_path.clone(), |path| {
             let _span =
                 tracing::info_span!("read directory", name = display(path.display())).entered();
@@ -602,6 +613,7 @@ impl FileSystem for DiskFileSystem {
             }
         };
 
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let entries = read_dir
             .filter_map(|r| {
                 let e = match r {
@@ -625,6 +637,37 @@ impl FileSystem for DiskFileSystem {
             .collect::<Result<_>>()
             .with_context(|| format!("reading directory item in {}", full_path.display()))?;
 
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let mut read_dir = match tokio_fs_ext::read_dir(full_path.clone()).await {
+            Ok(dir) => dir,
+            Err(e)
+                if e.kind() == ErrorKind::NotFound
+                    || e.kind() == ErrorKind::NotADirectory
+                    || e.kind() == ErrorKind::InvalidFilename =>
+            {
+                return Ok(RawDirectoryContent::not_found());
+            }
+            Err(e) => {
+                bail!(anyhow!(e).context(format!("reading dir {}", full_path.display())))
+            }
+        };
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let mut entries = AutoMap::<RcStr, RawDirectoryEntry>::new();
+        while let Some(e) = read_dir
+            .next_entry()
+            .await
+            .with_context(|| format!("reading directory item in {}", full_path.display()))?
+        {
+            let file_name: RcStr = e.file_name().to_string_lossy().to_string().into();
+            let entry = match e.file_type() {
+                Ok(t) if t.is_file() => RawDirectoryEntry::File,
+                Ok(t) if t.is_dir() => RawDirectoryEntry::Directory,
+                Ok(t) if t.is_symlink() => RawDirectoryEntry::Symlink,
+                Ok(_) => RawDirectoryEntry::Other,
+                Err(err) => return Err(err.into()),
+            };
+        }
+
         Ok(RawDirectoryContent::new(entries))
     }
 
@@ -635,6 +678,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let link_path =
             match retry_blocking(full_path.clone(), |path: &Path| std::fs::read_link(path))
                 .concurrency_limited(&self.inner.semaphore)
@@ -647,6 +691,13 @@ impl FileSystem for DiskFileSystem {
                 Ok(res) => res,
                 Err(_) => return Ok(LinkContent::NotFound.cell()),
             };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let link_path = match tokio_fs_ext::read_link(full_path.clone()).await {
+            Ok(res) => res,
+            Err(_) => return Ok(LinkContent::NotFound.cell()),
+        };
+
         let is_link_absolute = link_path.is_absolute();
 
         let mut file = link_path.clone();
@@ -778,6 +829,7 @@ impl FileSystem for DiskFileSystem {
 
                     let full_path_to_write = full_path.clone();
                     let content = content.clone();
+                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     retry_blocking(full_path_to_write.into_owned(), move |full_path| {
                         use std::io::Write;
 
@@ -819,8 +871,22 @@ impl FileSystem for DiskFileSystem {
                     ))
                     .await
                     .with_context(|| format!("failed to write to {}", full_path.display()))?;
+
+                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                    if let FileContent::Content(file) = &*content {
+                        let mut content_buf = vec![];
+                        std::io::copy(&mut file.read(), &mut content_buf)?;
+                        tokio_fs_ext::write(full_path_to_write, content_buf)
+                            .await
+                            .with_context(|| {
+                                format!("failed to write to {}", full_path.display())
+                            })?;
+                    } else {
+                        unreachable!()
+                    };
                 }
                 FileContent::NotFound => {
+                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     retry_blocking(full_path.clone().into_owned(), |path| {
                         std::fs::remove_file(path)
                     })
@@ -838,6 +904,18 @@ impl FileSystem for DiskFileSystem {
                         }
                     })
                     .with_context(|| anyhow!("removing {} failed", full_path.display()))?;
+
+                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                    tokio_fs_ext::remove_file(full_path.clone())
+                        .await
+                        .or_else(|err| {
+                            if err.kind() == ErrorKind::NotFound {
+                                Ok(())
+                            } else {
+                                Err(err)
+                            }
+                        })
+                        .with_context(|| anyhow!("removing {} failed", full_path.display()))?;
                 }
             }
 
@@ -991,6 +1069,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let meta = retry_blocking(full_path.clone(), |path| std::fs::metadata(path))
             .concurrency_limited(&self.inner.semaphore)
             .instrument(tracing::info_span!(
@@ -1000,7 +1079,18 @@ impl FileSystem for DiskFileSystem {
             .await
             .with_context(|| format!("reading metadata for {}", full_path.display()))?;
 
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let meta = tokio_fs_ext::metadata(full_path.clone())
+            .await
+            .with_context(|| format!("reading metadata for {}", full_path.display()))?;
         Ok(FileMeta::cell(meta.into()))
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl From<tokio_fs_ext::Metadata> for FileMeta {
+    fn from(meta: tokio_fs_ext::Metadata) -> Self {
+        FileMeta::default()
     }
 }
 
