@@ -13,12 +13,15 @@ use turbopack_core::{
     resolve::options::{ImportMap, ImportMapping},
 };
 use turbopack_ecmascript::TreeShakingMode;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_node::execution_context::ExecutionContext;
 use turbopack_resolve::resolve_options_context::ResolveOptionsContext;
 
 use crate::{
     ModuleAssetContext,
-    module_options::{EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions},
+    module_options::module_options_context::{
+        EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions,
+    },
     transition::TransitionOptions,
 };
 
@@ -29,6 +32,7 @@ pub fn node_build_environment() -> Vc<Environment> {
     ))
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[turbo_tasks::function]
 pub async fn node_evaluate_asset_context(
     execution_context: Vc<ExecutionContext>,
@@ -46,7 +50,10 @@ pub async fn node_evaluate_asset_context(
         "@vercel/turbopack-node/",
         ImportMapping::PrimaryAlternative(
             rcstr!("./*"),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             Some(turbopack_node::embed_js::embed_fs().root().owned().await?),
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            None,
         )
         .resolved_cell(),
     );

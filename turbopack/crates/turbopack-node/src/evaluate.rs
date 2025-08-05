@@ -1,4 +1,7 @@
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::{borrow::Cow, iter, ops::ControlFlow, thread::available_parallelism, time::Duration};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use std::{borrow::Cow, iter, ops::ControlFlow, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
 use async_stream::try_stream as generator;
@@ -282,13 +285,19 @@ pub async fn get_evaluate_pool(
         }
     };
     let pool = NodeJsPool::new(
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         cwd,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         entrypoint,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         assets_for_source_mapping,
         output_root.clone(),
         chunking_context.root_path().owned().await?,
-        available_parallelism().map_or(1, |v| v.get()),
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            available_parallelism().map_or(1, |v| v.get())
+        },
         debug,
     );
     additional_invalidation.await?;

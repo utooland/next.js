@@ -5,16 +5,28 @@ use turbo_esregex::EsRegex;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{FxIndexMap, NonLocalValue, ResolvedVc, ValueDefault, Vc, trace::TraceRawVcs};
 use turbo_tasks_fs::FileSystemPath;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use turbopack_core::environment::NodeJsEnvironment;
 use turbopack_core::{
     chunk::SourceMapsType, condition::ContextCondition, environment::Environment,
     resolve::options::ImportMapping,
 };
 use turbopack_ecmascript::{TreeShakingMode, references::esm::UrlRewriteBehavior};
 pub use turbopack_mdx::MdxTransformOptions;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_node::{
     execution_context::ExecutionContext,
     transforms::{postcss::PostCssTransformOptions, webpack::WebpackLoaderItems},
 };
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub type ExecutionContext = NodeJsEnvironment;
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub type WebpackLoaderItems = ();
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub type PostCssTransformOptions = ();
 
 use super::ModuleRule;
 

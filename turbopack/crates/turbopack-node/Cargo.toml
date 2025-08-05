@@ -34,7 +34,7 @@ rustc-hash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true, features = ["base64"] }
-tokio = { workspace = true, features = ["full"] }
+serde_bytes = "0.11"
 tracing = { workspace = true }
 turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
@@ -46,6 +46,15 @@ turbopack-core = { workspace = true }
 turbopack-dev-server = { workspace = true }
 turbopack-ecmascript = { workspace = true }
 turbopack-resolve = { workspace = true }
+
+# Conditional dependencies for non-WASM targets
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+tokio = { workspace = true, features = ["full"] }
+
+# WASM target specific dependencies
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+# Use minimal tokio for WASM that only includes basic features
+tokio = { workspace = true, features = ["sync", "time", "macros"] }
 
 [build-dependencies]
 turbo-tasks-build = { workspace = true }

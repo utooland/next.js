@@ -6,10 +6,6 @@ pub mod rule_condition;
 pub mod transition_rule;
 
 use anyhow::{Context, Result};
-pub use custom_module_type::CustomModuleType;
-pub use module_options_context::*;
-pub use module_rule::*;
-pub use rule_condition::*;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, Vc};
 use turbo_tasks_fs::{FileSystemPath, glob::Glob};
@@ -23,10 +19,28 @@ use turbopack_css::CssModuleAssetType;
 use turbopack_ecmascript::{
     EcmascriptInputTransform, EcmascriptInputTransforms, EcmascriptOptions, SpecifiedModuleType,
 };
-use turbopack_mdx::MdxTransform;
+use turbopack_mdx::{MdxTransform, MdxTransformOptions};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_node::transforms::{postcss::PostCssTransform, webpack::WebpackLoaders};
 use turbopack_wasm::source::WebAssemblySourceType;
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub type PostCssTransform = ();
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub type WebpackLoaders = ();
+
+pub use self::{
+    custom_module_type::CustomModuleType,
+    module_options_context::{
+        ConditionItem, ConditionPath, CssOptionsContext, DecoratorsKind, DecoratorsOptions,
+        EcmascriptOptionsContext, JsxTransformOptions, LoaderRuleItem, ModuleOptionsContext,
+        OptionWebpackRules, TypeofWindow, TypescriptTransformOptions, WebpackLoadersOptions,
+        WebpackRules,
+    },
+    module_rule::{ModuleRule, ModuleRuleEffect, ModuleType},
+    rule_condition::RuleCondition,
+};
 use crate::{
     evaluate_context::node_evaluate_asset_context, resolve_options_context::ResolveOptionsContext,
 };
@@ -476,6 +490,7 @@ impl ModuleOptions {
                         RuleCondition::ContentTypeStartsWith("text/css".to_string()),
                     ]),
                     vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                         ResolvedVc::upcast(
                             PostCssTransform::new(
                                 node_evaluate_asset_context(
@@ -665,6 +680,7 @@ impl ModuleOptions {
                         RuleCondition::not(RuleCondition::ResourceIsVirtualSource),
                     ]),
                     vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                         ResolvedVc::upcast(
                             WebpackLoaders::new(
                                 node_evaluate_asset_context(
