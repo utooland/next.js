@@ -25,8 +25,13 @@ pub type ExecutionContext = NodeJsEnvironment;
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 pub type WebpackLoaderItems = ();
 
+// FIXME:
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type PostCssTransformOptions = ();
+#[turbo_tasks::value(shared)]
+#[derive(Clone, Default)]
+pub struct PostCssTransformOptions {
+    pub postcss_package: Option<ResolvedVc<ImportMapping>>,
+}
 
 use super::ModuleRule;
 

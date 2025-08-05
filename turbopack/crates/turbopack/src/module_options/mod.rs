@@ -41,9 +41,9 @@ pub use self::{
     module_rule::{ModuleRule, ModuleRuleEffect, ModuleType},
     rule_condition::RuleCondition,
 };
-use crate::{
-    evaluate_context::node_evaluate_asset_context, resolve_options_context::ResolveOptionsContext,
-};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::evaluate_context::node_evaluate_asset_context;
+use crate::resolve_options_context::ResolveOptionsContext;
 
 #[turbo_tasks::function]
 fn package_import_map_from_import_mapping(
@@ -642,6 +642,8 @@ impl ModuleOptions {
                     path.context("need_path in ModuleOptions::new is incorrect")?,
                 )
             };
+            // FIXME:
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             for (key, rule) in webpack_loaders_options.rules.await?.iter() {
                 rules.push(ModuleRule::new(
                     RuleCondition::All(vec![
