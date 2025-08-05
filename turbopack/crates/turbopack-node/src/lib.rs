@@ -2,6 +2,9 @@
 #![feature(arbitrary_self_types)]
 #![feature(arbitrary_self_types_pointers)]
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use std::iter::once;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::{iter::once, thread::available_parallelism};
 
 use anyhow::{Result, bail};
@@ -37,6 +40,9 @@ pub mod render;
 pub mod route_matcher;
 pub mod source_map;
 pub mod transforms;
+
+// Re-export important functions for WASM compatibility
+pub use evaluate::get_evaluate_pool;
 
 #[turbo_tasks::function]
 async fn emit(
@@ -240,8 +246,11 @@ pub async fn get_renderer_pool_operation(
     content_changed(*ResolvedVc::upcast(intermediate_asset)).await?;
 
     Ok(NodeJsPool::new(
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         cwd,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         entrypoint,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         env.read_all()
             .await?
             .iter()
@@ -250,7 +259,10 @@ pub async fn get_renderer_pool_operation(
         assets_for_source_mapping.to_resolved().await?,
         output_root,
         project_dir,
-        available_parallelism().map_or(1, |v| v.get()),
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            available_parallelism().map_or(1, |v| v.get())
+        },
         debug,
     )
     .cell())

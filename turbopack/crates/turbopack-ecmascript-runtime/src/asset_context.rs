@@ -2,7 +2,9 @@ use turbo_rcstr::rcstr;
 use turbo_tasks::{ResolvedVc, Result, Vc};
 use turbopack::{
     ModuleAssetContext,
-    module_options::{EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions},
+    module_options::module_options_context::{
+        EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions,
+    },
 };
 use turbopack_core::{
     compile_time_info::CompileTimeInfo, context::AssetContext, environment::Environment,

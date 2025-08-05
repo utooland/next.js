@@ -18,6 +18,7 @@ use owo_colors::{OwoColorize, Style};
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use serde::{Serialize, de::DeserializeOwned};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use tokio::{
     io::{
         AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, Stderr,
@@ -69,28 +70,47 @@ impl FormattingMode {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 struct NodeJsPoolProcess {
     child: Option<Child>,
     connection: TcpStream,
     assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     assets_root: FileSystemPath,
     project_dir: FileSystemPath,
+    #[allow(dead_code)]
     stdout_handler: OutputStreamHandler<ChildStdout, Stdout>,
+    #[allow(dead_code)]
     stderr_handler: OutputStreamHandler<ChildStderr, Stderr>,
+    debug: bool,
+    cpu_time_invested: Duration,
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+struct NodeJsPoolProcess {
+    assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+    assets_root: FileSystemPath,
+    project_dir: FileSystemPath,
     debug: bool,
     cpu_time_invested: Duration,
 }
 
 impl Ord for NodeJsPoolProcess {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.cpu_time_invested
-            .cmp(&other.cpu_time_invested)
-            .then_with(|| {
-                self.child
-                    .as_ref()
-                    .map(|c| c.id())
-                    .cmp(&other.child.as_ref().map(|c| c.id()))
-            })
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            self.cpu_time_invested
+                .cmp(&other.cpu_time_invested)
+                .then_with(|| {
+                    self.child
+                        .as_ref()
+                        .map(|c| c.id())
+                        .cmp(&other.child.as_ref().map(|c| c.id()))
+                })
+        }
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            self.cpu_time_invested.cmp(&other.cpu_time_invested)
+        }
     }
 }
 
@@ -143,7 +163,7 @@ impl NodeJsPoolProcess {
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct OutputEntry {
     data: Arc<[u8]>,
     stack_trace: Option<Arc<[u8]>>,
@@ -151,24 +171,41 @@ struct OutputEntry {
 
 type SharedOutputSet = Arc<Mutex<FxIndexSet<(OutputEntry, u32)>>>;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[allow(dead_code)]
 static GLOBAL_OUTPUT_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[allow(dead_code)]
 static MARKER: &[u8] = b"TURBOPACK_OUTPUT_";
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[allow(dead_code)]
 static MARKER_STR: &str = "TURBOPACK_OUTPUT_";
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[allow(dead_code)]
 struct OutputStreamHandler<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> {
+    #[allow(dead_code)]
     stream: BufReader<R>,
+    #[allow(dead_code)]
     shared: SharedOutputSet,
+    #[allow(dead_code)]
     assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+    #[allow(dead_code)]
     root: FileSystemPath,
+    #[allow(dead_code)]
     project_dir: FileSystemPath,
+    #[allow(dead_code)]
     final_stream: W,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> OutputStreamHandler<R, W> {
     /// Pipes the `stream` from `final_stream`, but uses `shared` to deduplicate
     /// lines that has beem emitted by other [OutputStreamHandler] instances
     /// with the same `shared` before.
     /// Returns when one operation is done.
+    #[allow(dead_code)]
     pub async fn handle_operation(&mut self) -> Result<()> {
         let Self {
             stream,
@@ -336,6 +373,22 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> OutputStreamHandler<R, W> {
     }
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[allow(dead_code)]
+struct OutputStreamHandler<R, W> {
+    #[allow(dead_code)]
+    _phantom: std::marker::PhantomData<(R, W)>,
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl<R, W> OutputStreamHandler<R, W> {
+    #[allow(dead_code)]
+    pub async fn handle_operation(&mut self) -> Result<()> {
+        bail!("OutputStreamHandler not supported in WASM environment")
+    }
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl NodeJsPoolProcess {
     async fn new(
         cwd: &Path,
@@ -545,6 +598,66 @@ impl NodeJsPoolProcess {
     }
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl NodeJsPoolProcess {
+    async fn new(
+        _cwd: &Path,
+        _env: &FxHashMap<RcStr, RcStr>,
+        _entrypoint: &Path,
+        assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+        assets_root: FileSystemPath,
+        project_dir: FileSystemPath,
+        _shared_stdout: SharedOutputSet,
+        _shared_stderr: SharedOutputSet,
+        debug: bool,
+    ) -> Result<Self> {
+        Ok(Self {
+            assets_for_source_mapping,
+            assets_root,
+            project_dir,
+            debug,
+            cpu_time_invested: Duration::ZERO,
+        })
+    }
+
+    async fn recv(&mut self) -> Result<Vec<u8>> {
+        bail!("NodeJsPoolProcess not supported in WASM environment")
+    }
+
+    async fn send(&mut self, _packet_data: Vec<u8>) -> Result<()> {
+        bail!("NodeJsPoolProcess not supported in WASM environment")
+    }
+}
+
+// Manual Debug implementation for NodeJsPoolProcess
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+impl std::fmt::Debug for NodeJsPoolProcess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeJsPoolProcess")
+            .field("child", &"<child process>")
+            .field("connection", &"<tcp connection>")
+            .field("assets_for_source_mapping", &self.assets_for_source_mapping)
+            .field("assets_root", &self.assets_root)
+            .field("project_dir", &self.project_dir)
+            .field("debug", &self.debug)
+            .field("cpu_time_invested", &self.cpu_time_invested)
+            .finish()
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl std::fmt::Debug for NodeJsPoolProcess {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NodeJsPoolProcess")
+            .field("assets_for_source_mapping", &self.assets_for_source_mapping)
+            .field("assets_root", &self.assets_root)
+            .field("project_dir", &self.project_dir)
+            .field("debug", &self.debug)
+            .field("cpu_time_invested", &self.cpu_time_invested)
+            .finish()
+    }
+}
+
 #[derive(Default)]
 struct NodeJsPoolStats {
     pub total_bootup_time: Duration,
@@ -617,6 +730,7 @@ impl NodeJsPoolStats {
             self.total_cold_process_time / self.cold_process_count
         }
     }
+
     fn wait_time_before_bootup(&self) -> Duration {
         if self.workers == 0 {
             return Duration::ZERO;
@@ -690,6 +804,7 @@ impl Debug for NodeJsPoolStats {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 enum AcquiredPermits {
     Idle {
         // This is used for drop
@@ -704,6 +819,12 @@ enum AcquiredPermits {
         #[allow(dead_code)]
         bootup_permit: OwnedSemaphorePermit,
     },
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+enum AcquiredPermits {
+    Idle,
+    Fresh,
 }
 
 type IdleProcessesList = Arc<Mutex<BinaryHeap<NodeJsPoolProcess>>>;
@@ -723,29 +844,39 @@ static ACTIVE_POOLS: Lazy<Mutex<Vec<IdleProcessesList>>> = Lazy::new(Default::de
 /// vars need to be provided to make the execution as pure as possible.
 #[turbo_tasks::value(into = "new", cell = "new", serialization = "none", eq = "manual")]
 pub struct NodeJsPool {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     cwd: PathBuf,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     entrypoint: PathBuf,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     env: FxHashMap<RcStr, RcStr>,
     pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     pub assets_root: FileSystemPath,
     pub project_dir: FileSystemPath,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     processes: Arc<Mutex<BinaryHeap<NodeJsPoolProcess>>>,
     /// Semaphore to limit the number of concurrent operations in general
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     concurrency_semaphore: Arc<Semaphore>,
     /// Semaphore to limit the number of concurrently booting up processes
     /// (excludes one-off processes)
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     bootup_semaphore: Arc<Semaphore>,
     /// Semaphore to wait for an idle process to become available
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     idle_process_semaphore: Arc<Semaphore>,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     shared_stdout: SharedOutputSet,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     shared_stderr: SharedOutputSet,
     debug: bool,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[turbo_tasks(trace_ignore, debug_ignore)]
     stats: Arc<Mutex<NodeJsPoolStats>>,
 }
@@ -754,33 +885,47 @@ impl NodeJsPool {
     /// * debug: Whether to automatically enable Node's `--inspect-brk` when spawning it. Note:
     ///   automatically overrides concurrency to 1.
     pub(super) fn new(
-        cwd: PathBuf,
-        entrypoint: PathBuf,
-        env: FxHashMap<RcStr, RcStr>,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))] cwd: PathBuf,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))] entrypoint: PathBuf,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))] env: FxHashMap<
+            RcStr,
+            RcStr,
+        >,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
         assets_root: FileSystemPath,
         project_dir: FileSystemPath,
-        concurrency: usize,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))] concurrency: usize,
         debug: bool,
     ) -> Self {
         Self {
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             cwd,
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             entrypoint,
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             env,
             assets_for_source_mapping,
             assets_root,
             project_dir,
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             processes: Arc::new(Mutex::new(BinaryHeap::new())),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             concurrency_semaphore: Arc::new(Semaphore::new(if debug { 1 } else { concurrency })),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             bootup_semaphore: Arc::new(Semaphore::new(1)),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             idle_process_semaphore: Arc::new(Semaphore::new(0)),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             shared_stdout: Arc::new(Mutex::new(FxIndexSet::default())),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             shared_stderr: Arc::new(Mutex::new(FxIndexSet::default())),
             debug,
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             stats: Default::default(),
         }
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn acquire_process(&self) -> Result<(NodeJsPoolProcess, AcquiredPermits)> {
         {
             self.stats.lock().add_queued_task();
@@ -831,6 +976,12 @@ impl NodeJsPool {
         }
     }
 
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn acquire_process(&self) -> Result<(NodeJsPoolProcess, AcquiredPermits)> {
+        bail!("NodeJsPool not supported in WASM environment")
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn create_process(&self) -> Result<(NodeJsPoolProcess, Duration), anyhow::Error> {
         let start = Instant::now();
         let process = NodeJsPoolProcess::new(
@@ -849,6 +1000,12 @@ impl NodeJsPool {
         Ok((process, start.elapsed()))
     }
 
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn create_process(&self) -> Result<(NodeJsPoolProcess, Duration), anyhow::Error> {
+        bail!("NodeJsPool not supported in WASM environment")
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn operation(&self) -> Result<NodeJsOperation> {
         // Acquire a running process (handles concurrency limits, boots up the process)
         let (process, permits) = self.acquire_process().await?;
@@ -862,6 +1019,11 @@ impl NodeJsPool {
             stats: self.stats.clone(),
             allow_process_reuse: true,
         })
+    }
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub async fn operation(&self) -> Result<NodeJsOperation> {
+        bail!("NodeJsPool not supported in WASM environment")
     }
 
     pub fn scale_down() {
@@ -885,6 +1047,7 @@ impl NodeJsPool {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub struct NodeJsOperation {
     process: Option<NodeJsPoolProcess>,
     // This is used for drop
@@ -897,6 +1060,12 @@ pub struct NodeJsOperation {
     allow_process_reuse: bool,
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub struct NodeJsOperation {
+    start: Instant,
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl NodeJsOperation {
     async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
         &'a mut self,
@@ -992,6 +1161,47 @@ impl NodeJsOperation {
     }
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl NodeJsOperation {
+    async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
+        &'a mut self,
+        _f: impl FnOnce(&'a mut NodeJsPoolProcess) -> F,
+    ) -> Result<T> {
+        bail!("NodeJsOperation not supported in WASM environment")
+    }
+
+    pub async fn recv<M>(&mut self) -> Result<M>
+    where
+        M: DeserializeOwned,
+    {
+        bail!("NodeJsOperation not supported in WASM environment")
+    }
+
+    pub async fn send<M>(&mut self, _message: M) -> Result<()>
+    where
+        M: Serialize,
+    {
+        bail!("NodeJsOperation not supported in WASM environment")
+    }
+
+    pub async fn wait_or_kill(self) -> Result<ExitStatus> {
+        bail!("NodeJsOperation not supported in WASM environment")
+    }
+
+    pub fn disallow_reuse(&mut self) {
+        // No-op in WASM
+    }
+
+    pub async fn apply_source_mapping<'a>(
+        &self,
+        _text: &'a str,
+        _formatting_mode: FormattingMode,
+    ) -> Result<Cow<'a, str>> {
+        bail!("NodeJsOperation not supported in WASM environment")
+    }
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl Drop for NodeJsOperation {
     fn drop(&mut self) {
         if let Some(mut process) = self.process.take() {
@@ -1015,5 +1225,12 @@ impl Drop for NodeJsOperation {
                 self.idle_process_semaphore.add_permits(1);
             }
         }
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl Drop for NodeJsOperation {
+    fn drop(&mut self) {
+        // No-op in WASM
     }
 }
