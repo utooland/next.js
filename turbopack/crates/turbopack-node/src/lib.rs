@@ -44,6 +44,13 @@ pub mod transforms;
 // Re-export important functions for WASM compatibility
 pub use evaluate::get_evaluate_pool;
 
+// Conditional export for WebWorker environment (WASM)
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub use crate::transforms::{
+    postcss_webworker::{PostCssTransform, PostCssTransformOptions, WebWorkerPostCssTransform},
+    webpack_webworker::{WebWorkerWebpackLoaders, WebpackLoaders, WebpackLoadersOptions},
+};
+
 #[turbo_tasks::function]
 async fn emit(
     intermediate_asset: Vc<Box<dyn OutputAsset>>,
