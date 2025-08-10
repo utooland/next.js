@@ -25,14 +25,6 @@ pub type ExecutionContext = NodeJsEnvironment;
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 pub type WebpackLoaderItems = ();
 
-// FIXME:
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-#[turbo_tasks::value(shared)]
-#[derive(Clone, Default)]
-pub struct PostCssTransformOptions {
-    pub postcss_package: Option<ResolvedVc<ImportMapping>>,
-}
-
 use super::ModuleRule;
 
 #[derive(Clone, PartialEq, Eq, Debug, TraceRawVcs, Serialize, Deserialize, NonLocalValue)]
@@ -72,9 +64,16 @@ pub struct ConditionItem {
 #[turbo_tasks::value(shared)]
 #[derive(Clone, Debug)]
 pub struct WebpackLoadersOptions {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub rules: ResolvedVc<WebpackRules>,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub conditions: ResolvedVc<OptionWebpackConditions>,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub loader_runner_package: Option<ResolvedVc<ImportMapping>>,
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub source_maps: bool,
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub placeholder_for_future_extensions: u8,
 }
 
 /// The kind of decorators transform to use.
@@ -237,3 +236,9 @@ impl ValueDefault for ModuleOptionsContext {
         Self::cell(Default::default())
     }
 }
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub use turbopack_node::{
+    transforms::postcss::PostCssConfigLocation,
+    transforms::postcss_webworker::WebWorkerPostCssTransformOptions as PostCssTransformOptions,
+};

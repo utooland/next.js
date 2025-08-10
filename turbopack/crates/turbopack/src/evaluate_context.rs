@@ -3,12 +3,16 @@ use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::Vc;
 use turbo_tasks_env::ProcessEnv;
 use turbo_tasks_fs::FileSystem;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use turbopack_core::environment::BrowserEnvironment;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use turbopack_core::environment::NodeJsEnvironment;
 use turbopack_core::{
     compile_time_defines,
     compile_time_info::CompileTimeInfo,
     condition::ContextCondition,
     context::AssetContext,
-    environment::{Environment, ExecutionEnvironment, NodeJsEnvironment},
+    environment::{Environment, ExecutionEnvironment},
     ident::Layer,
     resolve::options::{ImportMap, ImportMapping},
 };
@@ -25,6 +29,7 @@ use crate::{
     transition::TransitionOptions,
 };
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[turbo_tasks::function]
 pub fn node_build_environment() -> Vc<Environment> {
     Environment::new(ExecutionEnvironment::NodeJsBuildTime(
@@ -50,10 +55,7 @@ pub async fn node_evaluate_asset_context(
         "@vercel/turbopack-node/",
         ImportMapping::PrimaryAlternative(
             rcstr!("./*"),
-            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             Some(turbopack_node::embed_js::embed_fs().root().owned().await?),
-            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-            None,
         )
         .resolved_cell(),
     );
@@ -103,6 +105,78 @@ pub async fn node_evaluate_asset_context(
                     process.env.TURBOPACK = true
                 )
                 .resolved_cell(),
+            )
+            .cell()
+            .await?,
+        ModuleOptionsContext {
+            tree_shaking_mode: Some(TreeShakingMode::ReexportsOnly),
+            ecmascript: EcmascriptOptionsContext {
+                enable_typescript_transform: Some(
+                    TypescriptTransformOptions::default().resolved_cell(),
+                ),
+                ignore_dynamic_requests,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+        .cell(),
+        resolve_options_context,
+        layer,
+    )))
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[turbo_tasks::function]
+pub async fn web_worker_evaluate_asset_context(
+    execution_context: Vc<crate::module_options::module_options_context::ExecutionContext>,
+    import_map: Option<Vc<ImportMap>>,
+    transitions: Option<Vc<TransitionOptions>>,
+    layer: Layer,
+    ignore_dynamic_requests: bool,
+) -> Result<Vc<Box<dyn AssetContext>>> {
+    let mut import_map = if let Some(import_map) = import_map {
+        import_map.owned().await?
+    } else {
+        ImportMap::empty()
+    };
+
+    import_map.insert_wildcard_alias(
+        "@vercel/turbopack-node/",
+        ImportMapping::PrimaryAlternative(
+            rcstr!("./*"),
+            Some(turbopack_node::embed_js::embed_fs().root().owned().await?),
+        )
+        .resolved_cell(),
+    );
+    let import_map = import_map.resolved_cell();
+
+    let resolve_options_context = ResolveOptionsContext {
+        enable_typescript: true,
+        import_map: Some(import_map),
+        enable_node_modules: None, // WebWorker 环境暂时不启用 node_modules
+        enable_node_externals: false,
+        enable_node_native_modules: false,
+        custom_conditions: vec![rcstr!("worker"), rcstr!("browser")],
+        ..Default::default()
+    }
+    .cell();
+
+    let web_worker_env = Environment::new(ExecutionEnvironment::Browser(
+        BrowserEnvironment {
+            dom: false,
+            web_worker: true,
+            service_worker: false,
+            browserslist_query: rcstr!("defaults"),
+        }
+        .resolved_cell(),
+    ));
+
+    Ok(Vc::upcast(ModuleAssetContext::new(
+        transitions.unwrap_or_default(),
+        CompileTimeInfo::builder(web_worker_env.to_resolved().await?)
+            .defines(
+                compile_time_defines!(process.turbopack = true, process.env.TURBOPACK = true,)
+                    .resolved_cell(),
             )
             .cell()
             .await?,

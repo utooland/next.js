@@ -22,13 +22,17 @@ use turbopack_ecmascript::{
 use turbopack_mdx::{MdxTransform, MdxTransformOptions};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_node::transforms::{postcss::PostCssTransform, webpack::WebpackLoaders};
-use turbopack_wasm::source::WebAssemblySourceType;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use turbopack_node::{
+    WebWorkerPostCssTransform, WebWorkerWebpackLoaders,
+    transforms::webpack_webworker::WebWorkerWebpackLoadersTransformOptions,
+};
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type PostCssTransform = ();
+pub type PostCssTransform = WebWorkerPostCssTransform;
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type WebpackLoaders = ();
+pub type WebpackLoaders = WebWorkerWebpackLoaders;
 
 pub use self::{
     custom_module_type::CustomModuleType,
@@ -43,6 +47,8 @@ pub use self::{
 };
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use crate::evaluate_context::node_evaluate_asset_context;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use crate::evaluate_context::web_worker_evaluate_asset_context;
 use crate::resolve_options_context::ResolveOptionsContext;
 
 #[turbo_tasks::function]
@@ -104,13 +110,29 @@ impl ModuleOptions {
         let need_path = (!enable_raw_css
             && if let Some(options) = enable_postcss_transform {
                 let options = options.await?;
-                options.postcss_package.is_none()
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                {
+                    options.postcss_package.is_none()
+                }
+                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                {
+                    // WebWorker version doesn't have postcss_package
+                    false
+                }
             } else {
                 false
             })
             || if let Some(options) = enable_webpack_loaders {
-                let options = options.await?;
-                options.loader_runner_package.is_none()
+                let _options = options.await?;
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                {
+                    _options.loader_runner_package.is_none()
+                }
+                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                {
+                    // In WASM environment, we always need path context
+                    true
+                }
             } else {
                 false
             };
@@ -397,7 +419,7 @@ impl ModuleOptions {
                     RuleCondition::ContentTypeStartsWith("application/wasm".to_string()),
                 ]),
                 vec![ModuleRuleEffect::ModuleType(ModuleType::WebAssembly {
-                    source_ty: WebAssemblySourceType::Binary,
+                    source_ty: turbopack_wasm::source::WebAssemblySourceType::Binary,
                 })],
             ),
             ModuleRule::new(
@@ -405,7 +427,7 @@ impl ModuleOptions {
                     ".wat".to_string(),
                 )]),
                 vec![ModuleRuleEffect::ModuleType(ModuleType::WebAssembly {
-                    source_ty: WebAssemblySourceType::Text,
+                    source_ty: turbopack_wasm::source::WebAssemblySourceType::Text,
                 })],
             ),
             // Fallback to ecmascript without extension (this is node.js behavior)
@@ -474,14 +496,31 @@ impl ModuleOptions {
                 let execution_context = execution_context
                     .context("execution_context is required for the postcss_transform")?;
 
-                let import_map = if let Some(postcss_package) = options.postcss_package {
-                    package_import_map_from_import_mapping("postcss".into(), *postcss_package)
-                } else {
-                    package_import_map_from_context(
-                        rcstr!("postcss"),
-                        path.clone()
-                            .context("need_path in ModuleOptions::new is incorrect")?,
-                    )
+                let import_map = {
+                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                    {
+                        if let Some(postcss_package) = options.postcss_package {
+                            package_import_map_from_import_mapping(
+                                "postcss".into(),
+                                *postcss_package,
+                            )
+                        } else {
+                            package_import_map_from_context(
+                                rcstr!("postcss"),
+                                path.clone()
+                                    .context("need_path in ModuleOptions::new is incorrect")?,
+                            )
+                        }
+                    }
+                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                    {
+                        // WebWorker version uses context-based import map
+                        package_import_map_from_context(
+                            rcstr!("postcss"),
+                            path.clone()
+                                .context("need_path in ModuleOptions::new is incorrect")?,
+                        )
+                    }
                 };
 
                 rules.push(ModuleRule::new(
@@ -501,6 +540,22 @@ impl ModuleOptions {
                                     true,
                                 ),
                                 *execution_context,
+                                options.config_location,
+                                matches!(css_source_maps, SourceMapsType::Full),
+                            )
+                            .to_resolved()
+                            .await?,
+                        ),
+                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                        ResolvedVc::upcast(
+                            PostCssTransform::new(
+                                web_worker_evaluate_asset_context(
+                                    *execution_context,
+                                    Some(import_map),
+                                    None,
+                                    Layer::new(rcstr!("postcss")),
+                                    true,
+                                ),
                                 options.config_location,
                                 matches!(css_source_maps, SourceMapsType::Full),
                             )
@@ -625,6 +680,7 @@ impl ModuleOptions {
             ));
         }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         if let Some(webpack_loaders_options) = enable_webpack_loaders {
             let webpack_loaders_options = webpack_loaders_options.await?;
             let execution_context =
@@ -639,11 +695,10 @@ impl ModuleOptions {
             } else {
                 package_import_map_from_context(
                     "loader-runner".into(),
-                    path.context("need_path in ModuleOptions::new is incorrect")?,
+                    path.clone()
+                        .context("need_path in ModuleOptions::new is incorrect")?,
                 )
             };
-            // FIXME:
-            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             for (key, rule) in webpack_loaders_options.rules.await?.iter() {
                 rules.push(ModuleRule::new(
                     RuleCondition::All(vec![
@@ -663,17 +718,53 @@ impl ModuleOptions {
                             )?;
 
                             match &condition.path {
-                                ConditionPath::Glob(glob) => RuleCondition::ResourcePathGlob {
-                                    base: execution_context.project_path().owned().await?,
-                                    glob: Glob::new(glob.clone()).await?,
-                                },
+                                ConditionPath::Glob(glob) => {
+                                    let base = {
+                                        #[cfg(not(all(
+                                            target_family = "wasm",
+                                            target_os = "unknown"
+                                        )))]
+                                        {
+                                            execution_context.await?.project_path.clone()
+                                        }
+                                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                                        {
+                                            // In WASM environment, execution_context is
+                                            // NodeJsEnvironment
+                                            // We use the provided path as fallback
+                                            path.clone().context(
+                                                "need_path in ModuleOptions::new is incorrect for \
+                                                 glob rule",
+                                            )?
+                                        }
+                                    };
+                                    RuleCondition::ResourcePathGlob {
+                                        base,
+                                        glob: Glob::new(glob.clone()).await?,
+                                    }
+                                }
                                 ConditionPath::Regex(regex) => {
                                     RuleCondition::ResourcePathEsRegex(regex.await?)
                                 }
                             }
                         } else if key.contains('/') {
+                            let base = {
+                                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                                {
+                                    execution_context.await?.project_path.clone()
+                                }
+                                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                                {
+                                    // In WASM environment, execution_context is NodeJsEnvironment
+                                    // We use the provided path as fallback
+                                    path.clone().context(
+                                        "need_path in ModuleOptions::new is incorrect for glob \
+                                         rule",
+                                    )?
+                                }
+                            };
                             RuleCondition::ResourcePathGlob {
-                                base: execution_context.project_path().owned().await?,
+                                base,
                                 glob: Glob::new(key.clone()).await?,
                             }
                         } else {
@@ -681,8 +772,8 @@ impl ModuleOptions {
                         },
                         RuleCondition::not(RuleCondition::ResourceIsVirtualSource),
                     ]),
+                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
-                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                         ResolvedVc::upcast(
                             WebpackLoaders::new(
                                 node_evaluate_asset_context(
@@ -702,8 +793,76 @@ impl ModuleOptions {
                             .await?,
                         ),
                     ]))],
+                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                    vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                        ResolvedVc::upcast(
+                            WebpackLoaders::new(
+                                web_worker_evaluate_asset_context(
+                                    *execution_context,
+                                    Some(import_map),
+                                    None,
+                                    Layer::new(rcstr!("webpack_loaders")),
+                                    false,
+                                ),
+                                WebWorkerWebpackLoadersTransformOptions {
+                                    source_maps: matches!(
+                                        ecmascript_source_maps,
+                                        SourceMapsType::Full
+                                    ),
+                                    placeholder_for_future_extensions: 0,
+                                }
+                                .resolved_cell(),
+                                matches!(ecmascript_source_maps, SourceMapsType::Full),
+                            )
+                            .to_resolved()
+                            .await?,
+                        ),
+                    ]))],
                 ));
             }
+        }
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        if let Some(_webpack_loaders_options) = enable_webpack_loaders {
+            let _webpack_loaders_options = _webpack_loaders_options.await?;
+            let execution_context =
+                execution_context.context("execution_context is required for webpack_loaders")?;
+            let import_map = package_import_map_from_context(
+                "loader-runner".into(),
+                path.clone()
+                    .context("need_path in ModuleOptions::new is incorrect")?,
+            );
+            
+            // Simple global rule for WebWorker environment - process all non-virtual files
+            rules.push(ModuleRule::new(
+                RuleCondition::All(vec![
+                    RuleCondition::not(RuleCondition::ResourceIsVirtualSource),
+                ]),
+                vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                    ResolvedVc::upcast(
+                        WebpackLoaders::new(
+                            web_worker_evaluate_asset_context(
+                                *execution_context,
+                                Some(import_map),
+                                None,
+                                Layer::new(rcstr!("webpack_loaders")),
+                                false,
+                            ),
+                            WebWorkerWebpackLoadersTransformOptions {
+                                source_maps: matches!(
+                                    ecmascript_source_maps,
+                                    SourceMapsType::Full
+                                ),
+                                placeholder_for_future_extensions: 0,
+                            }
+                            .cell(),
+                            matches!(ecmascript_source_maps, SourceMapsType::Full),
+                        )
+                        .to_resolved()
+                        .await?,
+                    ),
+                ]))],
+            ));
         }
 
         rules.extend(module_rules.iter().cloned());
