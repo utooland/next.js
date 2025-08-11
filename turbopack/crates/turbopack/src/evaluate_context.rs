@@ -17,15 +17,12 @@ use turbopack_core::{
     resolve::options::{ImportMap, ImportMapping},
 };
 use turbopack_ecmascript::TreeShakingMode;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_node::execution_context::ExecutionContext;
 use turbopack_resolve::resolve_options_context::ResolveOptionsContext;
 
 use crate::{
     ModuleAssetContext,
-    module_options::module_options_context::{
-        EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions,
-    },
+    module_options::{EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions},
     transition::TransitionOptions,
 };
 
@@ -127,8 +124,22 @@ pub async fn node_evaluate_asset_context(
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 #[turbo_tasks::function]
-pub async fn web_worker_evaluate_asset_context(
-    execution_context: Vc<crate::module_options::module_options_context::ExecutionContext>,
+pub fn webworker_build_environment() -> Vc<Environment> {
+    Environment::new(ExecutionEnvironment::Browser(
+        BrowserEnvironment {
+            dom: false,
+            web_worker: true,
+            service_worker: false,
+            browserslist_query: rcstr!("defaults"),
+        }
+        .resolved_cell(),
+    ))
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[turbo_tasks::function]
+pub async fn webworker_evaluate_asset_context(
+    execution_context: Vc<ExecutionContext>,
     import_map: Option<Vc<ImportMap>>,
     transitions: Option<Vc<TransitionOptions>>,
     layer: Layer,
@@ -161,19 +172,9 @@ pub async fn web_worker_evaluate_asset_context(
     }
     .cell();
 
-    let web_worker_env = Environment::new(ExecutionEnvironment::Browser(
-        BrowserEnvironment {
-            dom: false,
-            web_worker: true,
-            service_worker: false,
-            browserslist_query: rcstr!("defaults"),
-        }
-        .resolved_cell(),
-    ));
-
     Ok(Vc::upcast(ModuleAssetContext::new(
         transitions.unwrap_or_default(),
-        CompileTimeInfo::builder(web_worker_env.to_resolved().await?)
+        CompileTimeInfo::builder(webworker_build_environment().to_resolved().await?)
             .defines(
                 compile_time_defines!(process.turbopack = true, process.env.TURBOPACK = true,)
                     .resolved_cell(),

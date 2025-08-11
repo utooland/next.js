@@ -13,17 +13,10 @@ use turbopack_core::{
 };
 use turbopack_ecmascript::{TreeShakingMode, references::esm::UrlRewriteBehavior};
 pub use turbopack_mdx::MdxTransformOptions;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_node::{
     execution_context::ExecutionContext,
     transforms::{postcss::PostCssTransformOptions, webpack::WebpackLoaderItems},
 };
-
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type ExecutionContext = NodeJsEnvironment;
-
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type WebpackLoaderItems = ();
 
 use super::ModuleRule;
 
@@ -64,16 +57,9 @@ pub struct ConditionItem {
 #[turbo_tasks::value(shared)]
 #[derive(Clone, Debug)]
 pub struct WebpackLoadersOptions {
-    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub rules: ResolvedVc<WebpackRules>,
-    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub conditions: ResolvedVc<OptionWebpackConditions>,
-    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub loader_runner_package: Option<ResolvedVc<ImportMapping>>,
-    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-    pub source_maps: bool,
-    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-    pub placeholder_for_future_extensions: u8,
 }
 
 /// The kind of decorators transform to use.
@@ -236,9 +222,3 @@ impl ValueDefault for ModuleOptionsContext {
         Self::cell(Default::default())
     }
 }
-
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub use turbopack_node::{
-    transforms::postcss::PostCssConfigLocation,
-    transforms::postcss_webworker::WebWorkerPostCssTransformOptions as PostCssTransformOptions,
-};

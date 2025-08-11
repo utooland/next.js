@@ -40,14 +40,12 @@ use turbopack_core::{
         GenerateSourceMap, OptionStringifiedSourceMap, utils::resolve_source_map_sources,
     },
     source_transform::SourceTransform,
-    virtual_source::VirtualSource,
 };
 use turbopack_resolve::{
     ecmascript::get_condition_maps, resolve::resolve_options,
     resolve_options_context::ResolveOptionsContext,
 };
 
-use super::util::{EmittedAsset, emitted_assets_to_virtual_sources};
 use crate::{
     AssetsForSourceMapping,
     debug::should_debug,
@@ -59,6 +57,10 @@ use crate::{
     execution_context::ExecutionContext,
     pool::{FormattingMode, NodeJsPool},
     source_map::{StackFrame, StructuredError},
+    transforms::{
+        util::{EmittedAsset, emitted_assets_to_virtual_sources},
+        webpack::{ProcessWebpackLoadersResult, WebpackLoaderItems},
+    },
 };
 
 #[serde_as]
@@ -87,10 +89,6 @@ pub struct WebpackLoaderItem {
     pub loader: RcStr,
     pub options: serde_json::Map<String, serde_json::Value>,
 }
-
-#[derive(Debug, Clone)]
-#[turbo_tasks::value(shared, transparent)]
-pub struct WebpackLoaderItems(pub Vec<WebpackLoaderItem>);
 
 #[turbo_tasks::value]
 pub struct WebpackLoaders {
@@ -143,7 +141,7 @@ impl SourceTransform for WebpackLoaders {
 }
 
 #[turbo_tasks::value]
-struct WebpackLoadersProcessedAsset {
+pub struct WebpackLoadersProcessedAsset {
     transform: ResolvedVc<WebpackLoaders>,
     source: ResolvedVc<Box<dyn Source>>,
 }
@@ -176,13 +174,6 @@ impl GenerateSourceMap for WebpackLoadersProcessedAsset {
     async fn generate_source_map(self: Vc<Self>) -> Result<Vc<OptionStringifiedSourceMap>> {
         Ok(*self.process().await?.source_map)
     }
-}
-
-#[turbo_tasks::value]
-struct ProcessWebpackLoadersResult {
-    content: ResolvedVc<AssetContent>,
-    source_map: ResolvedVc<OptionStringifiedSourceMap>,
-    assets: Vec<ResolvedVc<VirtualSource>>,
 }
 
 #[turbo_tasks::function]
