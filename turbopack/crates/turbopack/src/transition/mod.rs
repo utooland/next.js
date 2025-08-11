@@ -13,9 +13,7 @@ use turbopack_resolve::resolve_options_context::ResolveOptionsContext;
 
 use crate::{
     ModuleAssetContext,
-    module_options::{
-        module_options_context::ModuleOptionsContext, transition_rule::TransitionRule,
-    },
+    module_options::{ModuleOptionsContext, transition_rule::TransitionRule},
 };
 
 /// Some kind of operation that is executed during reference processing. e. g.

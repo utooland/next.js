@@ -23,11 +23,7 @@ use ecmascript::{
     side_effect_optimization::facade::module::EcmascriptModuleFacadeModule,
 };
 use graph::{AggregatedGraph, AggregatedGraphNodeContent, aggregate};
-use module_options::{
-    ModuleOptions,
-    module_options_context::ModuleOptionsContext,
-    module_rule::{ModuleRuleEffect, ModuleType},
-};
+use module_options::{ModuleOptions, ModuleOptionsContext, ModuleRuleEffect, ModuleType};
 use tracing::{Instrument, field::Empty};
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, ValueToString, Vc};
@@ -70,10 +66,7 @@ use turbopack_static::{css::StaticUrlCssModule, ecma::StaticUrlJsModule};
 use turbopack_wasm::{module_asset::WebAssemblyModuleAsset, source::WebAssemblySource};
 
 use self::transition::{Transition, TransitionOptions};
-use crate::module_options::{
-    custom_module_type::CustomModuleType,
-    module_options_context::{CssOptionsContext, EcmascriptOptionsContext},
-};
+use crate::module_options::{CssOptionsContext, CustomModuleType, EcmascriptOptionsContext};
 
 #[turbo_tasks::function]
 async fn apply_module_type(

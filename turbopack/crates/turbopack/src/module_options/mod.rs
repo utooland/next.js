@@ -6,6 +6,10 @@ pub mod rule_condition;
 pub mod transition_rule;
 
 use anyhow::{Context, Result};
+pub use custom_module_type::CustomModuleType;
+pub use module_options_context::*;
+pub use module_rule::*;
+pub use rule_condition::*;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, Vc};
 use turbo_tasks_fs::{FileSystemPath, glob::Glob};
@@ -19,36 +23,14 @@ use turbopack_css::CssModuleAssetType;
 use turbopack_ecmascript::{
     EcmascriptInputTransform, EcmascriptInputTransforms, EcmascriptOptions, SpecifiedModuleType,
 };
-use turbopack_mdx::{MdxTransform, MdxTransformOptions};
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use turbopack_mdx::MdxTransform;
 use turbopack_node::transforms::{postcss::PostCssTransform, webpack::WebpackLoaders};
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use turbopack_node::{
-    WebWorkerPostCssTransform, WebWorkerWebpackLoaders,
-    transforms::webpack_webworker::WebWorkerWebpackLoadersTransformOptions,
-};
+use turbopack_wasm::source::WebAssemblySourceType;
 
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type PostCssTransform = WebWorkerPostCssTransform;
-
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-pub type WebpackLoaders = WebWorkerWebpackLoaders;
-
-pub use self::{
-    custom_module_type::CustomModuleType,
-    module_options_context::{
-        ConditionItem, ConditionPath, CssOptionsContext, DecoratorsKind, DecoratorsOptions,
-        EcmascriptOptionsContext, JsxTransformOptions, LoaderRuleItem, ModuleOptionsContext,
-        OptionWebpackRules, TypeofWindow, TypescriptTransformOptions, WebpackLoadersOptions,
-        WebpackRules,
-    },
-    module_rule::{ModuleRule, ModuleRuleEffect, ModuleType},
-    rule_condition::RuleCondition,
-};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use crate::evaluate_context::node_evaluate_asset_context;
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use crate::evaluate_context::web_worker_evaluate_asset_context;
+use crate::evaluate_context::webworker_evaluate_asset_context;
 use crate::resolve_options_context::ResolveOptionsContext;
 
 #[turbo_tasks::function]
@@ -419,7 +401,7 @@ impl ModuleOptions {
                     RuleCondition::ContentTypeStartsWith("application/wasm".to_string()),
                 ]),
                 vec![ModuleRuleEffect::ModuleType(ModuleType::WebAssembly {
-                    source_ty: turbopack_wasm::source::WebAssemblySourceType::Binary,
+                    source_ty: WebAssemblySourceType::Binary,
                 })],
             ),
             ModuleRule::new(
@@ -427,7 +409,7 @@ impl ModuleOptions {
                     ".wat".to_string(),
                 )]),
                 vec![ModuleRuleEffect::ModuleType(ModuleType::WebAssembly {
-                    source_ty: turbopack_wasm::source::WebAssemblySourceType::Text,
+                    source_ty: WebAssemblySourceType::Text,
                 })],
             ),
             // Fallback to ecmascript without extension (this is node.js behavior)
@@ -549,7 +531,7 @@ impl ModuleOptions {
                         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
                         ResolvedVc::upcast(
                             PostCssTransform::new(
-                                web_worker_evaluate_asset_context(
+                                webworker_evaluate_asset_context(
                                     *execution_context,
                                     Some(import_map),
                                     None,
@@ -680,7 +662,6 @@ impl ModuleOptions {
             ));
         }
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         if let Some(webpack_loaders_options) = enable_webpack_loaders {
             let webpack_loaders_options = webpack_loaders_options.await?;
             let execution_context =
@@ -772,11 +753,19 @@ impl ModuleOptions {
                         },
                         RuleCondition::not(RuleCondition::ResourceIsVirtualSource),
                     ]),
-                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
                         ResolvedVc::upcast(
                             WebpackLoaders::new(
+                                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                                 node_evaluate_asset_context(
+                                    *execution_context,
+                                    Some(import_map),
+                                    None,
+                                    Layer::new(rcstr!("webpack_loaders")),
+                                    false,
+                                ),
+                                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                                webworker_evaluate_asset_context(
                                     *execution_context,
                                     Some(import_map),
                                     None,
@@ -793,76 +782,8 @@ impl ModuleOptions {
                             .await?,
                         ),
                     ]))],
-                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-                    vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
-                        ResolvedVc::upcast(
-                            WebpackLoaders::new(
-                                web_worker_evaluate_asset_context(
-                                    *execution_context,
-                                    Some(import_map),
-                                    None,
-                                    Layer::new(rcstr!("webpack_loaders")),
-                                    false,
-                                ),
-                                WebWorkerWebpackLoadersTransformOptions {
-                                    source_maps: matches!(
-                                        ecmascript_source_maps,
-                                        SourceMapsType::Full
-                                    ),
-                                    placeholder_for_future_extensions: 0,
-                                }
-                                .resolved_cell(),
-                                matches!(ecmascript_source_maps, SourceMapsType::Full),
-                            )
-                            .to_resolved()
-                            .await?,
-                        ),
-                    ]))],
                 ));
             }
-        }
-
-        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        if let Some(_webpack_loaders_options) = enable_webpack_loaders {
-            let _webpack_loaders_options = _webpack_loaders_options.await?;
-            let execution_context =
-                execution_context.context("execution_context is required for webpack_loaders")?;
-            let import_map = package_import_map_from_context(
-                "loader-runner".into(),
-                path.clone()
-                    .context("need_path in ModuleOptions::new is incorrect")?,
-            );
-            
-            // Simple global rule for WebWorker environment - process all non-virtual files
-            rules.push(ModuleRule::new(
-                RuleCondition::All(vec![
-                    RuleCondition::not(RuleCondition::ResourceIsVirtualSource),
-                ]),
-                vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
-                    ResolvedVc::upcast(
-                        WebpackLoaders::new(
-                            web_worker_evaluate_asset_context(
-                                *execution_context,
-                                Some(import_map),
-                                None,
-                                Layer::new(rcstr!("webpack_loaders")),
-                                false,
-                            ),
-                            WebWorkerWebpackLoadersTransformOptions {
-                                source_maps: matches!(
-                                    ecmascript_source_maps,
-                                    SourceMapsType::Full
-                                ),
-                                placeholder_for_future_extensions: 0,
-                            }
-                            .cell(),
-                            matches!(ecmascript_source_maps, SourceMapsType::Full),
-                        )
-                        .to_resolved()
-                        .await?,
-                    ),
-                ]))],
-            ));
         }
 
         rules.extend(module_rules.iter().cloned());

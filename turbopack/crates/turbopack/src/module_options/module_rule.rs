@@ -10,9 +10,7 @@ use turbopack_css::CssModuleAssetType;
 use turbopack_ecmascript::{EcmascriptInputTransforms, EcmascriptOptions};
 use turbopack_wasm::source::WebAssemblySourceType;
 
-use super::{
-    custom_module_type::CustomModuleType, match_mode::MatchMode, rule_condition::RuleCondition,
-};
+use super::{CustomModuleType, RuleCondition, match_mode::MatchMode};
 
 #[derive(Debug, Clone, Serialize, Deserialize, TraceRawVcs, PartialEq, Eq, NonLocalValue)]
 pub struct ModuleRule {

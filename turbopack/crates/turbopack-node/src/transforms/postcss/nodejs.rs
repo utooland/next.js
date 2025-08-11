@@ -1,11 +1,7 @@
 use anyhow::{Context, Result, bail};
 use indoc::formatdoc;
-use serde::{Deserialize, Serialize};
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{
-    Completion, Completions, NonLocalValue, ResolvedVc, TaskInput, TryFlatJoinIterExt, Vc,
-    fxindexmap, trace::TraceRawVcs,
-};
+use turbo_tasks::{Completion, Completions, ResolvedVc, TryFlatJoinIterExt, Vc, fxindexmap};
 use turbo_tasks_bytes::stream::SingleValue;
 use turbo_tasks_fs::{
     File, FileContent, FileSystemEntryType, FileSystemPath, json::parse_json_with_source_context,
@@ -18,7 +14,7 @@ use turbopack_core::{
     ident::AssetIdent,
     issue::IssueDescriptionExt,
     reference_type::{EntryReferenceSubType, InnerAssets, ReferenceType},
-    resolve::{FindContextFileResult, find_context_file_or_package_key, options::ImportMapping},
+    resolve::{FindContextFileResult, find_context_file_or_package_key},
     source::Source,
     source_map::{GenerateSourceMap, OptionStringifiedSourceMap},
     source_transform::SourceTransform,
@@ -26,80 +22,17 @@ use turbopack_core::{
 };
 use turbopack_ecmascript::runtime_functions::TURBOPACK_EXTERNAL_IMPORT;
 
-use super::{
-    util::{EmittedAsset, emitted_assets_to_virtual_sources},
-    webpack::WebpackLoaderContext,
-};
 use crate::{
-    embed_js::embed_file_path, execution_context::ExecutionContext,
-    transforms::webpack::evaluate_webpack_loader,
+    embed_js::embed_file_path,
+    execution_context::ExecutionContext,
+    transforms::{
+        postcss::{
+            PostCssConfigLocation, PostCssProcessingResult, ProcessPostCssResult, postcss_configs,
+        },
+        util::emitted_assets_to_virtual_sources,
+        webpack::nodejs::{WebpackLoaderContext, evaluate_webpack_loader},
+    },
 };
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-#[turbo_tasks::value(serialization = "custom")]
-struct PostCssProcessingResult {
-    css: String,
-    map: Option<String>,
-    assets: Option<Vec<EmittedAsset>>,
-}
-
-#[derive(
-    Default,
-    Copy,
-    Clone,
-    PartialEq,
-    Eq,
-    Hash,
-    Debug,
-    TraceRawVcs,
-    Serialize,
-    Deserialize,
-    TaskInput,
-    NonLocalValue,
-)]
-pub enum PostCssConfigLocation {
-    #[default]
-    ProjectPath,
-    ProjectPathOrLocalPath,
-}
-
-#[turbo_tasks::value(shared)]
-#[derive(Clone, Default)]
-pub struct PostCssTransformOptions {
-    pub postcss_package: Option<ResolvedVc<ImportMapping>>,
-    pub config_location: PostCssConfigLocation,
-    pub placeholder_for_future_extensions: u8,
-}
-
-#[turbo_tasks::function]
-fn postcss_configs() -> Vc<Vec<RcStr>> {
-    Vc::cell(
-        [
-            ".postcssrc",
-            ".postcssrc.json",
-            ".postcssrc.yaml",
-            ".postcssrc.yml",
-            ".postcssrc.js",
-            ".postcssrc.mjs",
-            ".postcssrc.cjs",
-            ".config/postcssrc",
-            ".config/postcssrc.json",
-            ".config/postcssrc.yaml",
-            ".config/postcssrc.yml",
-            ".config/postcssrc.js",
-            ".config/postcssrc.mjs",
-            ".config/postcssrc.cjs",
-            "postcss.config.js",
-            "postcss.config.mjs",
-            "postcss.config.cjs",
-            "postcss.config.json",
-        ]
-        .into_iter()
-        .map(RcStr::from)
-        .collect(),
-    )
-}
 
 #[turbo_tasks::value]
 pub struct PostCssTransform {
@@ -146,7 +79,7 @@ impl SourceTransform for PostCssTransform {
 }
 
 #[turbo_tasks::value]
-struct PostCssTransformedAsset {
+pub struct PostCssTransformedAsset {
     evaluate_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
@@ -184,12 +117,6 @@ fn transform_process_operation(
     asset: ResolvedVc<PostCssTransformedAsset>,
 ) -> Vc<ProcessPostCssResult> {
     asset.process()
-}
-
-#[turbo_tasks::value]
-struct ProcessPostCssResult {
-    content: ResolvedVc<AssetContent>,
-    assets: Vec<ResolvedVc<VirtualSource>>,
 }
 
 #[turbo_tasks::function]
