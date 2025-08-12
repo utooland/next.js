@@ -5,8 +5,6 @@ use turbo_esregex::EsRegex;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{FxIndexMap, NonLocalValue, ResolvedVc, ValueDefault, Vc, trace::TraceRawVcs};
 use turbo_tasks_fs::FileSystemPath;
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use turbopack_core::environment::NodeJsEnvironment;
 use turbopack_core::{
     chunk::SourceMapsType, condition::ContextCondition, environment::Environment,
     resolve::options::ImportMapping,
