@@ -162,13 +162,27 @@ pub async fn webworker_evaluate_asset_context(
     let import_map = import_map.resolved_cell();
 
     let resolve_options_context = ResolveOptionsContext {
-        enable_typescript: true,
-        import_map: Some(import_map),
-        enable_node_modules: None, // WebWorker 环境暂时不启用 node_modules
+        enable_node_modules: Some(
+            execution_context
+                .project_path()
+                .await?
+                .root()
+                .owned()
+                .await?,
+        ),
         enable_node_externals: false,
         enable_node_native_modules: false,
         custom_conditions: vec![rcstr!("worker"), rcstr!("browser")],
         ..Default::default()
+    };
+    let resolve_options_context = ResolveOptionsContext {
+        enable_typescript: true,
+        import_map: Some(import_map),
+        rules: vec![(
+            ContextCondition::InDirectory("node_modules".to_string()),
+            resolve_options_context.clone().resolved_cell(),
+        )],
+        ..resolve_options_context
     }
     .cell();
 

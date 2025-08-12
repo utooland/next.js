@@ -74,7 +74,6 @@ impl Source for PostCssTransformedAsset {
 impl Asset for PostCssTransformedAsset {
     #[turbo_tasks::function]
     async fn content(&self) -> Result<Vc<AssetContent>> {
-        // Create a clone to avoid moving self
         let asset_copy = PostCssTransformedAsset {
             source: self.source,
             evaluate_context: self.evaluate_context,
