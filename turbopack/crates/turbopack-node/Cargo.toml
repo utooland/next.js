@@ -55,6 +55,19 @@ tokio = { workspace = true, features = ["full"] }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 # Use minimal tokio for WASM that only includes basic features
 tokio = { workspace = true, features = ["sync", "time", "macros"] }
+web-sys = { version = "0.3.77", features = [
+    "Worker",
+    "MessageEvent", 
+    "DedicatedWorkerGlobalScope",
+    "ErrorEvent",
+    "Blob",
+    "BlobPropertyBag",
+    "Url",
+    "console",
+]}
+wasm-bindgen = "0.2.100"
+wasm-bindgen-futures = "0.4.50"
+js-sys = "0.3.77"
 
 [build-dependencies]
 turbo-tasks-build = { workspace = true }

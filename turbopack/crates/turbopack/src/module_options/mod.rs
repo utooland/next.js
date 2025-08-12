@@ -92,29 +92,13 @@ impl ModuleOptions {
         let need_path = (!enable_raw_css
             && if let Some(options) = enable_postcss_transform {
                 let options = options.await?;
-                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-                {
-                    options.postcss_package.is_none()
-                }
-                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-                {
-                    // WebWorker version doesn't have postcss_package
-                    false
-                }
+                options.postcss_package.is_none()
             } else {
                 false
             })
             || if let Some(options) = enable_webpack_loaders {
-                let _options = options.await?;
-                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-                {
-                    _options.loader_runner_package.is_none()
-                }
-                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-                {
-                    // In WASM environment, we always need path context
-                    true
-                }
+                let options = options.await?;
+                options.loader_runner_package.is_none()
             } else {
                 false
             };
@@ -479,24 +463,9 @@ impl ModuleOptions {
                     .context("execution_context is required for the postcss_transform")?;
 
                 let import_map = {
-                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-                    {
-                        if let Some(postcss_package) = options.postcss_package {
-                            package_import_map_from_import_mapping(
-                                "postcss".into(),
-                                *postcss_package,
-                            )
-                        } else {
-                            package_import_map_from_context(
-                                rcstr!("postcss"),
-                                path.clone()
-                                    .context("need_path in ModuleOptions::new is incorrect")?,
-                            )
-                        }
-                    }
-                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-                    {
-                        // WebWorker version uses context-based import map
+                    if let Some(postcss_package) = options.postcss_package {
+                        package_import_map_from_import_mapping("postcss".into(), *postcss_package)
+                    } else {
                         package_import_map_from_context(
                             rcstr!("postcss"),
                             path.clone()
@@ -535,7 +504,7 @@ impl ModuleOptions {
                                     *execution_context,
                                     Some(import_map),
                                     None,
-                                    Layer::new(rcstr!("postcss")),
+                                    Layer::new(rcstr!("postcss_webworker")),
                                     true,
                                 ),
                                 options.config_location,
@@ -699,53 +668,17 @@ impl ModuleOptions {
                             )?;
 
                             match &condition.path {
-                                ConditionPath::Glob(glob) => {
-                                    let base = {
-                                        #[cfg(not(all(
-                                            target_family = "wasm",
-                                            target_os = "unknown"
-                                        )))]
-                                        {
-                                            execution_context.await?.project_path.clone()
-                                        }
-                                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-                                        {
-                                            // In WASM environment, execution_context is
-                                            // NodeJsEnvironment
-                                            // We use the provided path as fallback
-                                            path.clone().context(
-                                                "need_path in ModuleOptions::new is incorrect for \
-                                                 glob rule",
-                                            )?
-                                        }
-                                    };
-                                    RuleCondition::ResourcePathGlob {
-                                        base,
-                                        glob: Glob::new(glob.clone()).await?,
-                                    }
-                                }
+                                ConditionPath::Glob(glob) => RuleCondition::ResourcePathGlob {
+                                    base: execution_context.project_path().owned().await?,
+                                    glob: Glob::new(glob.clone()).await?,
+                                },
                                 ConditionPath::Regex(regex) => {
                                     RuleCondition::ResourcePathEsRegex(regex.await?)
                                 }
                             }
                         } else if key.contains('/') {
-                            let base = {
-                                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-                                {
-                                    execution_context.await?.project_path.clone()
-                                }
-                                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-                                {
-                                    // In WASM environment, execution_context is NodeJsEnvironment
-                                    // We use the provided path as fallback
-                                    path.clone().context(
-                                        "need_path in ModuleOptions::new is incorrect for glob \
-                                         rule",
-                                    )?
-                                }
-                            };
                             RuleCondition::ResourcePathGlob {
-                                base,
+                                base: execution_context.project_path().owned().await?,
                                 glob: Glob::new(key.clone()).await?,
                             }
                         } else {
@@ -769,7 +702,7 @@ impl ModuleOptions {
                                     *execution_context,
                                     Some(import_map),
                                     None,
-                                    Layer::new(rcstr!("webpack_loaders")),
+                                    Layer::new(rcstr!("webpack_loaders_webworker")),
                                     false,
                                 ),
                                 *execution_context,
