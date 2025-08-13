@@ -438,7 +438,6 @@ triomphe = { git = "https://github.com/sokra/triomphe", branch = "sokra/unstable
 unsize = "1.1.0"
 url = "2.2.2"
 urlencoding = "2.1.2"
-uuid = { version = "1.17.0", features = ["js"] }
 vergen = { version = "9.0.6", features = ["cargo"] }
 vergen-gitcl = { version = "1.0.8", features = ["cargo"] }
 webbrowser = "0.8.7"
