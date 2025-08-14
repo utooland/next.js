@@ -14,6 +14,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     thread::available_parallelism,
+    time::Duration,
 };
 
 use anyhow::{Result, bail};
@@ -22,7 +23,8 @@ use indexmap::IndexSet;
 use parking_lot::{Condvar, Mutex};
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use smallvec::{SmallVec, smallvec};
-use tokio::time::{Duration, Instant};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use tokio::time::{Instant, sleep_until};
 use tracing::field::Empty;
 use turbo_tasks::{
     CellId, FxDashMap, KeyValuePair, RawVc, ReadCellOptions, ReadConsistency, SessionId,
@@ -40,6 +42,8 @@ use turbo_tasks::{
     turbo_tasks,
     util::IdFactoryWithReuse,
 };
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use wasmtimer::{std::Instant, tokio::sleep_until};
 
 pub use self::{operation::AnyOperation, storage::TaskDataCategory};
 #[cfg(feature = "trace_task_dirty")]
@@ -2158,10 +2162,10 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
                                         idle_time = until + IDLE_TIMEOUT;
                                         idle_end_listener = self.idle_end_event.listen()
                                     },
-                                    _ = tokio::time::sleep_until(until) => {
+                                    _ = sleep_until(until) => {
                                         break;
                                     },
-                                    _ = tokio::time::sleep_until(idle_time) => {
+                                    _ = sleep_until(idle_time) => {
                                         if turbo_tasks.is_idle() {
                                             break;
                                         }

@@ -1,3 +1,5 @@
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use std::time::Instant;
 use std::{
     cmp::{Ordering, max},
     collections::{VecDeque, hash_map::Entry as HashMapEntry},
@@ -6,7 +8,7 @@ use std::{
     num::NonZeroU32,
     ops::ControlFlow,
     thread::yield_now,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -21,6 +23,8 @@ use smallvec::{SmallVec, smallvec};
 ))]
 use tracing::{span::Span, trace_span};
 use turbo_tasks::{FxIndexMap, SessionId, TaskExecutionReason, TaskId};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use wasmtimer::std::Instant;
 
 #[cfg(feature = "trace_task_dirty")]
 use crate::backend::operation::invalidate::TaskDirtyCause;
