@@ -1,4 +1,8 @@
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::time::Instant;
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use wasmtimer::std::Instant;
 
 /// Guard that emits a tracing event when dropped with the duration of the
 /// lifetime of the guard.

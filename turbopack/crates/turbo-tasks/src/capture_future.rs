@@ -1,3 +1,5 @@
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use std::time::Instant;
 use std::{
     borrow::Cow,
     cell::RefCell,
@@ -6,13 +8,15 @@ use std::{
     panic,
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Result;
 use pin_project_lite::pin_project;
 use serde::{Deserialize, Serialize};
 use turbo_tasks_malloc::{AllocationInfo, TurboMalloc};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use wasmtimer::std::Instant;
 
 use crate::{backend::TurboTasksExecutionErrorMessage, panic_hooks::LAST_ERROR_LOCATION};
 

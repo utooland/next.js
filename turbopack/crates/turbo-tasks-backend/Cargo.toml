@@ -57,6 +57,9 @@ turbo-tasks-testing = { workspace = true }
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 turbo-persistence = { workspace = true }
 
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+wasmtimer = { workspace = true }
+
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
 regex = { workspace = true }
