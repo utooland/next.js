@@ -573,7 +573,13 @@ impl FileSystem for DiskFileSystem {
         };
 
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        let content = match tokio_fs_ext::read(full_path.clone()).await {
+        let content = match tokio_fs_ext::read(full_path.clone())
+            .instrument(tracing::info_span!(
+                "read file",
+                name = display(full_path.display())
+            ))
+            .await
+        {
             Ok(buf) => Ok(FileContent::from(File::from_bytes(buf))),
             Err(e) if e.kind() == ErrorKind::NotFound || e.kind() == ErrorKind::InvalidFilename => {
                 Ok(FileContent::NotFound)
@@ -638,7 +644,13 @@ impl FileSystem for DiskFileSystem {
             .with_context(|| format!("reading directory item in {}", full_path.display()))?;
 
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        let mut read_dir = match tokio_fs_ext::read_dir(full_path.clone()).await {
+        let mut read_dir = match tokio_fs_ext::read_dir(full_path.clone())
+            .instrument(tracing::info_span!(
+                "read dir",
+                name = display(full_path.display())
+            ))
+            .await
+        {
             Ok(dir) => dir,
             Err(e)
                 if e.kind() == ErrorKind::NotFound
@@ -697,7 +709,13 @@ impl FileSystem for DiskFileSystem {
             };
 
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
-        let link_path = match tokio_fs_ext::read_link(full_path.clone()).await {
+        let link_path = match tokio_fs_ext::read_link(full_path.clone())
+            .instrument(tracing::info_span!(
+                "read symlink",
+                name = display(full_path.display())
+            ))
+            .await
+        {
             Ok(res) => res,
             Err(_) => return Ok(LinkContent::NotFound.cell()),
         };
@@ -881,6 +899,10 @@ impl FileSystem for DiskFileSystem {
                         let mut content_buf = vec![];
                         std::io::copy(&mut file.read(), &mut content_buf)?;
                         tokio_fs_ext::write(full_path_to_write, content_buf)
+                            .instrument(tracing::info_span!(
+                                "write file",
+                                name = display(full_path.display())
+                            ))
                             .await
                             .with_context(|| {
                                 format!("failed to write to {}", full_path.display())
@@ -911,6 +933,10 @@ impl FileSystem for DiskFileSystem {
 
                     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
                     tokio_fs_ext::remove_file(full_path.clone())
+                        .instrument(tracing::info_span!(
+                            "remove file",
+                            name = display(full_path.display())
+                        ))
                         .await
                         .or_else(|err| {
                             if err.kind() == ErrorKind::NotFound {
@@ -1085,6 +1111,10 @@ impl FileSystem for DiskFileSystem {
 
         #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         let meta = tokio_fs_ext::metadata(full_path.clone())
+            .instrument(tracing::info_span!(
+                "read metadata",
+                name = display(full_path.display())
+            ))
             .await
             .with_context(|| format!("reading metadata for {}", full_path.display()))?;
         Ok(FileMeta::cell(meta.into()))
