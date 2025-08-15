@@ -507,6 +507,7 @@ impl ModuleOptions {
                                     Layer::new(rcstr!("postcss_webworker")),
                                     true,
                                 ),
+                                *execution_context,
                                 options.config_location,
                                 matches!(css_source_maps, SourceMapsType::Full),
                             )

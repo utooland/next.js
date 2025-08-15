@@ -36,7 +36,7 @@ use crate::{
     execution_context::ExecutionContext,
     transforms::{
         util::{EmittedAsset, emitted_assets_to_virtual_sources},
-        webpack::{WebpackLoaderItem, WebpackLoaderItems},
+        webpack::{ProcessWebpackLoadersResult, WebpackLoaderItem, WebpackLoaderItems},
     },
 };
 
@@ -64,7 +64,6 @@ pub struct WebpackLoaders {
     evaluate_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     loaders: ResolvedVc<WebpackLoaderItems>,
-    // loader_runner_package: Option<ResolvedVc<turbopack_core::resolve::options::ImportMapping>>,
     rename_as: Option<RcStr>,
     resolve_options_context: ResolvedVc<ResolveOptionsContext>,
     source_maps: bool,
@@ -85,7 +84,6 @@ impl WebpackLoaders {
             evaluate_context,
             execution_context,
             loaders,
-            // loader_runner_package,
             rename_as,
             resolve_options_context,
             source_maps,
@@ -134,6 +132,8 @@ impl Source for WebpackLoadersProcessedAsset {
 impl Asset for WebpackLoadersProcessedAsset {
     #[turbo_tasks::function]
     async fn content(&self) -> Result<Vc<AssetContent>> {
+        // Ok(*self.process().await?.content)
+        // TODO: use webpack-loader-webworker executor here.
         let source_content = self.source.content();
         let AssetContent::File(file) = *source_content.await? else {
             bail!("Webpack Loaders WebWorker transform only support transforming files");
@@ -141,9 +141,6 @@ impl Asset for WebpackLoadersProcessedAsset {
         let FileContent::Content(content) = &*file.await? else {
             return Ok(AssetContent::File(FileContent::NotFound.resolved_cell()).cell());
         };
-
-        // For now, return the source content as-is
-        // TODO: Implement actual WebWorker processing
         let content_str = content.content().to_str()?;
         let processed_content = format!("/* Processed by WebWorker */\n{}", content_str);
 
@@ -153,6 +150,55 @@ impl Asset for WebpackLoadersProcessedAsset {
         .cell())
     }
 }
+
+// #[turbo_tasks::value_impl]
+// impl WebpackLoadersProcessedAsset {
+//     #[turbo_tasks::function]
+//     async fn process(self: Vc<Self>) -> Result<Vc<ProcessWebpackLoadersResult>> {
+// let this = self.await?;
+// let transform = this.transform.await?;
+
+// let ExecutionContext {
+//     project_path,
+//     chunking_context,
+//     env,
+// } = &*transform.execution_context.await?;
+// let source_content = this.source.content();
+// let AssetContent::File(file) = *source_content.await? else {
+//     bail!("Webpack Loaders transform only support transforming files");
+// };
+// let FileContent::Content(file_content) = &*file.await? else {
+//     return Ok(ProcessWebpackLoadersResult {
+//         content: AssetContent::File(FileContent::NotFound.resolved_cell()).resolved_cell(),
+//         assets: Vec::new(),
+//         source_map: ResolvedVc::cell(None),
+//     }
+//     .cell());
+// };
+
+// // If the content is not a valid string (e.g. binary file), handle the error and pass a
+// // Buffer to Webpack instead of a Base64 string so the build process doesn't crash.
+// let _content: JsonValue = match file_content.content().to_str() {
+//     Ok(utf8_str) => utf8_str.to_string().into(),
+//     Err(_) => JsonValue::Object(JsonMap::from_iter(std::iter::once((
+//         "binary".to_string(),
+//         JsonValue::from(
+//             base64::engine::general_purpose::STANDARD
+//                 .encode(file_content.content().to_bytes()),
+//         ),
+//     )))),
+// };
+// let _evaluate_context = transform.evaluate_context;
+
+// Ok(ProcessWebpackLoadersResult {
+//     content: AssetContent::File(FileContent::Content(file).resolved_cell()).resolved_cell(),
+//     assets: Vec::new(),
+//     source_map: ResolvedVc::cell(None),
+// }
+// .cell())
+//         Ok(Vc::cell(None))
+//     }
+// }
 
 #[turbo_tasks::value_impl]
 impl GenerateSourceMap for WebpackLoadersProcessedAsset {
