@@ -2,6 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result, bail};
 use js_sys::Promise;
+use send_wrapper::SendWrapper;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use turbo_rcstr::{RcStr, rcstr};
@@ -11,6 +12,7 @@ use turbopack_core::{
     asset::{Asset, AssetContent},
     context::AssetContext,
     ident::AssetIdent,
+    issue::IssueDescriptionExt,
     resolve::{FindContextFileResult, find_context_file_or_package_key},
     source::Source,
     source_map::{GenerateSourceMap, OptionStringifiedSourceMap},
@@ -20,19 +22,43 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{MessageEvent, Worker};
 
+/// A wrapper to make non-Send futures appear Send for WASM environment
+/// This is safe in WASM since it's single-threaded
+struct WasmSafeFuture<F>(F);
+
+impl<F> WasmSafeFuture<F> {
+    fn new(future: F) -> Self {
+        WasmSafeFuture(future)
+    }
+}
+
+// SAFETY: In WASM, we're in a single-threaded environment, so Send is not meaningful
+// and we can safely implement Send for any type
+unsafe impl<F> Send for WasmSafeFuture<F> {}
+
+impl<F: std::future::Future> std::future::Future for WasmSafeFuture<F> {
+    type Output = F::Output;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        // SAFETY: We're not moving the inner future, just projecting the Pin
+        let inner = unsafe { self.map_unchecked_mut(|s| &mut s.0) };
+        inner.poll(cx)
+    }
+}
+
 use crate::{
     embed_js::embed_file_path,
     execution_context::ExecutionContext,
-    transforms::postcss::{PostCssConfigLocation, ProcessPostCssResult},
+    transforms::{
+        postcss::{
+            PostCssConfigLocation, PostCssProcessingResult, ProcessPostCssResult, postcss_configs,
+        },
+        util::EmittedAsset,
+    },
 };
-
-/// Result structure for PostCSS processing in Web Worker environment
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct PostCssProcessingResult {
-    css: String,
-    map: Option<String>,
-}
 
 /// PostCSS transform that executes in a Web Worker environment
 /// This implementation delegates PostCSS processing to a dedicated Web Worker
@@ -104,16 +130,45 @@ impl Source for PostCssTransformedAsset {
 #[turbo_tasks::value_impl]
 impl Asset for PostCssTransformedAsset {
     #[turbo_tasks::function]
-    async fn content(&self) -> Result<Vc<AssetContent>> {
+    async fn content(self: ResolvedVc<Self>) -> Result<Vc<AssetContent>> {
+        let this = self.await?;
+        Ok(*transform_webworker_process_operation(self)
+            .issue_file_path(
+                this.source.ident().path().owned().await?,
+                "PostCSS WebWorker processing",
+            )
+            .await?
+            .connect()
+            .await?
+            .content)
+    }
+}
+
+#[turbo_tasks::function(operation)]
+fn transform_webworker_process_operation(
+    asset: ResolvedVc<PostCssTransformedAsset>,
+) -> Vc<ProcessPostCssResult> {
+    asset.process()
+}
+
+#[turbo_tasks::value_impl]
+impl PostCssTransformedAsset {
+    #[turbo_tasks::function]
+    async fn process(&self) -> Result<Vc<ProcessPostCssResult>> {
         let source_content = self.source.content();
         let AssetContent::File(file) = *source_content.await? else {
             bail!("PostCSS Web Worker transform only supports transforming files");
         };
         let FileContent::Content(content) = &*file.await? else {
-            return Ok(AssetContent::File(FileContent::NotFound.resolved_cell()).cell());
+            return Ok(ProcessPostCssResult {
+                content: AssetContent::File(FileContent::NotFound.resolved_cell()).resolved_cell(),
+                assets: Vec::new(),
+            }
+            .cell());
         };
 
         let content_str = content.content().to_str()?;
+        let source_map = self.source_map;
 
         // Get execution context for project path
         let ExecutionContext {
@@ -124,7 +179,7 @@ impl Asset for PostCssTransformedAsset {
 
         // Find PostCSS configuration file
         let config_path =
-            find_config_in_location(project_path.clone(), self.config_location, self.source)
+            find_config_in_location(project_path.clone(), self.config_location, *self.source)
                 .await?;
 
         // Get relative path for the current CSS file
@@ -136,20 +191,42 @@ impl Asset for PostCssTransformedAsset {
                 "input.css".to_string() // Fallback for virtual assets
             };
 
-        // TODO: Execute PostCSS processing via Web Worker
-        // For now, return the content with a comment to indicate WebWorker processing
-        let processed_css = format!(
-            "/* PostCSS WebWorker - Config: {:?} */\n{}",
-            config_path
-                .as_ref()
-                .map(|p| p.path.as_str())
-                .unwrap_or("none"),
-            content_str
-        );
+        // Execute PostCSS processing using WasmSafeFuture for Send compatibility
+        let processing_result = {
+            let content_str = content_str.clone();
+            let resource_path = resource_path.clone();
+            let config_path_opt = config_path.as_ref().map(|p| p.path.as_str().to_string());
 
-        Ok(AssetContent::File(
-            FileContent::Content(File::from(processed_css).into()).resolved_cell(),
-        )
+            // Use WasmSafeFuture to make the non-Send WebWorker future appear Send
+            WasmSafeFuture::new(async move {
+                execute_postcss_with_sendwrapper(
+                    &content_str,
+                    &resource_path,
+                    config_path_opt.as_deref(),
+                    source_map,
+                )
+                .await
+            })
+            .await
+            .context("Failed to process CSS with PostCSS Web Worker")?
+        };
+
+        let processed_css = processing_result.css;
+
+        // TODO: Handle source map from processing_result.map if source_map is true
+        let assets = if let Some(emitted_assets) = processing_result.assets {
+            crate::transforms::util::emitted_assets_to_virtual_sources(Some(emitted_assets)).await?
+        } else {
+            Vec::new()
+        };
+
+        let file = File::from(processed_css);
+        let content =
+            AssetContent::File(FileContent::Content(file).resolved_cell()).resolved_cell();
+        Ok(ProcessPostCssResult {
+            content,
+            assets: Vec::new(),
+        }
         .cell())
     }
 }
@@ -166,33 +243,10 @@ impl GenerateSourceMap for PostCssTransformedAsset {
     }
 }
 
-#[turbo_tasks::function]
-fn postcss_configs() -> Vc<Vec<RcStr>> {
-    Vc::cell(vec![
-        rcstr!("postcss.config.js"),
-        rcstr!("postcss.config.mjs"),
-        rcstr!("postcss.config.cjs"),
-        rcstr!("postcss.config.ts"),
-        rcstr!("postcss.config.mts"),
-        rcstr!("postcss.config.cts"),
-        rcstr!(".postcssrc"),
-        rcstr!(".postcssrc.json"),
-        rcstr!(".postcssrc.yml"),
-        rcstr!(".postcssrc.yaml"),
-        rcstr!(".postcssrc.js"),
-        rcstr!(".postcssrc.mjs"),
-        rcstr!(".postcssrc.cjs"),
-        rcstr!(".postcssrc.ts"),
-        rcstr!(".postcssrc.mts"),
-        rcstr!(".postcssrc.cts"),
-        rcstr!("package.json"),
-    ])
-}
-
 async fn find_config_in_location(
     project_path: FileSystemPath,
     location: PostCssConfigLocation,
-    source: ResolvedVc<Box<dyn Source>>,
+    source: Vc<Box<dyn Source>>,
 ) -> Result<Option<FileSystemPath>> {
     if let FindContextFileResult::Found(config_path, _) =
         &*find_context_file_or_package_key(project_path, postcss_configs(), rcstr!("postcss"))
@@ -215,12 +269,11 @@ async fn find_config_in_location(
     Ok(None)
 }
 
-/// Execute PostCSS processing via Web Worker
-async fn execute_postcss_in_webworker(
+/// Execute PostCSS processing via Web Worker with SendWrapper for WASM compatibility
+async fn execute_postcss_with_sendwrapper(
     content: &str,
     resource_path: &str,
-    config_path: Option<&FileSystemPath>,
-    project_path: FileSystemPath,
+    config_path: Option<&str>,
     source_map: bool,
 ) -> Result<PostCssProcessingResult> {
     // Get the embedded postcss-transform-web-worker.js content
@@ -238,11 +291,11 @@ async fn execute_postcss_in_webworker(
         }
     };
 
-    // Create a blob URL for the worker script
-    let blob_parts = js_sys::Array::new();
+    // Use SendWrapper to wrap all non-Send Web API types
+    let blob_parts = SendWrapper::new(js_sys::Array::new());
     blob_parts.push(&JsValue::from_str(&worker_script));
 
-    let blob_props = web_sys::BlobPropertyBag::new();
+    let blob_props = SendWrapper::new(web_sys::BlobPropertyBag::new());
     blob_props.set_type("application/javascript");
 
     let blob = web_sys::Blob::new_with_str_sequence_and_options(&blob_parts, &blob_props)
@@ -251,17 +304,19 @@ async fn execute_postcss_in_webworker(
     let blob_url = web_sys::Url::create_object_url_with_blob(&blob)
         .map_err(|e| anyhow::anyhow!("Failed to create blob URL for worker script: {:?}", e))?;
 
-    // Create the Web Worker
-    let worker = Worker::new(&blob_url)
-        .map_err(|e| anyhow::anyhow!("Failed to create Web Worker: {:?}", e))?;
+    // Create the Web Worker wrapped with SendWrapper
+    let worker = SendWrapper::new(
+        Worker::new(&blob_url)
+            .map_err(|e| anyhow::anyhow!("Failed to create Web Worker: {:?}", e))?,
+    );
 
     // Step 1: Initialize the worker with PostCSS configuration
-    let init_result = initialize_worker(&worker, config_path, project_path.clone())
+    initialize_worker_sendwrapper(&worker, config_path)
         .await
         .context("Failed to initialize PostCSS worker")?;
 
     // Step 2: Send transform request to worker
-    let transform_result = transform_css_with_worker(&worker, content, resource_path, source_map)
+    let transform_result = transform_css_sendwrapper(&worker, content, resource_path, source_map)
         .await
         .context("Failed to transform CSS with worker")?;
 
@@ -271,19 +326,18 @@ async fn execute_postcss_in_webworker(
     Ok(transform_result)
 }
 
-/// Initialize the PostCSS Web Worker with configuration
-async fn initialize_worker(
-    worker: &Worker,
-    config_path: Option<&FileSystemPath>,
-    project_path: FileSystemPath,
+/// Initialize the PostCSS Web Worker with SendWrapper
+async fn initialize_worker_sendwrapper(
+    worker: &SendWrapper<Worker>,
+    config_path: Option<&str>,
 ) -> Result<()> {
-    let (resolve, reject) = create_promise_resolvers();
+    let (resolve, reject) = create_promise_resolvers_sendwrapper();
 
     // Set up message handler for initialization
     let resolve_clone = resolve.clone();
     let reject_clone_msg = reject.clone();
 
-    let onmessage = Closure::wrap(Box::new(move |event: MessageEvent| {
+    let onmessage = SendWrapper::new(Closure::wrap(Box::new(move |event: MessageEvent| {
         let data = event.data();
         if let Some(data_str) = data.as_string() {
             if let Ok(response) = serde_json::from_str::<JsonValue>(&data_str) {
@@ -305,16 +359,16 @@ async fn initialize_worker(
                 }
             }
         }
-    }) as Box<dyn FnMut(MessageEvent)>);
+    }) as Box<dyn FnMut(MessageEvent)>));
 
     // Set up error handler
     let reject_clone_err = reject.clone();
-    let onerror = Closure::wrap(Box::new(move |error: web_sys::ErrorEvent| {
+    let onerror = SendWrapper::new(Closure::wrap(Box::new(move |error: web_sys::ErrorEvent| {
         if let Some(reject_fn) = reject_clone_err.borrow_mut().take() {
             let error_msg = format!("Worker error during initialization: {:?}", error.message());
             let _ = reject_fn.call1(&JsValue::NULL, &JsValue::from_str(&error_msg));
         }
-    }) as Box<dyn FnMut(web_sys::ErrorEvent)>);
+    }) as Box<dyn FnMut(web_sys::ErrorEvent)>));
 
     worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     worker.set_onerror(Some(onerror.as_ref().unchecked_ref()));
@@ -325,7 +379,7 @@ async fn initialize_worker(
             "type": "init",
             "data": {
                 "config": {
-                    "configPath": config_path.path,
+                    "configPath": config_path,
                     "plugins": {
                         "autoprefixer": true
                     }
@@ -351,32 +405,32 @@ async fn initialize_worker(
         .map_err(|e| anyhow::anyhow!("Failed to send init message to worker: {:?}", e))?;
 
     // Create and await the promise
-    let promise = create_promise_from_resolvers(resolve, reject);
+    let promise = create_promise_from_resolvers_sendwrapper(resolve, reject);
     JsFuture::from(promise)
         .await
         .map_err(|e| anyhow::anyhow!("Worker initialization failed: {:?}", e))?;
 
     // Clean up event handlers
-    onmessage.forget();
-    onerror.forget();
+    SendWrapper::take(onmessage).forget();
+    SendWrapper::take(onerror).forget();
 
     Ok(())
 }
 
-/// Transform CSS content using the initialized Web Worker
-async fn transform_css_with_worker(
-    worker: &Worker,
+/// Transform CSS content using the initialized Web Worker with SendWrapper
+async fn transform_css_sendwrapper(
+    worker: &SendWrapper<Worker>,
     content: &str,
     resource_path: &str,
     source_map: bool,
 ) -> Result<PostCssProcessingResult> {
-    let (resolve, reject) = create_promise_resolvers();
+    let (resolve, reject) = create_promise_resolvers_sendwrapper();
 
     // Set up message handler for transformation
     let resolve_clone = resolve.clone();
     let reject_clone_msg = reject.clone();
 
-    let onmessage = Closure::wrap(Box::new(move |event: MessageEvent| {
+    let onmessage = SendWrapper::new(Closure::wrap(Box::new(move |event: MessageEvent| {
         let data = event.data();
         if let Some(data_str) = data.as_string() {
             if let Ok(response) = serde_json::from_str::<JsonValue>(&data_str) {
@@ -398,16 +452,16 @@ async fn transform_css_with_worker(
                 }
             }
         }
-    }) as Box<dyn FnMut(MessageEvent)>);
+    }) as Box<dyn FnMut(MessageEvent)>));
 
     // Set up error handler
     let reject_clone_err = reject.clone();
-    let onerror = Closure::wrap(Box::new(move |error: web_sys::ErrorEvent| {
+    let onerror = SendWrapper::new(Closure::wrap(Box::new(move |error: web_sys::ErrorEvent| {
         if let Some(reject_fn) = reject_clone_err.borrow_mut().take() {
             let error_msg = format!("Worker error during transformation: {:?}", error.message());
             let _ = reject_fn.call1(&JsValue::NULL, &JsValue::from_str(&error_msg));
         }
-    }) as Box<dyn FnMut(web_sys::ErrorEvent)>);
+    }) as Box<dyn FnMut(web_sys::ErrorEvent)>));
 
     worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
     worker.set_onerror(Some(onerror.as_ref().unchecked_ref()));
@@ -430,14 +484,14 @@ async fn transform_css_with_worker(
         .map_err(|e| anyhow::anyhow!("Failed to send transform message to worker: {:?}", e))?;
 
     // Create and await the promise
-    let promise = create_promise_from_resolvers(resolve, reject);
+    let promise = create_promise_from_resolvers_sendwrapper(resolve, reject);
     let result = JsFuture::from(promise)
         .await
         .map_err(|e| anyhow::anyhow!("CSS transformation failed: {:?}", e))?;
 
     // Clean up event handlers
-    onmessage.forget();
-    onerror.forget();
+    SendWrapper::take(onmessage).forget();
+    SendWrapper::take(onerror).forget();
 
     // Parse the transformation result
     let result_str = result
@@ -456,21 +510,26 @@ async fn transform_css_with_worker(
             .ok_or_else(|| anyhow::anyhow!("Missing 'css' field in worker result"))?
             .to_string(),
         map: transform_data["map"].as_str().map(|s| s.to_string()),
+        assets: transform_data["assets"].as_array().map(|arr| {
+            arr.iter()
+                .filter_map(|asset| serde_json::from_value::<EmittedAsset>(asset.clone()).ok())
+                .collect()
+        }),
     };
 
     Ok(processed_result)
 }
 
-/// Create promise resolver functions for async worker communication
-fn create_promise_resolvers() -> (
+/// Create promise resolver functions for async worker communication with SendWrapper
+fn create_promise_resolvers_sendwrapper() -> (
     Rc<RefCell<Option<js_sys::Function>>>,
     Rc<RefCell<Option<js_sys::Function>>>,
 ) {
     (Rc::new(RefCell::new(None)), Rc::new(RefCell::new(None)))
 }
 
-/// Create a JS Promise from resolver functions
-fn create_promise_from_resolvers(
+/// Create a JS Promise from resolver functions with SendWrapper
+fn create_promise_from_resolvers_sendwrapper(
     resolve: Rc<RefCell<Option<js_sys::Function>>>,
     reject: Rc<RefCell<Option<js_sys::Function>>>,
 ) -> Promise {

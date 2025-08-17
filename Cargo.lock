@@ -9976,6 +9976,7 @@ dependencies = [
  "parking_lot",
  "regex",
  "rustc-hash 2.1.1",
+ "send_wrapper",
  "serde",
  "serde_bytes",
  "serde_json",
