@@ -47,14 +47,10 @@ turbopack-dev-server = { workspace = true }
 turbopack-ecmascript = { workspace = true }
 turbopack-resolve = { workspace = true }
 
-# Conditional dependencies for non-WASM targets
-[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-tokio = { workspace = true, features = ["full"] }
-
-# WASM target specific dependencies
-[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-# Use minimal tokio for WASM that only includes basic features
+# Dependencies for both WASM and non-WASM targets
 tokio = { workspace = true, features = ["sync", "time", "macros"] }
+
+# WASM-specific dependencies (since webworker.rs is WASM-only)
 web-sys = { version = "0.3.77", features = [
     "Worker",
     "MessageEvent", 
@@ -68,6 +64,7 @@ web-sys = { version = "0.3.77", features = [
 wasm-bindgen = "0.2.100"
 wasm-bindgen-futures = "0.4.50"
 js-sys = "0.3.77"
+send_wrapper = "0.6"
 
 [build-dependencies]
 turbo-tasks-build = { workspace = true }
