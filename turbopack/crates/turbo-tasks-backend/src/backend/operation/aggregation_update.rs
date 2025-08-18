@@ -1,5 +1,3 @@
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-use std::time::Instant;
 use std::{
     cmp::{Ordering, max},
     collections::{VecDeque, hash_map::Entry as HashMapEntry},
@@ -17,14 +15,13 @@ use ringmap::RingSet;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeSeq};
 use smallvec::{SmallVec, smallvec};
+use tokio::time::Instant;
 #[cfg(any(
     feature = "trace_aggregation_update",
     feature = "trace_find_and_schedule"
 ))]
 use tracing::{span::Span, trace_span};
 use turbo_tasks::{FxIndexMap, SessionId, TaskExecutionReason, TaskId};
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use wasmtimer::std::Instant;
 
 #[cfg(feature = "trace_task_dirty")]
 use crate::backend::operation::invalidate::TaskDirtyCause;

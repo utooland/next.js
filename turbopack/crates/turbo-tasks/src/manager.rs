@@ -1,5 +1,3 @@
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-use std::time::Instant;
 use std::{
     any::Any,
     future::Future,
@@ -19,12 +17,10 @@ use auto_hash_map::AutoMap;
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use tokio::{runtime::Handle, select, sync::mpsc::Receiver, task_local};
+use tokio::{runtime::Handle, select, sync::mpsc::Receiver, task_local, time::Instant};
 use tokio_util::task::TaskTracker;
 use tracing::{Instrument, Level, Span, info_span, instrument, trace_span};
 use turbo_tasks_malloc::TurboMalloc;
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use wasmtimer::std::Instant;
 
 use crate::{
     Completion, InvalidationReason, InvalidationReasonSet, OutputContent, ReadCellOptions,

@@ -1274,7 +1274,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -8703,9 +8703,8 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.47.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43864ed400b6043a4757a25c7a64a8efde741aed79a056a2fb348a406701bb35"
+version = "1.47.1"
+source = "git+https://github.com/utooland/tokio.git#51ca8d3309fc4ae65e3069907ba3b983c2a217be"
 dependencies = [
  "backtrace",
  "bytes",
@@ -8719,14 +8718,16 @@ dependencies = [
  "socket2 0.6.0",
  "tokio-macros",
  "tracing",
+ "wasm_thread",
+ "wasmtimer",
  "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.3.9"
+version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a6fc632b256d3ac6054a8b46e1027924ce3efde269c27986b061c495df572de"
+checksum = "3069b311a711f644e296045971579468f10207abe19a19d605f41beb166016aa"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
@@ -8736,6 +8737,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "send_wrapper",
  "tokio",
+ "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -8744,8 +8746,7 @@ dependencies = [
 [[package]]
 name = "tokio-macros"
 version = "2.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e06d43f1345a3bcd39f6a56dbb7dcab2ba47e68e8ac134855e7e2bdbaf8cab8"
+source = "git+https://github.com/utooland/tokio.git#51ca8d3309fc4ae65e3069907ba3b983c2a217be"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8798,15 +8799,13 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
+version = "0.7.16"
+source = "git+https://github.com/utooland/tokio.git#51ca8d3309fc4ae65e3069907ba3b983c2a217be"
 dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
  "futures-util",
- "hashbrown 0.14.5",
  "pin-project-lite",
  "tokio",
 ]
@@ -9297,7 +9296,6 @@ dependencies = [
  "turbo-tasks-macros",
  "turbo-tasks-malloc",
  "unsize",
- "wasmtimer",
 ]
 
 [[package]]
@@ -9337,7 +9335,6 @@ dependencies = [
  "turbo-tasks",
  "turbo-tasks-build",
  "turbo-tasks-testing",
- "wasmtimer",
 ]
 
 [[package]]
@@ -10745,6 +10742,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm_thread"
+version = "0.3.3"
+source = "git+https://github.com/utooland/wasm_thread.git#8a2cc22e61b95c748703b61c99c165dd79efd07a"
+dependencies = [
+ "futures",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "wasmer"
 version = "6.1.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11105,8 +11113,7 @@ dependencies = [
 [[package]]
 name = "wasmtimer"
 version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8d49b5d6c64e8558d9b1b065014426f35c18de636895d24893dbbd329743446"
+source = "git+https://github.com/utooland/wasmtimer-rs.git#55ad34a6d1475eb3affa7c92e7a933068cbfe609"
 dependencies = [
  "futures",
  "js-sys",

@@ -60,8 +60,6 @@ turbo-tasks-macros = { workspace = true }
 turbo-tasks-malloc = { workspace = true }
 unsize = { workspace = true }
 
-[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-wasmtimer = { workspace = true }
 
 [build-dependencies]
 turbo-tasks-build = { workspace = true }

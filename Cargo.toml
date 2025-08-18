@@ -430,8 +430,8 @@ syn = "2.0.100"
 tempfile = "3.20.0"
 thread_local = "1.1.8"
 thiserror = "1.0.48"
-tokio = "1.43.0"
-tokio-util = { version = "0.7.13", features = ["io", "rt"] }
+tokio = "1.47.1"
+tokio-util = { version = "0.7.16", features = ["io", "rt"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
 triomphe = { git = "https://github.com/sokra/triomphe", branch = "sokra/unstable" }
@@ -441,10 +441,11 @@ urlencoding = "2.1.2"
 vergen = { version = "9.0.6", features = ["cargo"] }
 vergen-gitcl = { version = "1.0.8", features = ["cargo"] }
 webbrowser = "0.8.7"
-wasmtimer = "0.4.2"
 
 [patch.crates-io]
 hyper = { git = "https://github.com/bgw/hyper-rs.git", branch = "v1.6.0-with-macos-intel-miscompilation-workaround" }
 mdxjs = { git = "https://github.com/mischnic/mdxjs-rs.git", branch = "swc-core-32" }
 lightningcss = { git = "https://github.com/parcel-bundler/lightningcss.git", branch = "mischnic/bump-browserslist" }
 parcel_selectors = { git = "https://github.com/parcel-bundler/lightningcss.git", branch = "mischnic/bump-browserslist" }
+tokio = { git = "https://github.com/utooland/tokio.git", package = "tokio" }
+tokio-util = { git = "https://github.com/utooland/tokio.git", package = "tokio-util" }
