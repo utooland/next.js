@@ -25,6 +25,7 @@ use turbopack_ecmascript::{
 };
 use turbopack_mdx::MdxTransform;
 use turbopack_node::transforms::{postcss::PostCssTransform, webpack::WebpackLoaders};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -379,6 +380,7 @@ impl ModuleOptions {
                 vec![ModuleRuleEffect::ModuleType(ModuleType::Raw)],
             ),
             // WebAssembly
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleRule::new(
                 RuleCondition::any(vec![
                     RuleCondition::ResourcePathEndsWith(".wasm".to_string()),
@@ -388,6 +390,7 @@ impl ModuleOptions {
                     source_ty: WebAssemblySourceType::Binary,
                 })],
             ),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleRule::new(
                 RuleCondition::any(vec![RuleCondition::ResourcePathEndsWith(
                     ".wat".to_string(),

@@ -10,6 +10,7 @@ use futures::{
     channel::mpsc::{UnboundedSender, unbounded},
     pin_mut,
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use futures_retry::{FutureRetry, RetryPolicy};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -327,6 +328,7 @@ const MAX_FAST_ATTEMPTS: usize = 5;
 /// Total number of attempts.
 const MAX_ATTEMPTS: usize = MAX_FAST_ATTEMPTS * 2;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl futures_retry::ErrorHandler<anyhow::Error> for PoolErrorHandler {
     type OutError = anyhow::Error;
 
@@ -461,6 +463,15 @@ pub async fn evaluate(
     .await
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub async fn compute(
+    evaluate_context: impl EvaluateContext,
+    sender: Vc<JavaScriptStreamSender>,
+) -> Result<Vc<()>> {
+    unreachable!()
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub async fn compute(
     evaluate_context: impl EvaluateContext,
     sender: Vc<JavaScriptStreamSender>,

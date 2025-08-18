@@ -35,7 +35,6 @@ include_dir = { version = "0.7.2", features = ["nightly"] }
 indexmap = { workspace = true }
 jsonc-parser = { version = "0.21.0", features = ["serde"] }
 mime = { workspace = true }
-notify = { workspace = true }
 parking_lot = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
@@ -52,8 +51,11 @@ turbo-tasks = { workspace = true }
 turbo-tasks-hash = { workspace = true }
 urlencoding = { workspace = true }
 
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+notify = { workspace = true }
+
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-tokio-fs-ext = "0.3.9"
+tokio-fs-ext = "0.3.10"
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }

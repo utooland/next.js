@@ -23,7 +23,6 @@ use indexmap::IndexSet;
 use parking_lot::{Condvar, Mutex};
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use smallvec::{SmallVec, smallvec};
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use tokio::time::{Instant, sleep_until};
 use tracing::field::Empty;
 use turbo_tasks::{
@@ -42,8 +41,6 @@ use turbo_tasks::{
     turbo_tasks,
     util::IdFactoryWithReuse,
 };
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use wasmtimer::{std::Instant, tokio::sleep_until};
 
 pub use self::{operation::AnyOperation, storage::TaskDataCategory};
 #[cfg(feature = "trace_task_dirty")]

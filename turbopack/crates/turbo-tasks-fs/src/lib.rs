@@ -22,6 +22,7 @@ pub mod rope;
 pub mod source_context;
 pub mod util;
 pub(crate) mod virtual_fs;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod watcher;
 use std::{
     borrow::Cow,
@@ -62,6 +63,7 @@ use turbo_tasks::{
 use turbo_tasks_hash::{DeterministicHash, DeterministicHasher, hash_xxh3_hash64};
 use util::{extract_disk_access, join_path, normalize_path, sys_to_unix, unix_to_sys};
 pub use virtual_fs::VirtualFileSystem;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use watcher::DiskWatcher;
 
 use self::{invalidation::Write, json::UnparsableJson, mutex_map::MutexMap};
@@ -240,6 +242,7 @@ struct DiskFileSystemInner {
     semaphore: tokio::sync::Semaphore,
 
     #[turbo_tasks(debug_ignore, trace_ignore)]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     watcher: DiskWatcher,
 }
 
@@ -255,7 +258,8 @@ impl DiskFileSystemInner {
         let invalidator = turbo_tasks::get_invalidator();
         self.invalidator_map
             .insert(path_to_key(path), invalidator, None);
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows",)))]
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         if let Some(dir) = path.parent() {
             self.watcher.ensure_watching(dir, self.root_path())?;
         }
@@ -285,6 +289,7 @@ impl DiskFileSystemInner {
         invalidators.insert(invalidator, Some(write_content));
         drop(invalidator_map);
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         if let Some(dir) = path.parent() {
             self.watcher.ensure_watching(dir, self.root_path())?;
         }
@@ -298,6 +303,7 @@ impl DiskFileSystemInner {
         self.dir_invalidator_map
             .insert(path_to_key(path), invalidator, None);
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         self.watcher.ensure_watching(path, self.root_path())?;
         Ok(())
     }
@@ -378,6 +384,7 @@ impl DiskFileSystemInner {
     }
 
     #[tracing::instrument(level = "info", name = "start filesystem watching", skip_all, fields(path = %self.root))]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn start_watching_internal(
         self: &Arc<Self>,
         report_invalidation_reason: bool,
@@ -451,12 +458,14 @@ impl DiskFileSystem {
         self.inner.invalidate_with_reason(reason);
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn start_watching(&self, poll_interval: Option<Duration>) -> Result<()> {
         self.inner
             .start_watching_internal(false, poll_interval)
             .await
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn start_watching_with_invalidation_reason(
         &self,
         poll_interval: Option<Duration>,
@@ -466,6 +475,7 @@ impl DiskFileSystem {
             .await
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn stop_watching(&self) {
         self.inner.watcher.stop_watching();
     }
@@ -529,6 +539,7 @@ impl DiskFileSystem {
                 invalidator_map: InvalidatorMap::new(),
                 dir_invalidator_map: InvalidatorMap::new(),
                 semaphore: create_semaphore(),
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                 watcher: DiskWatcher::new(
                     ignored_subpaths.into_iter().map(PathBuf::from).collect(),
                 ),

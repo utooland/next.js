@@ -63,6 +63,7 @@ use turbopack_json::JsonModuleAsset;
 pub use turbopack_resolve::{resolve::resolve_options, resolve_options_context};
 use turbopack_resolve::{resolve_options_context::ResolveOptionsContext, typescript::type_resolve};
 use turbopack_static::{css::StaticUrlCssModule, ecma::StaticUrlJsModule};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::{module_asset::WebAssemblyModuleAsset, source::WebAssemblySource};
 
 use self::transition::{Transition, TransitionOptions};
@@ -250,6 +251,7 @@ async fn apply_module_type(
         ModuleType::StaticUrlCss => {
             ResolvedVc::upcast(StaticUrlCssModule::new(*source).to_resolved().await?)
         }
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         ModuleType::WebAssembly { source_ty } => ResolvedVc::upcast(
             WebAssemblyModuleAsset::new(
                 WebAssemblySource::new(*source, *source_ty),
@@ -1002,6 +1004,7 @@ pub fn register() {
     turbopack_json::register();
     turbopack_resolve::register();
     turbopack_static::register();
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     turbopack_wasm::register();
     include!(concat!(env!("OUT_DIR"), "/register.rs"));
 }
