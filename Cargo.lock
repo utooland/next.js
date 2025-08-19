@@ -1274,7 +1274,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6426,9 +6426,6 @@ name = "send_wrapper"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
-dependencies = [
- "futures-core",
-]
 
 [[package]]
 name = "seq-macro"
@@ -8725,9 +8722,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.3.10"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3069b311a711f644e296045971579468f10207abe19a19d605f41beb166016aa"
+checksum = "04b2319ac8140aced57c6f8d9d07a0676ab594172a475bac65dbe65f2a4f9503"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
@@ -8735,7 +8732,6 @@ dependencies = [
  "js-sys",
  "pin-project-lite",
  "rustc-hash 2.1.1",
- "send_wrapper",
  "tokio",
  "tracing",
  "wasm-bindgen",

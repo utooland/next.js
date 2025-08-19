@@ -55,7 +55,7 @@ urlencoding = { workspace = true }
 notify = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-tokio-fs-ext = "0.3.10"
+tokio-fs-ext = "0.3.11"
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
