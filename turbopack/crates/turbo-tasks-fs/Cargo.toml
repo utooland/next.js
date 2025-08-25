@@ -55,7 +55,7 @@ urlencoding = { workspace = true }
 notify = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-tokio-fs-ext = "0.5.1"
+tokio-fs-ext = "0.5.2"
 wasm_thread = { git = "https://github.com/utooland/wasm_thread.git", default-features = false, features = [
   "spawn_from_worker",
 ] }
