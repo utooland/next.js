@@ -5746,6 +5746,7 @@ checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
 dependencies = [
  "either",
  "rayon-core",
+ "wasm_sync",
 ]
 
 [[package]]
@@ -5756,6 +5757,7 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+ "wasm_sync",
 ]
 
 [[package]]
@@ -10737,6 +10739,17 @@ checksum = "b3bc393c395cb621367ff02d854179882b9a351b4e0c93d1397e6090b53a5c2a"
 dependencies = [
  "leb128fmt",
  "wasmparser 0.235.0",
+]
+
+[[package]]
+name = "wasm_sync"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cff360cade7fec41ff0e9d2cda57fe58258c5f16def0e21302394659e6bbb0ea"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
