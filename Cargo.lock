@@ -8722,9 +8722,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.3.11"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04b2319ac8140aced57c6f8d9d07a0676ab594172a475bac65dbe65f2a4f9503"
+checksum = "18c1fdbd47c3cad0bde5dd73610c1e0b30b24ed01ed0f6918fef3bfaf41916d5"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
@@ -8733,6 +8733,7 @@ dependencies = [
  "pin-project-lite",
  "rustc-hash 2.1.1",
  "tokio",
+ "tokio-stream",
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -9448,6 +9449,7 @@ dependencies = [
  "turbo-tasks-hash",
  "turbo-tasks-testing",
  "urlencoding",
+ "wasm_thread",
 ]
 
 [[package]]
@@ -10740,7 +10742,7 @@ dependencies = [
 [[package]]
 name = "wasm_thread"
 version = "0.3.3"
-source = "git+https://github.com/utooland/wasm_thread.git#8a2cc22e61b95c748703b61c99c165dd79efd07a"
+source = "git+https://github.com/utooland/wasm_thread.git#94438ff771ee0a6a55d79e49a655707970acb615"
 dependencies = [
  "futures",
  "js-sys",
