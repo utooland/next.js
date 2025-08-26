@@ -418,14 +418,22 @@ impl DiskFileSystemInner {
             |fs_context| fs_context.created_directories.contains(directory),
         );
         if !already_created {
-            let func = |p: &Path| std::fs::create_dir_all(p);
-            retry_blocking(directory.to_path_buf(), func)
-                .concurrency_limited(&self.semaphore)
-                .instrument(tracing::info_span!(
-                    "create directory",
-                    name = display(directory.display())
-                ))
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            retry_blocking(directory.to_path_buf(), |p: &Path| {
+                std::fs::create_dir_all(p)
+            })
+            .concurrency_limited(&self.semaphore)
+            .instrument(tracing::info_span!(
+                "create directory",
+                name = display(directory.display())
+            ))
+            .await?;
+
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            wasm_fs_offload::CLIENT
+                .create_dir_all(directory.to_path_buf())
                 .await?;
+
             ApplyEffectsContext::with(|fs_context: &mut DiskFileSystemApplyContext| {
                 fs_context
                     .created_directories
@@ -1038,10 +1046,19 @@ impl FileSystem for DiskFileSystem {
                     anyhow::bail!("invalid symlink target: {}", full_path.display())
                 }
                 LinkContent::NotFound => {
-                    retry_blocking(full_path.clone().into_owned(), |path| {
-                        std::fs::remove_file(path)
-                    })
-                    .concurrency_limited(&inner.semaphore)
+                    {
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                        {
+                            retry_blocking(full_path.clone().into_owned(), |path| {
+                                std::fs::remove_file(path)
+                            })
+                            .concurrency_limited(&inner.semaphore)
+                        }
+                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                        {
+                            wasm_fs_offload::CLIENT.remove_file(full_path.clone())
+                        }
+                    }
                     .await
                     .or_else(|err| {
                         if err.kind() == ErrorKind::NotFound {
