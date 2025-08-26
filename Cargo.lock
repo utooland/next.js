@@ -1274,7 +1274,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8722,9 +8722,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.5.3"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee5f304e25ab0a98c9f8bdb22a636dba8cdcd539d9db25ed33eea151781803e7"
+checksum = "3768e656a4795a2eaaca9137c35022a351b59e1021763636bfc992549fab94b4"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
