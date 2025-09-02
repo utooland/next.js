@@ -50,12 +50,13 @@ turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
 turbo-tasks-hash = { workspace = true }
 urlencoding = { workspace = true }
+notify-types = { workspace = true }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 notify = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-tokio-fs-ext = { version = "0.5.6", features = ["wasm_offload"] }
+tokio-fs-ext = { version = "0.6.0", features = ["opfs_offload", "opfs_watch"] }
 wasm_thread = { git = "https://github.com/utooland/wasm_thread.git", default-features = false, features = [
   "spawn_from_worker",
 ] }

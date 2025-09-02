@@ -8701,7 +8701,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 [[package]]
 name = "tokio"
 version = "1.47.1"
-source = "git+https://github.com/utooland/tokio.git#51ca8d3309fc4ae65e3069907ba3b983c2a217be"
+source = "git+https://github.com/utooland/tokio.git#f7a655259439f28f84399bb522d1d98d9967f565"
 dependencies = [
  "backtrace",
  "bytes",
@@ -8722,14 +8722,15 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.5.6"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5421f082289a0de4940f3750d926c39d6d67521f147fd4c302c54b74a5e4e2ca"
+checksum = "87223f929731a8c553fc96b4fe4799eaca35e22b7e6a7aab420093cfaa96b930"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
  "futures",
  "js-sys",
+ "notify-types",
  "pin-project-lite",
  "rustc-hash 2.1.1",
  "tokio",
@@ -8742,7 +8743,7 @@ dependencies = [
 [[package]]
 name = "tokio-macros"
 version = "2.5.0"
-source = "git+https://github.com/utooland/tokio.git#51ca8d3309fc4ae65e3069907ba3b983c2a217be"
+source = "git+https://github.com/utooland/tokio.git#f7a655259439f28f84399bb522d1d98d9967f565"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8796,7 +8797,7 @@ dependencies = [
 [[package]]
 name = "tokio-util"
 version = "0.7.16"
-source = "git+https://github.com/utooland/tokio.git#51ca8d3309fc4ae65e3069907ba3b983c2a217be"
+source = "git+https://github.com/utooland/tokio.git#f7a655259439f28f84399bb522d1d98d9967f565"
 dependencies = [
  "bytes",
  "futures-core",
@@ -9426,6 +9427,7 @@ dependencies = [
  "jsonc-parser 0.21.0",
  "mime",
  "notify",
+ "notify-types",
  "parking_lot",
  "rayon",
  "regex",
@@ -11109,8 +11111,9 @@ dependencies = [
 
 [[package]]
 name = "wasmtimer"
-version = "0.4.2"
-source = "git+https://github.com/utooland/wasmtimer-rs.git#55ad34a6d1475eb3affa7c92e7a933068cbfe609"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c598d6b99ea013e35844697fc4670d08339d5cda15588f193c6beedd12f644b"
 dependencies = [
  "futures",
  "js-sys",
