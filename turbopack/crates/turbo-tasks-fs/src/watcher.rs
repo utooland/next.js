@@ -11,18 +11,18 @@ use std::{
 };
 
 use anyhow::Result;
-use notify::{
-    Config, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher,
-    event::{MetadataKind, ModifyKind, RenameMode},
-};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use notify::{Config, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
+use notify_types::event::{EventKind, MetadataKind, ModifyKind, RenameMode};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rustc_hash::{FxHashMap, FxHashSet};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use turbo_rcstr::RcStr;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use turbo_tasks::spawn_thread;
 use turbo_tasks::{
-    FxIndexSet, InvalidationReason, InvalidationReasonKind, Invalidator, spawn_thread,
-    util::StaticOrArc,
+    FxIndexSet, InvalidationReason, InvalidationReasonKind, Invalidator, util::StaticOrArc,
 };
 
 use crate::{
@@ -32,11 +32,13 @@ use crate::{
     path_to_key,
 };
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 enum DiskWatcherInternal {
     Recommended(RecommendedWatcher),
     Polling(PollWatcher),
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl DiskWatcherInternal {
     fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> notify::Result<()> {
         match self {
@@ -48,6 +50,7 @@ impl DiskWatcherInternal {
 
 #[derive(Default, Serialize, Deserialize)]
 pub(crate) struct DiskWatcher {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[serde(skip)]
     watcher: Mutex<Option<DiskWatcherInternal>>,
 
@@ -74,6 +77,7 @@ impl DiskWatcher {
 
     /// Called after a rescan in case a previously watched-but-deleted directory was recreated.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) fn restore_all_watching(&self, root_path: &Path) {
         let mut watcher = self.watcher.lock().unwrap();
         for dir_path in self.watching.iter() {
@@ -84,6 +88,7 @@ impl DiskWatcher {
 
     /// Called when a new directory is found in a parent directory we're watching.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) fn restore_if_watching(&self, dir_path: &Path, root_path: &Path) -> Result<()> {
         if self.watching.contains(dir_path) {
             let mut watcher = self.watcher.lock().unwrap();
@@ -94,6 +99,7 @@ impl DiskWatcher {
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) fn ensure_watching(&self, dir_path: &Path, root_path: &Path) -> Result<()> {
         if self.watching.contains(dir_path) {
             return Ok(());
@@ -107,6 +113,7 @@ impl DiskWatcher {
 
     /// Private helper, assumes that the path has already been added to `self.watching`.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     fn start_watching_dir(
         &self,
         watcher: &mut std::sync::MutexGuard<Option<DiskWatcherInternal>>,
@@ -169,6 +176,7 @@ impl DiskWatcher {
     /// - Emits only one Remove event when deleting a directory (inotify)
     /// - Doesn't emit duplicate create events
     /// - Doesn't emit Modify events after a Create event
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) fn start_watching(
         &self,
         inner: Arc<DiskFileSystemInner>,
@@ -261,7 +269,138 @@ impl DiskWatcher {
         Ok(())
     }
 
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub(crate) async fn start_watching(
+        &self,
+        inner: Arc<DiskFileSystemInner>,
+        report_invalidation_reason: bool,
+        poll_interval: Option<Duration>,
+    ) -> Result<()> {
+        use crate::wasm_fs_offload;
+
+        let ignored_subpaths = self.ignored_subpaths.clone();
+        let inner_arc = inner.clone();
+        let watch_dir = wasm_fs_offload::CLIENT
+            .watch_dir(inner.root_path(), true, move |event| {
+                let paths: Vec<PathBuf> = event
+                    .paths
+                    .iter()
+                    .filter(|p| {
+                        !ignored_subpaths
+                            .iter()
+                            .any(|ignored| p.starts_with(ignored))
+                    })
+                    .cloned()
+                    .collect();
+
+                if paths.is_empty() {
+                    return;
+                }
+
+                let mut batched_invalidate_path = FxHashSet::default();
+                let mut batched_invalidate_path_dir = FxHashSet::default();
+                let mut batched_invalidate_path_and_children = FxHashSet::default();
+                let mut batched_invalidate_path_and_children_dir = FxHashSet::default();
+
+                match event.kind {
+                    EventKind::Modify(
+                        ModifyKind::Data(_) | ModifyKind::Metadata(MetadataKind::Any),
+                    ) => {
+                        batched_invalidate_path.extend(paths);
+                    }
+                    EventKind::Create(_) => {
+                        batched_invalidate_path_and_children.extend(paths.clone());
+                        batched_invalidate_path_and_children_dir.extend(paths.clone());
+                        paths.iter().for_each(|path| {
+                            if let Some(parent) = path.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                        });
+                    }
+                    EventKind::Remove(_) => {
+                        batched_invalidate_path_and_children.extend(paths.clone());
+                        batched_invalidate_path_and_children_dir.extend(paths.clone());
+                        paths.iter().for_each(|path| {
+                            if let Some(parent) = path.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                        });
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+                        if let [source, destination, ..] = &paths[..] {
+                            batched_invalidate_path_and_children.insert(source.clone());
+                            if let Some(parent) = source.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                            batched_invalidate_path_and_children.insert(destination.clone());
+                            if let Some(parent) = destination.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                        } else {
+                            panic!(
+                                "Rename event does not contain source and destination paths \
+                                 {paths:#?}"
+                            );
+                        }
+                    }
+                    EventKind::Any | EventKind::Modify(ModifyKind::Any | ModifyKind::Name(..)) => {
+                        batched_invalidate_path.extend(paths.clone());
+                        batched_invalidate_path_and_children.extend(paths.clone());
+                        batched_invalidate_path_and_children_dir.extend(paths.clone());
+                        for parent in paths.iter().filter_map(|path| path.parent()) {
+                            batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                        }
+                    }
+                    EventKind::Modify(ModifyKind::Metadata(..) | ModifyKind::Other)
+                    | EventKind::Access(_)
+                    | EventKind::Other => {
+                        // ignored
+                    }
+                }
+
+                // FIXME: this will hang forever on wasm
+                // let _lock = inner_arc.invalidation_lock.blocking_write();
+                {
+                    let mut invalidator_map = inner_arc.invalidator_map.lock().unwrap();
+
+                    invalidate_path(
+                        &inner_arc,
+                        report_invalidation_reason,
+                        &mut invalidator_map,
+                        batched_invalidate_path.drain(),
+                    );
+
+                    invalidate_path_and_children_execute(
+                        &inner_arc,
+                        report_invalidation_reason,
+                        &mut invalidator_map,
+                        batched_invalidate_path_and_children.drain(),
+                    );
+                }
+                {
+                    let mut dir_invalidator_map = inner_arc.dir_invalidator_map.lock().unwrap();
+                    invalidate_path(
+                        &inner_arc,
+                        report_invalidation_reason,
+                        &mut dir_invalidator_map,
+                        batched_invalidate_path_dir.drain(),
+                    );
+
+                    invalidate_path_and_children_execute(
+                        &inner_arc,
+                        report_invalidation_reason,
+                        &mut dir_invalidator_map,
+                        batched_invalidate_path_and_children_dir.drain(),
+                    );
+                }
+            })
+            .await?;
+
+        Ok(())
+    }
+
     pub(crate) fn stop_watching(&self) {
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         if let Some(watcher) = self.watcher.lock().unwrap().take() {
             drop(watcher);
             // thread will detect the stop because the channel is disconnected
@@ -272,6 +411,7 @@ impl DiskWatcher {
     /// and invalidates the cache.
     ///
     /// Should only be called once from `start_watching`.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     fn watch_thread(
         &self,
         rx: Receiver<notify::Result<notify::Event>>,

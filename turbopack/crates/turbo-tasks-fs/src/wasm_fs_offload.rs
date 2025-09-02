@@ -1,7 +1,11 @@
-use std::sync::LazyLock;
+use std::{
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use tokio_fs_ext::offload::{self, FsOffload};
 
