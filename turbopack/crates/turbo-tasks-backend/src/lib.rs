@@ -107,7 +107,6 @@ pub fn noop_backing_storage() -> NoopBackingStorage {
 #[cfg(feature = "lmdb")]
 pub type DefaultBackingStorage = LmdbBackingStorage;
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[cfg(not(feature = "lmdb"))]
 pub type DefaultBackingStorage = TurboBackingStorage;
 
