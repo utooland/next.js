@@ -1274,7 +1274,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -8701,7 +8701,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 [[package]]
 name = "tokio"
 version = "1.47.1"
-source = "git+https://github.com/utooland/tokio.git#f7a655259439f28f84399bb522d1d98d9967f565"
+source = "git+https://github.com/utooland/tokio.git#0b9f7720e2b65634e0fb7d7d8be9073fc21d96a1"
 dependencies = [
  "backtrace",
  "bytes",
@@ -8722,9 +8722,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87223f929731a8c553fc96b4fe4799eaca35e22b7e6a7aab420093cfaa96b930"
+checksum = "4ad92d6bbf0a431eb81210baebb6253e42f0f8b225fd02f30ebcbbd83951d90f"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
@@ -8743,7 +8743,7 @@ dependencies = [
 [[package]]
 name = "tokio-macros"
 version = "2.5.0"
-source = "git+https://github.com/utooland/tokio.git#f7a655259439f28f84399bb522d1d98d9967f565"
+source = "git+https://github.com/utooland/tokio.git#0b9f7720e2b65634e0fb7d7d8be9073fc21d96a1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8797,7 +8797,7 @@ dependencies = [
 [[package]]
 name = "tokio-util"
 version = "0.7.16"
-source = "git+https://github.com/utooland/tokio.git#f7a655259439f28f84399bb522d1d98d9967f565"
+source = "git+https://github.com/utooland/tokio.git#0b9f7720e2b65634e0fb7d7d8be9073fc21d96a1"
 dependencies = [
  "bytes",
  "futures-core",
@@ -9450,7 +9450,6 @@ dependencies = [
  "turbo-tasks-hash",
  "turbo-tasks-testing",
  "urlencoding",
- "wasm_thread",
 ]
 
 [[package]]
@@ -10743,7 +10742,7 @@ dependencies = [
 [[package]]
 name = "wasm_thread"
 version = "0.3.3"
-source = "git+https://github.com/utooland/wasm_thread.git#94438ff771ee0a6a55d79e49a655707970acb615"
+source = "git+https://github.com/utooland/wasm_thread.git#1155d645aedfdbe55f8ea336a9e8a8150239beb0"
 dependencies = [
  "futures",
  "js-sys",

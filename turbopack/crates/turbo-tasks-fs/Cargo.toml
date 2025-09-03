@@ -56,10 +56,7 @@ notify-types = { workspace = true }
 notify = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-tokio-fs-ext = { version = "0.6.0", features = ["opfs_offload", "opfs_watch"] }
-wasm_thread = { git = "https://github.com/utooland/wasm_thread.git", default-features = false, features = [
-  "spawn_from_worker",
-] }
+tokio-fs-ext = { version = "0.6.1", features = ["opfs_offload", "opfs_watch"] }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
