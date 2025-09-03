@@ -683,7 +683,9 @@ pub async fn externals_tracing_module_context(
         custom_conditions: match ty {
             ExternalType::CommonJs => vec![rcstr!("require"), rcstr!("node")],
             ExternalType::EcmaScriptModule => vec![rcstr!("import"), rcstr!("node")],
-            ExternalType::Url | ExternalType::Global | ExternalType::Script | ExternalType::Umd => vec![rcstr!("node")],
+            ExternalType::Url | ExternalType::Global | ExternalType::Script | ExternalType::Umd => {
+                vec![rcstr!("node")]
+            }
         },
         ..Default::default()
     };
