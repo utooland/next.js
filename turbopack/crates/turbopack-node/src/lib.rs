@@ -2,10 +2,9 @@
 #![feature(arbitrary_self_types)]
 #![feature(arbitrary_self_types_pointers)]
 
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
 use std::iter::once;
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-use std::{iter::once, thread::available_parallelism};
+use std::thread::available_parallelism;
 
 use anyhow::{Result, bail};
 pub use node_entry::{NodeEntry, NodeRenderingEntries, NodeRenderingEntry};
@@ -34,6 +33,7 @@ pub mod debug;
 pub mod embed_js;
 pub mod evaluate;
 pub mod execution_context;
+mod heap_queue;
 mod node_entry;
 mod pool;
 pub mod render;
@@ -246,11 +246,8 @@ pub async fn get_renderer_pool_operation(
     content_changed(*ResolvedVc::upcast(intermediate_asset)).await?;
 
     Ok(NodeJsPool::new(
-        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         cwd,
-        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         entrypoint,
-        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         env.read_all()
             .await?
             .iter()
@@ -259,9 +256,16 @@ pub async fn get_renderer_pool_operation(
         assets_for_source_mapping.to_resolved().await?,
         output_root,
         project_dir,
-        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         {
-            available_parallelism().map_or(1, |v| v.get())
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            {
+                available_parallelism().map_or(1, |v| v.get())
+            }
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            {
+                // TODO:
+                4
+            }
         },
         debug,
     )

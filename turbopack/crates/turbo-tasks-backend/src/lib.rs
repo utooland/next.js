@@ -87,12 +87,13 @@ pub fn turbo_backing_storage(
     base_path: &Path,
     version_info: &GitVersionInfo,
     is_ci: bool,
+    is_short_session: bool,
 ) -> Result<(TurboBackingStorage, StartupCacheState)> {
     KeyValueDatabaseBackingStorage::open_versioned_on_disk(
         base_path.to_owned(),
         version_info,
         is_ci,
-        TurboKeyValueDatabase::new,
+        |path| TurboKeyValueDatabase::new(path, is_ci, is_short_session),
     )
 }
 
@@ -117,6 +118,7 @@ pub fn default_backing_storage(
     path: &Path,
     version_info: &GitVersionInfo,
     is_ci: bool,
+    is_short_session: bool,
 ) -> Result<(DefaultBackingStorage, StartupCacheState)> {
     #[cfg(feature = "lmdb")]
     {
@@ -124,6 +126,6 @@ pub fn default_backing_storage(
     }
     #[cfg(not(feature = "lmdb"))]
     {
-        turbo_backing_storage(path, version_info, is_ci)
+        turbo_backing_storage(path, version_info, is_ci, is_short_session)
     }
 }

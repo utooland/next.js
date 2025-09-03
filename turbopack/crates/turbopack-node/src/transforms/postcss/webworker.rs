@@ -276,20 +276,8 @@ async fn execute_postcss_with_sendwrapper(
     config_path: Option<&str>,
     source_map: bool,
 ) -> Result<PostCssProcessingResult> {
-    // Get the embedded postcss-transform-web-worker.js content
-    let worker_script_path = embed_file_path(rcstr!("transforms/postcss-transform-web-worker.js"));
-    let worker_script_asset = worker_script_path.await?;
-    let worker_script_content = worker_script_asset.read().await?;
-
-    let worker_script = match &*worker_script_content {
-        FileContent::Content(file_content) => file_content
-            .content()
-            .to_str()
-            .context("Worker script must be valid UTF-8")?,
-        FileContent::NotFound => {
-            bail!("postcss-transform-web-worker.js not found in embedded files")
-        }
-    };
+    // FIXME:
+    let worker_script = "postcss";
 
     // Use SendWrapper to wrap all non-Send Web API types
     let blob_parts = SendWrapper::new(js_sys::Array::new());

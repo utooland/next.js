@@ -48,7 +48,7 @@ turbopack-resolve = { workspace = true }
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
 futures-retry = { workspace = true }
-tokio = { workspace =  true, features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 
 # WASM-specific dependencies (since webworker.rs is WASM-only)
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
@@ -66,6 +66,7 @@ wasm-bindgen = "0.2.100"
 wasm-bindgen-futures = "0.4.50"
 js-sys = "0.3.77"
 send_wrapper = "0.6"
+tokio = { workspace = true, features = ["sync", "io-util"] }
 
 [build-dependencies]
 turbo-tasks-build = { workspace = true }

@@ -22,7 +22,6 @@ pub async fn content_from_relative_path(
     let disk_fs = DiskFileSystem::new(
         root_path.to_string_lossy().into(),
         root_path.to_string_lossy().into(),
-        vec![],
     );
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     disk_fs.await?.start_watching(None).await?;

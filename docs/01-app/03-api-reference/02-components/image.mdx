@@ -53,7 +53,9 @@ The following props are available:
 | [`onError`](#onerror)                     | `onError(event => fail()}`               | Function        | -          |
 | [`loading`](#loading)                     | `loading="lazy"`                         | String          | -          |
 | [`blurDataURL`](#blurdataurl)             | `blurDataURL="data:image/jpeg..."`       | String          | -          |
+| [`unoptimized`](#unoptimized)             | `unoptimized={true}`                     | Boolean         | -          |
 | [`overrideSrc`](#overridesrc)             | `overrideSrc="/seo.png"`                 | String          | -          |
+| [`decoding`](#decoding)                   | `decoding="async"`                       | String          | -          |
 </div>
 
 #### `src`
@@ -277,7 +279,7 @@ A boolean that indicates if the image should be preloaded.
 
 **When not to use it:**
 
-- When the `loading` prop isused (will trigger warnings).
+- When the `loading` prop is used (will trigger warnings).
 
 #### `loading`
 
@@ -636,6 +638,18 @@ export default function myImageLoader({ src, width, quality }) {
 
 > Alternatively, you can use the [`loader` prop](#loader) to configure each instance of `next/image`.
 
+#### `path`
+
+If you want to change or prefix the default path for the Image Optimization API, you can do so with the `path` property. The default value for `path` is `/_next/image`.
+
+```js filename="next.config.js"
+module.exports = {
+  images: {
+    path: '/my-prefix/_next/image',
+  },
+}
+```
+
 #### `deviceSizes`
 
 `deviceSizes` allows you to specify a list of device width breakpoints. These widths are used when the `next/image` component uses [`sizes`](#sizes) prop to ensure the correct image is served for the user's device.
@@ -670,15 +684,33 @@ module.exports = {
 
 `qualities` allows you to specify a list of image quality values.
 
+If not configuration is provided, the default below is used:
+
 ```js filename="next.config.js"
 module.exports = {
   images: {
-    qualities: [25, 50, 75],
+    qualities: [75],
   },
 }
 ```
 
-In the example above, only three qualities are allowed: 25, 50, and 75. If the [`quality`](#quality) prop does not match a value in this array, the image will fail with a `400` Bad Request.
+> **Good to know**: This field is required starting with Next.js 16 because unrestricted access could allow malicious actors to optimize more qualities than you intended.
+
+You can add more image qualities to the allowlist, such as the following:
+
+```js filename="next.config.js"
+module.exports = {
+  images: {
+    qualities: [25, 50, 75, 100],
+  },
+}
+```
+
+In the example above, only four qualities are allowed: 25, 50, 75, and 100.
+
+If the [`quality`](#quality) prop does not match a value in this array, the closest allowed value will be used.
+
+If the REST API is visited directly with a quality that does not match a value in this array, the server will return a 400 Bad Request response.
 
 #### `formats`
 
@@ -727,7 +759,7 @@ module.exports = {
 }
 ```
 
-You can increase the TTL to reduce the number of revalidations and potentionally lower cost:
+You can increase the TTL to reduce the number of revalidations and potentially lower cost:
 
 ```js filename="next.config.js"
 module.exports = {
@@ -878,7 +910,6 @@ This `next/image` component uses browser native [lazy loading](https://caniuse.c
   - Use CSS `@supports (font: -apple-system-body) and (-webkit-appearance: none) { img[loading="lazy"] { clip-path: inset(0.6px) } }`
   - Use [`priority`](#priority) if the image is above the fold
 - [Firefox 67+](https://bugzilla.mozilla.org/show_bug.cgi?id=1556156) displays a white background while loading. Possible solutions:
-
   - Enable [AVIF `formats`](#formats)
   - Use [`placeholder`](#placeholder)
 
@@ -1238,6 +1269,7 @@ export default function Home() {
 
 | Version    | Changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `v16.0.0`  | `qualities` default configuration changed to `[75]`.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `v15.3.0`  | `remotePatterns` added support for array of `URL` objects.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `v15.0.0`  | `contentDispositionType` configuration default changed to `attachment`.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `v14.2.23` | `qualities` configuration added.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |

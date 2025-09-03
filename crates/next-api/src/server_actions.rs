@@ -8,7 +8,7 @@ use next_core::{
     util::NextRuntime,
 };
 use swc_core::{
-    atoms::Atom,
+    atoms::{Atom, atom},
     common::comments::Comments,
     ecma::{
         ast::{
@@ -19,11 +19,13 @@ use swc_core::{
     },
 };
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{FxIndexMap, ResolvedVc, TryFlatJoinIterExt, ValueToString, Vc};
+use turbo_tasks::{FxIndexMap, ResolvedVc, TryFlatJoinIterExt, Vc};
 use turbo_tasks_fs::{self, File, FileSystemPath, rope::RopeBuilder};
 use turbopack_core::{
     asset::AssetContent,
-    chunk::{ChunkItem, ChunkItemExt, ChunkableModule, ChunkingContext, EvaluatableAsset},
+    chunk::{
+        ChunkItem, ChunkItemExt, ChunkableModule, ChunkingContext, EvaluatableAsset, ModuleId,
+    },
     context::AssetContext,
     file_source::FileSource,
     ident::AssetIdent,
@@ -168,22 +170,43 @@ async fn build_manifest(
     let key = format!("app{page_name}");
 
     let actions_value = actions.await?;
-    let loader_id = chunk_item.id().to_string().await?;
+    let loader_id = chunk_item.id().await?;
+    let loader_id = match &*loader_id {
+        ModuleId::Number(id) => ActionManifestModuleId::Number(*id),
+        ModuleId::String(id) => ActionManifestModuleId::String(id),
+    };
     let mapping = match runtime {
         NextRuntime::Edge => &mut manifest.edge,
         NextRuntime::NodeJs => &mut manifest.node,
     };
 
-    for (hash_id, (layer, _name, _module)) in actions_value {
+    // Collect all the action metadata including filenames
+    let mut action_metadata: Vec<(String, (ActionLayer, String, String))> = Vec::new();
+    for (hash_id, (layer, name, module)) in actions_value.iter() {
+        // Get the module path and use the full path
+        let module_path = module.ident().path().await?;
+        let full_path = module_path.to_string();
+
+        action_metadata.push((hash_id.clone(), (*layer, name.clone(), full_path)));
+    }
+
+    // Now create the manifest entries
+    for (hash_id, (layer, name, filename)) in &action_metadata {
         let entry = mapping.entry(hash_id.as_str()).or_default();
         entry.workers.insert(
             &key,
             ActionManifestWorkerEntry {
-                module_id: ActionManifestModuleId::String(loader_id.as_str()),
+                module_id: loader_id.clone(),
                 is_async: *async_module_info.is_async(chunk_item.module()).await?,
+                exported_name: name.as_str(),
+                filename: filename.as_str(),
             },
         );
         entry.layer.insert(&key, *layer);
+
+        // Hoist the filename and exported_name to the entry level
+        entry.exported_name = name.as_str();
+        entry.filename = filename.as_str();
     }
 
     Ok(ResolvedVc::upcast(
@@ -321,7 +344,7 @@ fn all_export_names(program: &Program) -> Vec<Atom> {
                     ModuleItem::ModuleDecl(
                         ModuleDecl::ExportDefaultExpr(..) | ModuleDecl::ExportDefaultDecl(..),
                     ) => {
-                        exports.push("default".into());
+                        exports.push(atom!("default"));
                     }
                     ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(decl)) => match &decl.decl {
                         Decl::Class(c) => {
@@ -354,7 +377,7 @@ fn all_export_names(program: &Program) -> Vec<Atom> {
                                     );
                                 }
                                 ExportSpecifier::Default(_) => {
-                                    exports.push("default".into());
+                                    exports.push(atom!("default"));
                                 }
                                 ExportSpecifier::Namespace(e) => {
                                     exports.push(e.name.atom().clone());

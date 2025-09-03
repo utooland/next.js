@@ -133,8 +133,7 @@ impl EcmascriptChunkItem for StaticUrlJsChunkItem {
     async fn content(&self) -> Result<Vc<EcmascriptChunkItemContent>> {
         Ok(EcmascriptChunkItemContent {
             inner_code: format!(
-                // FIXME: handle publicPath
-                "{TURBOPACK_EXPORT_VALUE}(location.origin + {path});",
+                "{TURBOPACK_EXPORT_VALUE}({path});",
                 path = StringifyJs(
                     &self
                         .chunking_context

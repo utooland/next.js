@@ -32,8 +32,7 @@ pin_project! {
         #[pin]
         future: F,
         duration: Duration,
-        allocations: usize,
-        deallocations: usize,
+        allocations: AllocationInfo,
     }
 }
 
@@ -42,8 +41,7 @@ impl<T, F: Future<Output = T>> CaptureFuture<T, F> {
         Self {
             future,
             duration: Duration::ZERO,
-            allocations: 0,
-            deallocations: 0,
+            allocations: AllocationInfo::ZERO,
         }
     }
 }
@@ -78,6 +76,17 @@ pub struct TurboTasksPanic {
     pub location: Option<String>,
 }
 
+impl TurboTasksPanic {
+    pub fn into_panic(self) -> Box<dyn std::any::Any + Send> {
+        Box::new(format!(
+            "{} at {}",
+            self.message,
+            self.location
+                .unwrap_or_else(|| "unknown location".to_string())
+        ))
+    }
+}
+
 impl Display for TurboTasksPanic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
@@ -85,7 +94,7 @@ impl Display for TurboTasksPanic {
 }
 
 impl<T, F: Future<Output = T>> Future for CaptureFuture<T, F> {
-    type Output = (Result<T, TurboTasksPanic>, Duration, usize);
+    type Output = (Result<T, TurboTasksPanic>, Duration, AllocationInfo);
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -128,17 +137,10 @@ impl<T, F: Future<Output = T>> Future for CaptureFuture<T, F> {
         let elapsed = start.elapsed();
         let allocations = start_allocations.until_now();
         *this.duration += elapsed + data.duration;
-        *this.allocations += allocations.allocations + data.allocations;
-        *this.deallocations += allocations.deallocations + data.deallocations;
+        *this.allocations += allocations;
         match result {
-            Err(err) => {
-                let memory_usage = this.allocations.saturating_sub(*this.deallocations);
-                Poll::Ready((Err(err), *this.duration, memory_usage))
-            }
-            Ok(Poll::Ready(r)) => {
-                let memory_usage = this.allocations.saturating_sub(*this.deallocations);
-                Poll::Ready((Ok(r), *this.duration, memory_usage))
-            }
+            Err(err) => Poll::Ready((Err(err), *this.duration, this.allocations.clone())),
+            Ok(Poll::Ready(r)) => Poll::Ready((Ok(r), *this.duration, this.allocations.clone())),
             Ok(Poll::Pending) => Poll::Pending,
         }
     }

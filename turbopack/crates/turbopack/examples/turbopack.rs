@@ -17,7 +17,7 @@ use turbopack_core::{
     PROJECT_FILESYSTEM_NAME,
     compile_time_info::CompileTimeInfo,
     context::AssetContext,
-    environment::{Environment, ExecutionEnvironment, NodeJsEnvironment},
+    environment::{BrowserEnvironment, Environment, ExecutionEnvironment, NodeJsEnvironment},
     file_source::FileSource,
     ident::Layer,
     rebase::RebasedAsset,
@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     let task = tt.spawn_root_task(|| {
         Box::pin(async {
             let root: RcStr = current_dir().unwrap().to_str().unwrap().into();
-            let disk_fs = DiskFileSystem::new(PROJECT_FILESYSTEM_NAME.into(), root, vec![]);
+            let disk_fs = DiskFileSystem::new(PROJECT_FILESYSTEM_NAME.into(), root);
             disk_fs.await?.start_watching(None).await?;
 
             // Smart Pointer cast
@@ -49,9 +49,12 @@ async fn main() -> Result<()> {
             let source = FileSource::new(entry);
             let module_asset_context = turbopack::ModuleAssetContext::new(
                 Default::default(),
-                CompileTimeInfo::new(Environment::new(ExecutionEnvironment::NodeJsLambda(
-                    NodeJsEnvironment::default().resolved_cell(),
-                ))),
+                CompileTimeInfo::new(Environment::new(
+                    ExecutionEnvironment::NodeJsLambda(
+                        NodeJsEnvironment::default().resolved_cell(),
+                    ),
+                    BrowserEnvironment::default().cell(),
+                )),
                 Default::default(),
                 ResolveOptionsContext {
                     enable_typescript: true,

@@ -146,8 +146,7 @@ impl EcmascriptChunkItem for RawModuleChunkItem {
 
         Ok(EcmascriptChunkItemContent {
             inner_code: format!(
-                // FIXME: handle publicPath
-                "{TURBOPACK_EXPORT_VALUE}( location.origin + {path});",
+                "{TURBOPACK_EXPORT_VALUE}({path});",
                 path = StringifyJs(path)
             )
             .into(),

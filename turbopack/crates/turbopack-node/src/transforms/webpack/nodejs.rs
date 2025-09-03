@@ -15,7 +15,10 @@ use turbo_tasks::{
 use turbo_tasks_bytes::stream::SingleValue;
 use turbo_tasks_env::ProcessEnv;
 use turbo_tasks_fs::{
-    File, FileContent, FileSystemPath, glob::Glob, json::parse_json_with_source_context, rope::Rope,
+    File, FileContent, FileSystemPath,
+    glob::{Glob, GlobOptions},
+    json::parse_json_with_source_context,
+    rope::Rope,
 };
 use turbopack_core::{
     asset::{Asset, AssetContent},
@@ -87,6 +90,7 @@ struct WebpackLoadersProcessingResult {
 )]
 pub struct WebpackLoaderItem {
     pub loader: RcStr,
+    #[serde(default)]
     pub options: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -353,6 +357,7 @@ pub enum InfoMessage {
     // Sent to inform Turbopack about the dependencies of the task.
     // All fields are `default` since it is ok for the client to
     // simply omit instead of sending empty arrays.
+    #[serde(rename_all = "camelCase")]
     Dependencies {
         #[serde(default)]
         env_variables: Vec<RcStr>,
@@ -503,7 +508,7 @@ impl EvaluateContext for WebpackLoaderContext {
                     .map(|(dir, glob)| async move {
                         self.cwd
                             .join(dir)?
-                            .track_glob(Glob::new(glob.clone()), false)
+                            .track_glob(Glob::new(glob.clone(), GlobOptions::default()), false)
                             .await
                     })
                     .try_join();

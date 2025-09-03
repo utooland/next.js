@@ -11,7 +11,9 @@ use turbopack_core::{
         module_id_strategies::ModuleIdStrategy,
     },
     compile_time_info::{CompileTimeDefines, CompileTimeInfo, FreeVarReference, FreeVarReferences},
-    environment::{EdgeWorkerEnvironment, Environment, ExecutionEnvironment, NodeJsVersion},
+    environment::{
+        BrowserEnvironment, EdgeWorkerEnvironment, Environment, ExecutionEnvironment, NodeJsVersion,
+    },
     free_var_references,
     module_graph::export_usage::OptionExportUsageInfo,
 };
@@ -60,11 +62,23 @@ pub async fn get_edge_compile_time_info(
     project_path: FileSystemPath,
     define_env: Vc<OptionEnvMap>,
     node_version: ResolvedVc<NodeJsVersion>,
+    css_browserslist_query: RcStr,
 ) -> Result<Vc<CompileTimeInfo>> {
+    let css_environment = BrowserEnvironment {
+        dom: false,
+        web_worker: false,
+        service_worker: false,
+        browserslist_query: css_browserslist_query,
+    }
+    .resolved_cell();
+
     CompileTimeInfo::builder(
-        Environment::new(ExecutionEnvironment::EdgeWorker(
-            EdgeWorkerEnvironment { node_version }.resolved_cell(),
-        ))
+        Environment::new(
+            ExecutionEnvironment::EdgeWorker(
+                EdgeWorkerEnvironment { node_version }.resolved_cell(),
+            ),
+            *css_environment,
+        )
         .to_resolved()
         .await?,
     )
@@ -147,14 +161,8 @@ pub async fn get_edge_resolve_options_context(
     )];
 
     // https://github.com/vercel/next.js/blob/bf52c254973d99fed9d71507a2e818af80b8ade7/packages/next/src/build/webpack-config.ts#L96-L102
-    let mut custom_conditions = vec![mode.await?.condition().into()];
-    custom_conditions.extend(
-        NextRuntime::Edge
-            .conditions()
-            .iter()
-            .map(ToString::to_string)
-            .map(RcStr::from),
-    );
+    let mut custom_conditions: Vec<_> = mode.await?.custom_resolve_conditions().collect();
+    custom_conditions.extend(NextRuntime::Edge.custom_resolve_conditions());
 
     if ty.should_use_react_server_condition() {
         custom_conditions.push(rcstr!("react-server"));

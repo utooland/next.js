@@ -307,14 +307,9 @@ async fn execute_in_webworker(
 
 async fn execute_in_webworker_wasm(payload: JsonValue) -> Result<WebpackLoadersProcessingResult> {
     // Get the embedded webpack-loaders-webworker.js content
-    let worker_script_path = embed_file_path(rcstr!("transforms/webpack-loaders-webworker.js"))
-        .owned()
-        .await?;
-    let worker_script_content = worker_script_path.read().await?;
-    let worker_script = match &*worker_script_content {
-        FileContent::Content(content) => content.content().to_str()?,
-        _ => bail!("webpack-loaders-webworker.js not found"),
-    };
+
+    // FIXME:
+    let worker_script = "webpack-loaders-webworker";
 
     // Create a blob URL for the worker script
     let blob_parts = js_sys::Array::new();

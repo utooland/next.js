@@ -45,6 +45,7 @@ import type { TLSSocket } from 'tls'
 import type { PathnameNormalizer } from './normalizers/request/pathname-normalizer'
 import type { InstrumentationModule } from './instrumentation/types'
 
+import * as path from 'path'
 import { format as formatUrl, parse as parseUrl } from 'url'
 import { formatHostname } from './lib/format-hostname'
 import {
@@ -96,7 +97,12 @@ import { AppRouteRouteMatcherProvider } from './route-matcher-providers/app-rout
 import { PagesAPIRouteMatcherProvider } from './route-matcher-providers/pages-api-route-matcher-provider'
 import { PagesRouteMatcherProvider } from './route-matcher-providers/pages-route-matcher-provider'
 import { ServerManifestLoader } from './route-matcher-providers/helpers/manifest-loaders/server-manifest-loader'
-import { getTracer, isBubbledError, SpanKind } from './lib/trace/tracer'
+import {
+  getTracer,
+  isBubbledError,
+  SpanKind,
+  SpanStatusCode,
+} from './lib/trace/tracer'
 import { BaseServerSpan } from './lib/trace/constants'
 import { I18NProvider } from './lib/i18n-provider'
 import { sendResponse } from './send-response'
@@ -142,6 +148,7 @@ import { computeCacheBustingSearchParam } from '../shared/lib/router/utils/cache
 import { setCacheBustingSearchParamWithHash } from '../client/components/router-reducer/set-cache-busting-search-param'
 import type { CacheControl } from './lib/cache-control'
 import type { PrerenderedRoute } from '../build/static-paths/types'
+import { createOpaqueFallbackRouteParams } from './request/fallback-params'
 
 export type FindComponentsResult = {
   components: LoadComponentsReturnType
@@ -438,7 +445,7 @@ export default abstract class Server<
     this.experimentalTestProxy = experimentalTestProxy
     this.serverOptions = options
 
-    this.dir = (require('path') as typeof import('path')).resolve(dir)
+    this.dir = path.resolve(/* turbopackIgnore: true */ dir)
 
     this.quiet = quiet
     this.loadEnvConfig({ dev })
@@ -452,8 +459,8 @@ export default abstract class Server<
       this.fetchHostname = formatHostname(this.hostname)
     }
     this.port = port
-    this.distDir = (require('path') as typeof import('path')).join(
-      this.dir,
+    this.distDir = path.join(
+      /* turbopackIgnore: true */ this.dir,
       this.nextConfig.distDir
     )
     this.publicDir = this.getPublicDir()
@@ -563,6 +570,10 @@ export default abstract class Server<
           this.nextConfig.experimental.clientSegmentCache === 'client-only'
             ? 'client-only'
             : Boolean(this.nextConfig.experimental.clientSegmentCache),
+        clientParamParsing:
+          this.nextConfig.experimental.clientParamParsing ?? false,
+        clientParamParsingOrigins:
+          this.nextConfig.experimental.clientParamParsingOrigins,
         dynamicOnHover: this.nextConfig.experimental.dynamicOnHover ?? false,
         inlineCss: this.nextConfig.experimental.inlineCss ?? false,
         authInterrupts: !!this.nextConfig.experimental.authInterrupts,
@@ -614,10 +625,9 @@ export default abstract class Server<
       parsedUrl.pathname = originalPathname
 
       // Mark the request as a router prefetch request.
-      req.headers[RSC_HEADER.toLowerCase()] = '1'
-      req.headers[NEXT_ROUTER_PREFETCH_HEADER.toLowerCase()] = '1'
-      req.headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER.toLowerCase()] =
-        segmentPath
+      req.headers[RSC_HEADER] = '1'
+      req.headers[NEXT_ROUTER_PREFETCH_HEADER] = '1'
+      req.headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER] = segmentPath
 
       addRequestMeta(req, 'isRSCRequest', true)
       addRequestMeta(req, 'isPrefetchRSCRequest', true)
@@ -629,8 +639,8 @@ export default abstract class Server<
       )
 
       // Mark the request as a router prefetch request.
-      req.headers[RSC_HEADER.toLowerCase()] = '1'
-      req.headers[NEXT_ROUTER_PREFETCH_HEADER.toLowerCase()] = '1'
+      req.headers[RSC_HEADER] = '1'
+      req.headers[NEXT_ROUTER_PREFETCH_HEADER] = '1'
       addRequestMeta(req, 'isRSCRequest', true)
       addRequestMeta(req, 'isPrefetchRSCRequest', true)
     } else if (this.normalizers.rsc?.match(parsedUrl.pathname)) {
@@ -640,7 +650,7 @@ export default abstract class Server<
       )
 
       // Mark the request as a RSC request.
-      req.headers[RSC_HEADER.toLowerCase()] = '1'
+      req.headers[RSC_HEADER] = '1'
       addRequestMeta(req, 'isRSCRequest', true)
     } else if (req.headers['x-now-route-matches']) {
       // If we didn't match, return with the flight headers stripped. If in
@@ -651,14 +661,14 @@ export default abstract class Server<
       stripFlightHeaders(req.headers)
 
       return false
-    } else if (req.headers[RSC_HEADER.toLowerCase()] === '1') {
+    } else if (req.headers[RSC_HEADER] === '1') {
       addRequestMeta(req, 'isRSCRequest', true)
 
-      if (req.headers[NEXT_ROUTER_PREFETCH_HEADER.toLowerCase()] === '1') {
+      if (req.headers[NEXT_ROUTER_PREFETCH_HEADER] === '1') {
         addRequestMeta(req, 'isPrefetchRSCRequest', true)
 
         const segmentPrefetchRSCRequest =
-          req.headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER.toLowerCase()]
+          req.headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER]
         if (typeof segmentPrefetchRSCRequest === 'string') {
           addRequestMeta(
             req,
@@ -896,6 +906,16 @@ export default abstract class Server<
               'http.status_code': res.statusCode,
               'next.rsc': isRSCRequest,
             })
+
+            if (res.statusCode && res.statusCode >= 500) {
+              // For 5xx status codes: SHOULD be set to 'Error' span status.
+              // x-ref: https://opentelemetry.io/docs/specs/semconv/http/http-spans/#status
+              span.setStatus({
+                code: SpanStatusCode.ERROR,
+              })
+              // For span status 'Error', SHOULD set 'error.type' attribute.
+              span.setAttribute('error.type', res.statusCode.toString())
+            }
 
             const rootSpanAttributes = tracer.getRootSpanAttributes()
             // We were unable to get attributes, probably OTEL is not enabled
@@ -1333,7 +1353,7 @@ export default abstract class Server<
                   params
                 )
 
-                req.headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER.toLowerCase()] =
+                req.headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER] =
                   segmentPrefetchRSCRequest
                 addRequestMeta(
                   req,
@@ -1652,7 +1672,7 @@ export default abstract class Server<
   ): Promise<void>
 
   public setAssetPrefix(prefix?: string): void {
-    this.renderOpts.assetPrefix = prefix ? prefix.replace(/\/$/, '') : ''
+    this.nextConfig.assetPrefix = prefix ? prefix.replace(/\/$/, '') : ''
   }
 
   protected prepared: boolean = false
@@ -2016,19 +2036,29 @@ export default abstract class Server<
     ) {
       const headers = req.headers
 
-      const isPrefetchRSCRequest =
-        headers[NEXT_ROUTER_PREFETCH_HEADER.toLowerCase()] ||
-        getRequestMeta(req, 'isPrefetchRSCRequest')
+      const prefetchHeaderValue = headers[NEXT_ROUTER_PREFETCH_HEADER]
+      const routerPrefetch =
+        prefetchHeaderValue !== undefined
+          ? // We only recognize '1' and '2'. Strip all other values here.
+            prefetchHeaderValue === '1' || prefetchHeaderValue === '2'
+            ? prefetchHeaderValue
+            : undefined
+          : // For runtime prefetches, we always perform a dynamic request,
+            // so we don't expect the header to be stripped by an intermediate layer.
+            // This should only happen for static prefetches, so we only handle those here.
+            getRequestMeta(req, 'isPrefetchRSCRequest')
+            ? '1'
+            : undefined
 
       const segmentPrefetchRSCRequest =
-        headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER.toLowerCase()] ||
+        headers[NEXT_ROUTER_SEGMENT_PREFETCH_HEADER] ||
         getRequestMeta(req, 'segmentPrefetchRSCRequest')
 
       const expectedHash = computeCacheBustingSearchParam(
-        isPrefetchRSCRequest ? '1' : '0',
+        routerPrefetch,
         segmentPrefetchRSCRequest,
-        headers[NEXT_ROUTER_STATE_TREE_HEADER.toLowerCase()],
-        headers[NEXT_URL.toLowerCase()]
+        headers[NEXT_ROUTER_STATE_TREE_HEADER],
+        headers[NEXT_URL]
       )
       const actualHash =
         getRequestMeta(req, 'cacheBustingSearchParam') ??
@@ -2293,13 +2323,10 @@ export default abstract class Server<
             }
           }
           if (smallestFallbackRouteParams) {
-            const devValidatingFallbackParams = new Map<string, string>(
-              smallestFallbackRouteParams.map((v) => [v, ''])
-            )
             addRequestMeta(
               req,
               'devValidatingFallbackParams',
-              devValidatingFallbackParams
+              createOpaqueFallbackRouteParams(smallestFallbackRouteParams)!
             )
           }
         }
@@ -2331,7 +2358,13 @@ export default abstract class Server<
         initPathname = normalizer.normalize(initPathname)
       }
     }
-    request.url = `${initPathname}${parsedInitUrl.search || ''}`
+
+    // On minimal mode, the request url of dynamic route can be a
+    // literal dynamic route ('/[slug]') instead of actual URL, so overwriting to initPathname
+    // will transform back the resolved url to the dynamic route pathname.
+    if (!(this.minimalMode && isErrorPathname)) {
+      request.url = `${initPathname}${parsedInitUrl.search || ''}`
+    }
 
     // propagate the request context for dev
     setRequestMeta(request, getRequestMeta(req))
@@ -2384,19 +2417,19 @@ export default abstract class Server<
     return null
   }
 
-  private stripNextDataPath(path: string, stripLocale = true) {
-    if (path.includes(this.buildId)) {
-      const splitPath = path.substring(
-        path.indexOf(this.buildId) + this.buildId.length
+  private stripNextDataPath(filePath: string, stripLocale = true) {
+    if (filePath.includes(this.buildId)) {
+      const splitPath = filePath.substring(
+        filePath.indexOf(this.buildId) + this.buildId.length
       )
 
-      path = denormalizePagePath(splitPath.replace(/\.json$/, ''))
+      filePath = denormalizePagePath(splitPath.replace(/\.json$/, ''))
     }
 
     if (this.localeNormalizer && stripLocale) {
-      return this.localeNormalizer.normalize(path)
+      return this.localeNormalizer.normalize(filePath)
     }
-    return path
+    return filePath
   }
 
   // map the route to the actual bundle name
@@ -2717,9 +2750,10 @@ export default abstract class Server<
 
       const is404 = res.statusCode === 404
       let using404Page = false
+      const hasAppDir = this.enabledDirectories.app
 
       if (is404) {
-        if (this.enabledDirectories.app) {
+        if (hasAppDir) {
           // Use the not-found entry in app directory
           result = await this.findPageComponents({
             locale: getRequestMeta(ctx.req, 'locale'),
@@ -2757,6 +2791,21 @@ export default abstract class Server<
         // skip ensuring /500 in dev mode as it isn't used and the
         // dev overlay is used instead
         if (statusPage !== '/500' || !this.renderOpts.dev) {
+          if (!result && hasAppDir) {
+            // Otherwise if app router present, load app router built-in 500 page
+            result = await this.findPageComponents({
+              locale: getRequestMeta(ctx.req, 'locale'),
+              page: statusPage,
+              query,
+              params: {},
+              isAppPath: true,
+              // Ensuring can't be done here because you never "match" a 500
+              // route.
+              shouldEnsure: true,
+              url: ctx.req.url,
+            })
+          }
+          // If the above App Router result is empty, fallback to pages router 500 page
           result = await this.findPageComponents({
             locale: getRequestMeta(ctx.req, 'locale'),
             page: statusPage,

@@ -3,8 +3,6 @@ use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::Vc;
 use turbo_tasks_env::ProcessEnv;
 use turbo_tasks_fs::FileSystem;
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-use turbopack_core::environment::BrowserEnvironment;
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_core::environment::NodeJsEnvironment;
 use turbopack_core::{
@@ -12,7 +10,7 @@ use turbopack_core::{
     compile_time_info::CompileTimeInfo,
     condition::ContextCondition,
     context::AssetContext,
-    environment::{Environment, ExecutionEnvironment},
+    environment::{BrowserEnvironment, Environment, ExecutionEnvironment},
     ident::Layer,
     resolve::options::{ImportMap, ImportMapping},
 };
@@ -29,9 +27,10 @@ use crate::{
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[turbo_tasks::function]
 pub fn node_build_environment() -> Vc<Environment> {
-    Environment::new(ExecutionEnvironment::NodeJsBuildTime(
-        NodeJsEnvironment::default().resolved_cell(),
-    ))
+    Environment::new(
+        ExecutionEnvironment::NodeJsBuildTime(NodeJsEnvironment::default().resolved_cell()),
+        BrowserEnvironment::default().cell(),
+    )
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -49,7 +48,7 @@ pub async fn node_evaluate_asset_context(
         ImportMap::empty()
     };
     import_map.insert_wildcard_alias(
-        "@vercel/turbopack-node/",
+        rcstr!("@vercel/turbopack-node/"),
         ImportMapping::PrimaryAlternative(
             rcstr!("./*"),
             Some(turbopack_node::embed_js::embed_fs().root().owned().await?),
@@ -125,15 +124,10 @@ pub async fn node_evaluate_asset_context(
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 #[turbo_tasks::function]
 pub fn webworker_build_environment() -> Vc<Environment> {
-    Environment::new(ExecutionEnvironment::Browser(
-        BrowserEnvironment {
-            dom: false,
-            web_worker: true,
-            service_worker: false,
-            browserslist_query: rcstr!("defaults"),
-        }
-        .resolved_cell(),
-    ))
+    Environment::new(
+        ExecutionEnvironment::Browser(BrowserEnvironment::default().resolved_cell()),
+        BrowserEnvironment::default().cell(),
+    )
 }
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
