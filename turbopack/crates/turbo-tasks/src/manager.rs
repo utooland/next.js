@@ -8,7 +8,7 @@ use std::{
         Arc, Mutex, RwLock, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Result, anyhow};
@@ -16,7 +16,7 @@ use auto_hash_map::AutoMap;
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use tokio::{select, sync::mpsc::Receiver, task_local};
+use tokio::{select, sync::mpsc::Receiver, task_local, time::Instant};
 use tokio_util::task::TaskTracker;
 use tracing::{Instrument, Level, instrument, trace_span};
 

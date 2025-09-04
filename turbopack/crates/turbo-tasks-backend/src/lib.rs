@@ -15,7 +15,9 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::database::{noop_kv::NoopKvDb, turbo::TurboKeyValueDatabase};
+use crate::database::noop_kv::NoopKvDb;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::database::turbo::TurboKeyValueDatabase;
 pub use crate::{
     backend::{BackendOptions, StorageMode, TurboTasksBackend},
     backing_storage::BackingStorage,
@@ -71,6 +73,7 @@ pub fn lmdb_backing_storage(
     )
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub type TurboBackingStorage = KeyValueDatabaseBackingStorage<TurboKeyValueDatabase>;
 
 /// Creates a `BackingStorage` to be passed to [`TurboTasksBackend::new`].
@@ -79,6 +82,7 @@ pub type TurboBackingStorage = KeyValueDatabaseBackingStorage<TurboKeyValueDatab
 ///
 /// This is the fastest most-tested implementation of `BackingStorage`, and is normally returned by
 /// [`default_backing_storage`].
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn turbo_backing_storage(
     base_path: &Path,
     version_info: &GitVersionInfo,
@@ -108,6 +112,7 @@ pub type DefaultBackingStorage = TurboBackingStorage;
 
 /// Calls [`turbo_backing_storage`] (recommended) or `lmdb_backing_storage`, depending on if the
 /// `lmdb` cargo feature is enabled.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn default_backing_storage(
     path: &Path,
     version_info: &GitVersionInfo,

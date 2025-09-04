@@ -12,16 +12,17 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use notify::{
-    Config, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher,
-    event::{MetadataKind, ModifyKind, RenameMode},
-};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use notify::{Config, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
+use notify_types::event::{EventKind, MetadataKind, ModifyKind, RenameMode};
 use rustc_hash::FxHashSet;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use turbo_rcstr::RcStr;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use turbo_tasks::spawn_thread;
 use turbo_tasks::{
-    FxIndexSet, InvalidationReason, InvalidationReasonKind, Invalidator, parallel, spawn_thread,
+    FxIndexSet, InvalidationReason, InvalidationReasonKind, Invalidator, parallel,
     util::StaticOrArc,
 };
 
@@ -32,6 +33,7 @@ use crate::{
     path_map::OrderedPathMapExt,
 };
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 static WATCH_RECURSIVE_MODE: LazyLock<RecursiveMode> = LazyLock::new(|| {
     match env::var("TURBO_TASKS_FORCE_WATCH_MODE").as_deref() {
         Ok("recursive") => {
@@ -80,12 +82,15 @@ enum StateWriteGuard<'a> {
 
 impl State {
     fn new_stopped() -> Self {
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         match *WATCH_RECURSIVE_MODE {
             RecursiveMode::Recursive => Self::Recursive(RwLock::new(RecursiveState::Stopped)),
             RecursiveMode::NonRecursive => {
                 Self::NonRecursive(RwLock::new(NonRecursiveState::Stopped))
             }
         }
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        Self::Recursive(RwLock::new(RecursiveState::Stopped))
     }
 
     fn write(&self) -> StateWriteGuard<'_> {
@@ -104,6 +109,7 @@ enum RecursiveState {
     Stopped,
     Watching {
         /// Hold onto the watcher: When this is dropped, it will cause the channel to disconnect
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         _notify_watcher: NotifyWatcher,
     },
 }
@@ -118,6 +124,7 @@ enum NonRecursiveState {
 
 // split out from the `NonRecursiveState` enum because we want to pass this value around
 struct NonRecursiveWatchingState {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     notify_watcher: NotifyWatcher,
     /// Keeps track of which directories are currently or were previously watched by
     /// [`Self::notify_watcher`].
@@ -130,11 +137,13 @@ struct NonRecursiveWatchingState {
 }
 
 /// A thin wrapper around [`RecommendedWatcher`] and [`PollWatcher`].
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 enum NotifyWatcher {
     Recommended(RecommendedWatcher),
     Polling(PollWatcher),
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl NotifyWatcher {
     fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> notify::Result<()> {
         match self {
@@ -149,6 +158,7 @@ mod non_recursive_helpers {
     use crate::path_map::OrderedPathSetExt;
 
     /// Called after a rescan in case a previously watched-but-deleted directory was recreated.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[instrument(skip_all, level = "trace")]
     pub fn restore_all_watched_ignore_errors(state: &RwLock<NonRecursiveState>, root_path: &Path) {
         let mut guard = state.write().unwrap();
@@ -167,6 +177,7 @@ mod non_recursive_helpers {
 
     /// Called when a new directory is found in a parent directory we're watching. Restores the
     /// watcher if we were previously watching it.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[instrument(skip_all, level = "trace")]
     pub fn restore_if_watched(
         state: &RwLock<NonRecursiveState>,
@@ -212,6 +223,7 @@ mod non_recursive_helpers {
     /// if we're not already watching the directory.
     ///
     /// This should be called *before* reading a file to avoid a race condition.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[instrument(skip_all, level = "trace")]
     pub fn ensure_watched(
         state: &RwLock<NonRecursiveState>,
@@ -253,6 +265,7 @@ mod non_recursive_helpers {
     /// This does not watch any of the parent directories. For that, use
     /// [`start_watching_dir_and_parents`]. Use this method when iterating over previously-watched
     /// values in `self.watching`.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     fn start_watching_dir(
         notify_watcher: &mut NotifyWatcher,
         dir_path: &Path,
@@ -281,6 +294,7 @@ mod non_recursive_helpers {
     /// Watches the given `dir_path` and every parent up to `root_path`. Parents must be recursively
     /// watched in case any of them change:
     /// https://docs.rs/notify/latest/notify/#parent-folder-deletion
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     fn start_watching_dir_and_parents(
         state: &mut NonRecursiveWatchingState,
         dir_path: &Path,
@@ -347,6 +361,7 @@ impl DiskWatcher {
     /// - Emits only one Remove event when deleting a directory (inotify)
     /// - Doesn't emit duplicate create events
     /// - Doesn't emit Modify events after a Create event
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn start_watching(
         &self,
         fs_inner: Arc<DiskFileSystemInner>,
@@ -450,6 +465,125 @@ impl DiskWatcher {
         Ok(())
     }
 
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub(crate) async fn start_watching(
+        &self,
+        fs_inner: Arc<DiskFileSystemInner>,
+        report_invalidation_reason: bool,
+        poll_interval: Option<Duration>,
+    ) -> Result<()> {
+        use crate::wasm_fs_offload;
+
+        let fs_inner_arc = fs_inner.clone();
+        let watch_dir = wasm_fs_offload::CLIENT
+            .watch_dir(fs_inner.root_path(), true, move |event| {
+                let paths: Vec<PathBuf> = event.paths;
+
+                if paths.is_empty() {
+                    return;
+                }
+
+                let mut batched_invalidate_path = FxHashSet::default();
+                let mut batched_invalidate_path_dir = FxHashSet::default();
+                let mut batched_invalidate_path_and_children = FxHashSet::default();
+                let mut batched_invalidate_path_and_children_dir = FxHashSet::default();
+
+                match event.kind {
+                    EventKind::Modify(
+                        ModifyKind::Data(_) | ModifyKind::Metadata(MetadataKind::Any),
+                    ) => {
+                        batched_invalidate_path.extend(paths);
+                    }
+                    EventKind::Create(_) => {
+                        batched_invalidate_path_and_children.extend(paths.clone());
+                        batched_invalidate_path_and_children_dir.extend(paths.clone());
+                        paths.iter().for_each(|path| {
+                            if let Some(parent) = path.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                        });
+                    }
+                    EventKind::Remove(_) => {
+                        batched_invalidate_path_and_children.extend(paths.clone());
+                        batched_invalidate_path_and_children_dir.extend(paths.clone());
+                        paths.iter().for_each(|path| {
+                            if let Some(parent) = path.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                        });
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+                        if let [source, destination, ..] = &paths[..] {
+                            batched_invalidate_path_and_children.insert(source.clone());
+                            if let Some(parent) = source.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                            batched_invalidate_path_and_children.insert(destination.clone());
+                            if let Some(parent) = destination.parent() {
+                                batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                            }
+                        } else {
+                            panic!(
+                                "Rename event does not contain source and destination paths \
+                                 {paths:#?}"
+                            );
+                        }
+                    }
+                    EventKind::Any | EventKind::Modify(ModifyKind::Any | ModifyKind::Name(..)) => {
+                        batched_invalidate_path.extend(paths.clone());
+                        batched_invalidate_path_and_children.extend(paths.clone());
+                        batched_invalidate_path_and_children_dir.extend(paths.clone());
+                        for parent in paths.iter().filter_map(|path| path.parent()) {
+                            batched_invalidate_path_dir.insert(PathBuf::from(parent));
+                        }
+                    }
+                    EventKind::Modify(ModifyKind::Metadata(..) | ModifyKind::Other)
+                    | EventKind::Access(_)
+                    | EventKind::Other => {
+                        // ignored
+                    }
+                }
+
+                let _lock = fs_inner_arc.invalidation_lock.blocking_write();
+                {
+                    let mut invalidator_map = fs_inner_arc.invalidator_map.lock().unwrap();
+
+                    invalidate_path(
+                        &fs_inner_arc,
+                        report_invalidation_reason,
+                        &mut invalidator_map,
+                        batched_invalidate_path.drain(),
+                    );
+
+                    invalidate_path_and_children_execute(
+                        &fs_inner_arc,
+                        report_invalidation_reason,
+                        &mut invalidator_map,
+                        batched_invalidate_path_and_children.drain(),
+                    );
+                }
+                {
+                    let mut dir_invalidator_map = fs_inner_arc.dir_invalidator_map.lock().unwrap();
+                    invalidate_path(
+                        &fs_inner_arc,
+                        report_invalidation_reason,
+                        &mut dir_invalidator_map,
+                        batched_invalidate_path_dir.drain(),
+                    );
+
+                    invalidate_path_and_children_execute(
+                        &fs_inner_arc,
+                        report_invalidation_reason,
+                        &mut dir_invalidator_map,
+                        batched_invalidate_path_and_children_dir.drain(),
+                    );
+                }
+            })
+            .await?;
+
+        Ok(())
+    }
+
     pub fn stop_watching(&self) {
         match &self.state {
             State::Recursive(state) => *state.write().unwrap() = RecursiveState::Stopped,
@@ -463,6 +597,7 @@ impl DiskWatcher {
     /// and invalidates the cache.
     ///
     /// Should only be called once from `start_watching`.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     fn watch_thread(
         &self,
         rx: Receiver<notify::Result<notify::Event>>,
@@ -716,6 +851,7 @@ impl DiskWatcher {
         }
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn ensure_watched_file(&self, path: &Path, root_path: &Path) -> Result<()> {
         // Watch the parent directory instead of the specified file, since directories also track
         // their immediate children (even in non-recursive mode), and we need to watch all the
@@ -728,6 +864,7 @@ impl DiskWatcher {
         Ok(())
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn ensure_watched_dir(&self, dir_path: &Path, root_path: &Path) -> Result<()> {
         if let State::NonRecursive(non_recursive) = &self.state {
             non_recursive_helpers::ensure_watched(non_recursive, dir_path, root_path)?;

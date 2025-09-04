@@ -2,7 +2,9 @@
 #![feature(arbitrary_self_types)]
 #![feature(arbitrary_self_types_pointers)]
 
-use std::{iter::once, thread::available_parallelism};
+use std::iter::once;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use std::thread::available_parallelism;
 
 use anyhow::{Result, bail};
 pub use node_entry::{NodeEntry, NodeRenderingEntries, NodeRenderingEntry};
@@ -38,6 +40,9 @@ pub mod render;
 pub mod route_matcher;
 pub mod source_map;
 pub mod transforms;
+
+// Re-export important functions for WASM compatibility
+pub use evaluate::get_evaluate_pool;
 
 #[turbo_tasks::function]
 async fn emit(
@@ -251,7 +256,17 @@ pub async fn get_renderer_pool_operation(
         assets_for_source_mapping.to_resolved().await?,
         output_root,
         project_dir,
-        available_parallelism().map_or(1, |v| v.get()),
+        {
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            {
+                available_parallelism().map_or(1, |v| v.get())
+            }
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            {
+                // TODO:
+                4
+            }
+        },
         debug,
     )
     .cell())

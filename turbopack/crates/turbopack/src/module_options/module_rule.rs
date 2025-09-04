@@ -8,6 +8,7 @@ use turbopack_core::{
 };
 use turbopack_css::CssModuleAssetType;
 use turbopack_ecmascript::{EcmascriptInputTransforms, EcmascriptOptions};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
 use super::{CustomModuleType, RuleCondition, match_mode::MatchMode};
@@ -127,6 +128,7 @@ pub enum ModuleType {
     },
     StaticUrlJs,
     StaticUrlCss,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     WebAssembly {
         source_ty: WebAssemblySourceType,
     },

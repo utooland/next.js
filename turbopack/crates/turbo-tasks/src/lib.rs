@@ -121,9 +121,9 @@ pub use read_ref::ReadRef;
 use rustc_hash::FxHasher;
 pub use serialization_invalidation::SerializationInvalidator;
 pub use shrink_to_fit::ShrinkToFit;
-pub use spawn::{
-    JoinHandle, block_for_future, block_in_place, spawn, spawn_blocking, spawn_thread,
-};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+pub use spawn::spawn_thread;
+pub use spawn::{JoinHandle, block_for_future, block_in_place, spawn, spawn_blocking};
 pub use state::{State, TransientState};
 pub use task::{SharedReference, TypedSharedReference, task_input::TaskInput};
 pub use task_execution_reason::TaskExecutionReason;
