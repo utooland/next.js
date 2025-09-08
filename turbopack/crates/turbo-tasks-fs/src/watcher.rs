@@ -544,7 +544,8 @@ impl DiskWatcher {
                     }
                 }
 
-                let _lock = fs_inner_arc.invalidation_lock.blocking_write();
+                // FIXME: this will cause hanging on wasm now
+                // let _lock = fs_inner_arc.invalidation_lock.blocking_write();
                 {
                     let mut invalidator_map = fs_inner_arc.invalidator_map.lock().unwrap();
 
