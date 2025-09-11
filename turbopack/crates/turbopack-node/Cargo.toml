@@ -52,7 +52,7 @@ tokio = { workspace = true, features = ["full"] }
 
 # WASM-specific dependencies (since webworker.rs is WASM-only)
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-web-sys = { version = "0.3.77", features = [
+web-sys = { version = "0.3.78", features = [
   "Worker",
   "MessageEvent",
   "DedicatedWorkerGlobalScope",
@@ -62,9 +62,9 @@ web-sys = { version = "0.3.77", features = [
   "Url",
   "console",
 ] }
-wasm-bindgen = "0.2.100"
-wasm-bindgen-futures = "0.4.50"
-js-sys = "0.3.77"
+wasm-bindgen = "0.2.101"
+wasm-bindgen-futures = "0.4.51"
+js-sys = "0.3.78"
 send_wrapper = "0.6"
 tokio = { workspace = true, features = ["sync", "io-util"] }
 
