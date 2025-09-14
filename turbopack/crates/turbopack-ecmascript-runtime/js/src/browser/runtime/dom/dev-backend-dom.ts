@@ -51,13 +51,14 @@ let DEV_BACKEND: DevRuntimeBackend
           return
         }
 
-        const decodedChunkUrl = decodeURI(chunkUrl)
+        const withoutNormalizedChunkUrl = chunkUrl.replace(NORMALIZED_CHUNK_BASE_PATH, '/')
+        const decodedChunkUrl = decodeURI(withoutNormalizedChunkUrl)
         const previousLinks = document.querySelectorAll(
-          `link[rel=stylesheet][href="${chunkUrl}"],link[rel=stylesheet][href^="${chunkUrl}?"],link[rel=stylesheet][href="${decodedChunkUrl}"],link[rel=stylesheet][href^="${decodedChunkUrl}?"]`
+          `link[rel=stylesheet][href="${decodedChunkUrl}"],link[rel=stylesheet][href^="${decodedChunkUrl}?"],link[rel=stylesheet][href="${withoutNormalizedChunkUrl}"],link[rel=stylesheet][href^="${withoutNormalizedChunkUrl}?"]`
         )
 
         if (previousLinks.length === 0) {
-          reject(new Error(`No link element found for chunk ${chunkUrl}`))
+          reject(new Error(`No link element found for chunk ${withoutNormalizedChunkUrl}`))
           return
         }
 
@@ -72,9 +73,9 @@ let DEV_BACKEND: DevRuntimeBackend
           //
           // Safari has a similar issue, but only if you have a `<link rel=preload ... />` tag
           // pointing to the same URL as the stylesheet: https://bugs.webkit.org/show_bug.cgi?id=187726
-          link.href = `${chunkUrl}?ts=${Date.now()}`
+          link.href = `${withoutNormalizedChunkUrl}?ts=${Date.now()}`
         } else {
-          link.href = chunkUrl
+          link.href = withoutNormalizedChunkUrl
         }
 
         link.onerror = () => {
