@@ -45,6 +45,10 @@ pub enum RuleCondition {
         glob: ReadRef<Glob>,
     },
     ResourceBasePathGlob(#[turbo_tasks(trace_ignore)] ReadRef<Glob>),
+    ResourceQueryContains {
+        extension: String,
+        query: String,
+    },
 }
 
 impl RuleCondition {
@@ -281,6 +285,10 @@ impl RuleCondition {
                             }
                             FileContent::NotFound => return Ok(false),
                         }
+                    }
+                    RuleCondition::ResourceQueryContains { extension, query } => {
+                        let ident = source.ident().await?;
+                        return Ok(path.path.ends_with(extension) && ident.query.contains(query));
                     }
                 }
             }

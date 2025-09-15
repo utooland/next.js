@@ -1,4 +1,8 @@
+use std::{cmp::min, sync::LazyLock};
+
 use anyhow::{Context, Result, bail};
+use qstring::QString;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tracing::Instrument;
 use turbo_rcstr::{RcStr, rcstr};
@@ -183,6 +187,16 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn filename(mut self, filename: RcStr) -> Self {
+        self.chunking_context.filename = Some(filename);
+        self
+    }
+
+    pub fn chunk_filename(mut self, chunk_filename: RcStr) -> Self {
+        self.chunking_context.chunk_filename = Some(chunk_filename);
+        self
+    }
+
     pub fn build(self) -> Vc<BrowserChunkingContext> {
         BrowserChunkingContext::cell(self.chunking_context)
     }
@@ -249,6 +263,10 @@ pub struct BrowserChunkingContext {
     export_usage: Option<ResolvedVc<ExportUsageInfo>>,
     /// The chunking configs
     chunking_configs: Vec<(ResolvedVc<Box<dyn ChunkType>>, ChunkingConfig)>,
+    /// Evaluate chunk filename template
+    filename: Option<RcStr>,
+    /// Non evaluate chunk filename template
+    chunk_filename: Option<RcStr>,
 }
 
 impl BrowserChunkingContext {
@@ -289,6 +307,8 @@ impl BrowserChunkingContext {
                 module_id_strategy: ResolvedVc::upcast(DevModuleIdStrategy::new_resolved()),
                 export_usage: None,
                 chunking_configs: Default::default(),
+                filename: Default::default(),
+                chunk_filename: Default::default(),
             },
         }
     }
@@ -437,36 +457,76 @@ impl ChunkingContext for BrowserChunkingContext {
             extension.starts_with("."),
             "`extension` should include the leading '.', got '{extension}'"
         );
-        let root_path = self.chunk_root_path.clone();
-        let name = match self.content_hashing {
-            None => {
-                ident
-                    .output_name(self.root_path.clone(), prefix, extension)
-                    .owned()
-                    .await?
-            }
-            Some(ContentHashing::Direct { length }) => {
-                let Some(asset) = asset else {
-                    bail!("chunk_path requires an asset when content hashing is enabled");
-                };
-                let content = asset.content().await?;
-                if let AssetContent::File(file) = &*content {
-                    let hash = hash_xxh3_hash64(&file.await?);
-                    let length = length as usize;
-                    if let Some(prefix) = prefix {
-                        format!("{prefix}-{hash:0length$x}{extension}").into()
-                    } else {
-                        format!("{hash:0length$x}{extension}").into()
+
+        let output_name = ident
+            .output_name(self.root_path.clone(), prefix, extension.clone())
+            .owned()
+            .await?;
+
+        let mut filename = match asset {
+            Some(asset) => {
+                let ident = ident.await?;
+
+                let mut evaluate = false;
+                let mut dev_chunk_list = false;
+                ident.modifiers.iter().for_each(|m| {
+                    if m.contains("evaluate") {
+                        evaluate = true;
                     }
+                    if m.contains("dev chunk list") {
+                        dev_chunk_list = true;
+                    }
+                });
+                let query = QString::from(ident.query.as_str());
+                let name = if dev_chunk_list {
+                    output_name.as_str()
                 } else {
-                    bail!(
-                        "chunk_path requires an asset with file content when content hashing is \
-                         enabled"
-                    );
+                    query.get("name").unwrap_or(output_name.as_str())
+                };
+
+                let filename_template = if evaluate {
+                    &self.filename
+                } else {
+                    &self.chunk_filename
+                };
+
+                match filename_template {
+                    Some(filename) => {
+                        let mut filename = filename.to_string();
+
+                        if match_name_placeholder(&filename) {
+                            filename = replace_name_placeholder(&filename, name);
+                        }
+
+                        if match_content_hash_placeholder(&filename) {
+                            let content = asset.content().await?;
+                            if let AssetContent::File(file) = &*content {
+                                let content_hash = hash_xxh3_hash64(&file.await?);
+                                filename = replace_content_hash_placeholder(
+                                    &filename,
+                                    &format!("{content_hash:016x}"),
+                                );
+                            } else {
+                                bail!(
+                                    "chunk_path requires an asset with file content when content \
+                                     hashing is enabled"
+                                );
+                            }
+                        };
+
+                        filename
+                    }
+                    None => name.to_string(),
                 }
             }
+            None => output_name.to_string(),
         };
-        Ok(root_path.join(&name)?.cell())
+
+        if !filename.ends_with(extension.as_str()) {
+            filename.push_str(&extension);
+        }
+
+        self.chunk_root_path.join(&filename).map(|p| p.cell())
     }
 
     #[turbo_tasks::function]
@@ -764,4 +824,41 @@ impl ChunkingContext for BrowserChunkingContext {
             Ok(ModuleExportUsage::all())
         }
     }
+}
+
+pub fn clean_separators(s: &str) -> String {
+    static SEPARATOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r".*[/#?]").unwrap());
+    SEPARATOR_REGEX.replace_all(s, "").to_string()
+}
+
+static NAME_PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[name\]").unwrap());
+
+pub fn match_name_placeholder(s: &str) -> bool {
+    NAME_PLACEHOLDER_REGEX.is_match(s)
+}
+
+pub fn replace_name_placeholder(s: &str, name: &str) -> String {
+    NAME_PLACEHOLDER_REGEX.replace_all(s, name).to_string()
+}
+
+static CONTENT_HASH_PLACEHOLDER_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[contenthash(?::(?P<len>\d+))?\]").unwrap());
+
+pub fn match_content_hash_placeholder(s: &str) -> bool {
+    CONTENT_HASH_PLACEHOLDER_REGEX.is_match(s)
+}
+
+pub fn replace_content_hash_placeholder(s: &str, hash: &str) -> String {
+    CONTENT_HASH_PLACEHOLDER_REGEX
+        .replace_all(s, |caps: &regex::Captures| {
+            let len = caps.name("len").map(|m| m.as_str()).unwrap_or("");
+            let len = if len.is_empty() {
+                hash.len()
+            } else {
+                len.parse().unwrap_or(hash.len())
+            };
+            let len = min(len, hash.len());
+            hash[..len].to_string()
+        })
+        .to_string()
 }

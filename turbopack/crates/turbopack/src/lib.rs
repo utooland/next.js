@@ -683,7 +683,9 @@ pub async fn externals_tracing_module_context(
         custom_conditions: match ty {
             ExternalType::CommonJs => vec![rcstr!("require"), rcstr!("node")],
             ExternalType::EcmaScriptModule => vec![rcstr!("import"), rcstr!("node")],
-            ExternalType::Url | ExternalType::Global | ExternalType::Script => vec![rcstr!("node")],
+            ExternalType::Url | ExternalType::Global | ExternalType::Script | ExternalType::Umd => {
+                vec![rcstr!("node")]
+            }
         },
         ..Default::default()
     };
@@ -1006,6 +1008,7 @@ pub async fn replace_external(
         }
         ExternalType::Global => CachedExternalType::Global,
         ExternalType::Script => CachedExternalType::Script,
+        ExternalType::Umd => CachedExternalType::Umd,
         ExternalType::Url => {
             // we don't want to wrap url externals.
             return Ok(None);
