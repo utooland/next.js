@@ -31,6 +31,7 @@ use turbopack_node::{
     execution_context::ExecutionContext,
     transforms::{postcss::PostCssTransform, webpack::WebpackLoaders},
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
 use crate::{
@@ -392,6 +393,7 @@ impl ModuleOptions {
                 vec![ModuleRuleEffect::ModuleType(ModuleType::NodeAddon)],
             ),
             // WebAssembly
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleRule::new(
                 RuleCondition::any(vec![
                     RuleCondition::ResourcePathEndsWith(".wasm".to_string()),
@@ -401,6 +403,7 @@ impl ModuleOptions {
                     source_ty: WebAssemblySourceType::Binary,
                 })],
             ),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleRule::new(
                 RuleCondition::any(vec![RuleCondition::ResourcePathEndsWith(
                     ".wat".to_string(),
@@ -692,8 +695,8 @@ impl ModuleOptions {
                                     *execution_context,
                                     Some(import_map),
                                     None,
-                                    Layer::new(rcstr!("postcss")),
-                                    true,
+                                    Layer::new(rcstr!("webpack_loaders")),
+                                    false,
                                 ),
                                 *execution_context,
                                 options.config_location,

@@ -16,7 +16,7 @@ use turbopack_ecmascript::{
         EcmascriptChunkItem, EcmascriptChunkItemContent, EcmascriptChunkPlaceable,
         EcmascriptChunkType, EcmascriptExports,
     },
-    runtime_functions::TURBOPACK_EXPORT_VALUE,
+    runtime_functions::{TURBOPACK_EXPORT_VALUE, TURBOPACK_PUBLIC_PATH},
     utils::StringifyJs,
 };
 
@@ -153,17 +153,28 @@ impl ChunkItem for StaticUrlJsChunkItem {
 impl EcmascriptChunkItem for StaticUrlJsChunkItem {
     #[turbo_tasks::function]
     async fn content(&self) -> Result<Vc<EcmascriptChunkItemContent>> {
-        Ok(EcmascriptChunkItemContent {
-            inner_code: format!(
-                "{TURBOPACK_EXPORT_VALUE}({path});",
-                path = StringifyJs(
-                    &self
-                        .chunking_context
-                        .asset_url(self.static_asset.path().owned().await?, self.tag.clone())
-                        .await?
-                )
+        let asset_url = self
+            .chunking_context
+            .asset_url(self.static_asset.path().owned().await?, self.tag.clone())
+            .await?;
+
+        let code = if asset_url.starts_with("__RUNTIME_PUBLIC_PATH__") {
+            // For runtime publicPath, use the getPublicPath() runtime function
+            let asset_path = &asset_url["__RUNTIME_PUBLIC_PATH__".len()..];
+            format!(
+                "{TURBOPACK_EXPORT_VALUE}({TURBOPACK_PUBLIC_PATH}() + {path});",
+                path = StringifyJs(asset_path)
             )
-            .into(),
+        } else {
+            // For static publicPath, use the full URL as a string literal
+            format!(
+                "{TURBOPACK_EXPORT_VALUE}({path});",
+                path = StringifyJs(&*asset_url)
+            )
+        };
+
+        Ok(EcmascriptChunkItemContent {
+            inner_code: code.into(),
             ..Default::default()
         }
         .cell())
