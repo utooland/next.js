@@ -1,6 +1,6 @@
-use std::{
-    borrow::Cow, iter, ops::ControlFlow, sync::Arc, thread::available_parallelism, time::Duration,
-};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use std::thread::available_parallelism;
+use std::{borrow::Cow, iter, ops::ControlFlow, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
 use async_stream::try_stream as generator;
@@ -9,6 +9,7 @@ use futures::{
     channel::mpsc::{UnboundedSender, unbounded},
     pin_mut,
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use futures_retry::{FutureRetry, RetryPolicy};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -300,7 +301,17 @@ pub async fn get_evaluate_pool(
         assets_for_source_mapping,
         output_root.clone(),
         chunking_context.root_path().owned().await?,
-        available_parallelism().map_or(1, |v| v.get()),
+        {
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            {
+                available_parallelism().map_or(1, |v| v.get())
+            }
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            {
+                // TODO:
+                4
+            }
+        },
         debug,
     );
     additional_invalidation.await?;
@@ -330,6 +341,7 @@ const MAX_FAST_ATTEMPTS: usize = 5;
 /// Total number of attempts.
 const MAX_ATTEMPTS: usize = MAX_FAST_ATTEMPTS * 2;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl futures_retry::ErrorHandler<anyhow::Error> for PoolErrorHandler {
     type OutError = anyhow::Error;
 
@@ -464,6 +476,15 @@ pub async fn evaluate(
     .await
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub async fn compute(
+    evaluate_context: impl EvaluateContext,
+    sender: Vc<JavaScriptStreamSender>,
+) -> Result<Vc<()>> {
+    unreachable!()
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub async fn compute(
     evaluate_context: impl EvaluateContext,
     sender: Vc<JavaScriptStreamSender>,

@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Context, Result, bail};
@@ -18,15 +18,16 @@ use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::{
-    io::{
-        AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, Stderr,
-        Stdout, stderr, stdout,
-    },
-    net::{TcpListener, TcpStream},
-    process::{Child, ChildStderr, ChildStdout, Command},
+    io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
     select,
     sync::{OwnedSemaphorePermit, Semaphore},
-    time::{sleep, timeout},
+    time::{Instant, sleep, timeout},
+};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use tokio::{
+    io::{Stderr, Stdout, stderr, stdout},
+    net::{TcpListener, TcpStream},
+    process::{Child, ChildStderr, ChildStdout, Command},
 };
 use turbo_rcstr::RcStr;
 use turbo_tasks::{FxIndexSet, ResolvedVc, Vc, duration_span};
@@ -69,12 +70,16 @@ impl FormattingMode {
 }
 
 struct NodeJsPoolProcess {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     child: Option<Child>,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     connection: TcpStream,
     assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     assets_root: FileSystemPath,
     project_dir: FileSystemPath,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     stdout_handler: OutputStreamHandler<ChildStdout, Stdout>,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     stderr_handler: OutputStreamHandler<ChildStderr, Stderr>,
     debug: bool,
     cpu_time_invested: Duration,
@@ -82,14 +87,21 @@ struct NodeJsPoolProcess {
 
 impl Ord for NodeJsPoolProcess {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.cpu_time_invested
-            .cmp(&other.cpu_time_invested)
-            .then_with(|| {
-                self.child
-                    .as_ref()
-                    .map(|c| c.id())
-                    .cmp(&other.child.as_ref().map(|c| c.id()))
-            })
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            self.cpu_time_invested
+                .cmp(&other.cpu_time_invested)
+                .then_with(|| {
+                    self.child
+                        .as_ref()
+                        .map(|c| c.id())
+                        .cmp(&other.child.as_ref().map(|c| c.id()))
+                })
+        }
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            self.cpu_time_invested.cmp(&other.cpu_time_invested)
+        }
     }
 }
 
@@ -336,6 +348,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin> OutputStreamHandler<R, W> {
 }
 
 impl NodeJsPoolProcess {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn new(
         cwd: &Path,
         env: &FxHashMap<RcStr, RcStr>,
@@ -482,6 +495,28 @@ impl NodeJsPoolProcess {
         Ok(process)
     }
 
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn new(
+        _cwd: &Path,
+        _env: &FxHashMap<RcStr, RcStr>,
+        _entrypoint: &Path,
+        assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+        assets_root: FileSystemPath,
+        project_dir: FileSystemPath,
+        _shared_stdout: SharedOutputSet,
+        _shared_stderr: SharedOutputSet,
+        debug: bool,
+    ) -> Result<Self> {
+        Ok(Self {
+            assets_for_source_mapping,
+            assets_root,
+            project_dir,
+            debug,
+            cpu_time_invested: Duration::ZERO,
+        })
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn recv(&mut self) -> Result<Vec<u8>> {
         let connection = &mut self.connection;
         async fn with_timeout<T, E: Into<anyhow::Error>>(
@@ -527,6 +562,12 @@ impl NodeJsPoolProcess {
         Ok(result)
     }
 
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn recv(&mut self) -> Result<Vec<u8>> {
+        todo!()
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn send(&mut self, packet_data: Vec<u8>) -> Result<()> {
         self.connection
             .write_u32(
@@ -546,6 +587,11 @@ impl NodeJsPoolProcess {
             .await
             .context("flushing packet data")?;
         Ok(())
+    }
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn send(&mut self, packet_data: Vec<u8>) -> Result<()> {
+        todo!()
     }
 }
 
@@ -927,6 +973,7 @@ impl NodeJsOperation {
         .await
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn wait_or_kill(mut self) -> Result<ExitStatus> {
         let mut process = self
             .process
@@ -950,6 +997,11 @@ impl NodeJsOperation {
             .context("waiting for process end")?;
 
         Ok(status)
+    }
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub async fn wait_or_kill(mut self) -> Result<ExitStatus> {
+        todo!()
     }
 
     pub fn disallow_reuse(&mut self) {

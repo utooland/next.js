@@ -7,14 +7,14 @@ use std::{
         Arc, Mutex, RwLock, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Result, anyhow};
 use auto_hash_map::AutoMap;
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
-use tokio::{select, sync::mpsc::Receiver, task_local};
+use tokio::{select, sync::mpsc::Receiver, task_local, time::Instant};
 use tokio_util::task::TaskTracker;
 use tracing::{Instrument, instrument};
 
@@ -505,7 +505,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
     /// Creates a new root task, that is only executed once.
     /// Dependencies will not invalidate the task.
     #[track_caller]
-    fn spawn_once_task<T, Fut>(&self, future: Fut)
+    pub fn spawn_once_task<T, Fut>(&self, future: Fut)
     where
         T: ?Sized,
         Fut: Future<Output = Result<Vc<T>>> + Send + 'static,

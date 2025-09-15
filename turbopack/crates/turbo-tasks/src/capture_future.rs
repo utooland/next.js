@@ -6,12 +6,13 @@ use std::{
     panic,
     pin::Pin,
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Result;
 use pin_project_lite::pin_project;
 use serde::{Deserialize, Serialize};
+use tokio::time::Instant;
 use turbo_tasks_malloc::{AllocationInfo, TurboMalloc};
 
 use crate::{backend::TurboTasksExecutionErrorMessage, panic_hooks::LAST_ERROR_LOCATION};

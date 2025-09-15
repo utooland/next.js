@@ -480,9 +480,14 @@ impl ChunkingContext for BrowserChunkingContext {
             extension.starts_with("."),
             "`extension` should include the leading '.', got '{extension}'"
         );
+        let ChunkPathInfo {
+            root_path,
+            chunk_root_path,
+            content_hashing: _,
+        } = &*self.chunk_path_info().await?;
 
         let output_name = ident
-            .output_name(self.root_path.clone(), prefix, extension.clone())
+            .output_name(root_path.clone(), prefix, extension.clone())
             .owned()
             .await?;
 
@@ -508,9 +513,9 @@ impl ChunkingContext for BrowserChunkingContext {
                 };
 
                 let filename_template = if evaluate {
-                    &self.filename
+                    self.await?.filename.clone()
                 } else {
-                    &self.chunk_filename
+                    self.await?.chunk_filename.clone()
                 };
 
                 match filename_template {
@@ -549,7 +554,7 @@ impl ChunkingContext for BrowserChunkingContext {
             filename.push_str(&extension);
         }
 
-        self.chunk_root_path.join(&filename).map(|p| p.cell())
+        Ok(chunk_root_path.join(&filename)?.cell())
     }
 
     #[turbo_tasks::function]
@@ -557,7 +562,7 @@ impl ChunkingContext for BrowserChunkingContext {
         let asset_path = ident.to_string();
         let asset_path = asset_path
             .strip_prefix(&format!("{}/", self.client_root.path))
-            .context("expected asset_path to contain client_root")?;
+            .unwrap_or(&asset_path);
 
         Ok(Vc::cell(
             format!(

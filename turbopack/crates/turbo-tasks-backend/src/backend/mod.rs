@@ -16,6 +16,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     thread::available_parallelism,
+    time::Duration,
 };
 
 use anyhow::{Result, bail};
@@ -24,7 +25,7 @@ use indexmap::IndexSet;
 use parking_lot::{Condvar, Mutex};
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use smallvec::{SmallVec, smallvec};
-use tokio::time::{Duration, Instant};
+use tokio::time::{Instant, sleep_until};
 use tracing::{Span, field::Empty, info_span, trace_span};
 use turbo_tasks::{
     CellId, FxDashMap, FxIndexMap, KeyValuePair, RawVc, ReadCellOptions, ReadConsistency,
@@ -2262,10 +2263,10 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
                                         idle_time = until + IDLE_TIMEOUT;
                                         idle_end_listener = self.idle_end_event.listen()
                                     },
-                                    _ = tokio::time::sleep_until(until) => {
+                                    _ = sleep_until(until) => {
                                         break;
                                     },
-                                    _ = tokio::time::sleep_until(idle_time) => {
+                                    _ = sleep_until(idle_time) => {
                                         if turbo_tasks.is_idle() {
                                             reason = "idle timeout";
                                             break;

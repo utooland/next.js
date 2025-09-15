@@ -279,7 +279,9 @@ impl Module for CachedExternalModule {
                         )
                         .await?
                     }
-                    CachedExternalType::Global | CachedExternalType::Script => {
+                    CachedExternalType::Global
+                    | CachedExternalType::Script
+                    | CachedExternalType::Umd => {
                         origin
                             .resolve_asset(
                                 Request::parse_string(self.request.clone()),

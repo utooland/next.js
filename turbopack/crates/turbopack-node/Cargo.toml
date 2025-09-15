@@ -24,7 +24,6 @@ base64 = "0.21.0"
 const_format = { workspace = true }
 either = { workspace = true, features = ["serde"] }
 futures = { workspace = true }
-futures-retry = { workspace = true }
 indoc = { workspace = true }
 once_cell = { workspace = true }
 owo-colors = { workspace = true }
@@ -34,7 +33,7 @@ rustc-hash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true, features = ["base64"] }
-tokio = { workspace = true, features = ["full"] }
+serde_bytes = "0.11"
 tracing = { workspace = true }
 turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
@@ -46,3 +45,24 @@ turbopack-core = { workspace = true }
 turbopack-ecmascript = { workspace = true }
 turbopack-resolve = { workspace = true }
 
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+futures-retry = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+# WASM-specific dependencies (since webworker.rs is WASM-only)
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+web-sys = { version = "0.3.78", features = [
+  "Worker",
+  "MessageEvent",
+  "DedicatedWorkerGlobalScope",
+  "ErrorEvent",
+  "Blob",
+  "BlobPropertyBag",
+  "Url",
+  "console",
+] }
+wasm-bindgen = "0.2.101"
+wasm-bindgen-futures = "0.4.51"
+js-sys = "0.3.78"
+send_wrapper = "0.6"
+tokio = { workspace = true, features = ["sync", "io-util"] }
