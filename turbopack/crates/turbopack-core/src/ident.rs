@@ -363,10 +363,10 @@ impl AssetIdent {
         // We need to make sure that `.json` and `.json.js` doesn't end up with the same
         // name. So when we add an extra extension when want to mark that with a "._"
         // suffix.
-        if !removed_extension {
-            name += "._";
-        }
-        name += &expected_extension;
+        // if !removed_extension {
+        //     name += "._";
+        // }
+        // name += &expected_extension;
         Ok(Vc::cell(name.into()))
     }
 }
@@ -439,5 +439,5 @@ fn clean_separators(s: &str) -> String {
 }
 
 fn clean_additional_extensions(s: &str) -> String {
-    s.replace('.', "_")
+    s.replace('.', "_").replace("[root-of-the-server]", "")
 }

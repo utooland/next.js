@@ -1052,6 +1052,7 @@ pub async fn replace_external(
         }
         ExternalType::Global => CachedExternalType::Global,
         ExternalType::Script => CachedExternalType::Script,
+        ExternalType::Umd => CachedExternalType::Umd,
         ExternalType::Url => {
             // we don't want to wrap url externals.
             return Ok(None);
