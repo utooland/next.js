@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::Result;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use crossterm::style::{StyledContent, Stylize};
 use owo_colors::{OwoColorize as _, Style};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -573,10 +574,18 @@ fn make_relative_to_cwd<'a>(path: &'a str, project_dir: &Path, cwd: &Path) -> Co
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn show_all_message(label: &str, size: usize) -> StyledContent<String> {
     show_all_message_with_shown_count(label, size, DEFAULT_SHOW_COUNT)
 }
 
+// FIXME:
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+fn show_all_message(label: &str, size: usize) -> String {
+    format!("{label} {size}")
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn show_all_message_with_shown_count(
     label: &str,
     size: usize,
@@ -597,6 +606,12 @@ fn show_all_message_with_shown_count(
         )
         .bold()
     }
+}
+
+// FIXME:
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+fn show_all_message_with_shown_count(label: &str, size: usize, shown: usize) -> String {
+    format!("{label} {size} {shown}")
 }
 
 fn render_styled_string_to_ansi(styled_string: &StyledString) -> String {

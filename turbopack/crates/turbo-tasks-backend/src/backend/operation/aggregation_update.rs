@@ -6,7 +6,7 @@ use std::{
     num::NonZeroU32,
     ops::ControlFlow,
     thread::yield_now,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -15,6 +15,7 @@ use ringmap::RingSet;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeSeq};
 use smallvec::{SmallVec, smallvec};
+use tokio::time::Instant;
 #[cfg(any(
     feature = "trace_aggregation_update",
     feature = "trace_find_and_schedule"

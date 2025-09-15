@@ -39,6 +39,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub mod wasm_fs_offload;
+
 use anyhow::{Context, Result, anyhow, bail};
 use auto_hash_map::{AutoMap, AutoSet};
 use bitflags::bitflags;
@@ -260,6 +263,7 @@ impl DiskFileSystemInner {
         let invalidator = turbo_tasks::get_invalidator();
         self.invalidator_map
             .insert(path.to_owned(), invalidator, None);
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         self.watcher.ensure_watched_file(path, self.root_path())?;
         Ok(())
     }
@@ -286,6 +290,7 @@ impl DiskFileSystemInner {
             .collect::<Vec<_>>();
         invalidators.insert(invalidator, Some(write_content));
         drop(invalidator_map);
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         self.watcher.ensure_watched_file(path, self.root_path())?;
         Ok(old_invalidators)
     }
@@ -296,6 +301,7 @@ impl DiskFileSystemInner {
         let invalidator = turbo_tasks::get_invalidator();
         self.dir_invalidator_map
             .insert(path.to_owned(), invalidator, None);
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         self.watcher.ensure_watched_dir(path, self.root_path())?;
         Ok(())
     }
@@ -375,6 +381,7 @@ impl DiskFileSystemInner {
         let root_path = self.root_path().to_path_buf();
 
         // create the directory for the filesystem on disk, if it doesn't exist
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         retry_blocking(root_path.clone(), move |path| {
             let _tracing =
                 tracing::info_span!("create root directory", name = display(path.display()))
@@ -385,8 +392,19 @@ impl DiskFileSystemInner {
         .concurrency_limited(&self.semaphore)
         .await?;
 
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        wasm_fs_offload::CLIENT
+            .create_dir_all(root_path.clone())
+            .await?;
+
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         self.watcher
             .start_watching(self.clone(), report_invalidation_reason, poll_interval)?;
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        self.watcher
+            .start_watching(self.clone(), report_invalidation_reason, poll_interval)
+            .await?;
 
         Ok(())
     }
@@ -397,14 +415,22 @@ impl DiskFileSystemInner {
             |fs_context| fs_context.created_directories.contains(directory),
         );
         if !already_created {
-            let func = |p: &Path| std::fs::create_dir_all(p);
-            retry_blocking(directory.to_path_buf(), func)
-                .concurrency_limited(&self.semaphore)
-                .instrument(tracing::info_span!(
-                    "create directory",
-                    name = display(directory.display())
-                ))
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            retry_blocking(directory.to_path_buf(), |p: &Path| {
+                std::fs::create_dir_all(p)
+            })
+            .concurrency_limited(&self.semaphore)
+            .instrument(tracing::info_span!(
+                "create directory",
+                name = display(directory.display())
+            ))
+            .await?;
+
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            wasm_fs_offload::CLIENT
+                .create_dir_all(directory.to_path_buf())
                 .await?;
+
             ApplyEffectsContext::with(|fs_context: &mut DiskFileSystemApplyContext| {
                 fs_context
                     .created_directories
@@ -455,6 +481,7 @@ impl DiskFileSystem {
             .await
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub fn stop_watching(&self) {
         self.inner.watcher.stop_watching();
     }
@@ -534,6 +561,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let content = match retry_blocking(full_path.clone(), |path: &Path| File::from_path(path))
             .concurrency_limited(&self.inner.semaphore)
             .instrument(tracing::info_span!(
@@ -550,6 +578,15 @@ impl FileSystem for DiskFileSystem {
                 bail!(anyhow!(e).context(format!("reading file {}", full_path.display())))
             }
         };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let content = match wasm_fs_offload::CLIENT.read(full_path.clone()).await {
+            Ok(buf) => Ok(FileContent::from(File::from_bytes(buf))),
+            Err(e) if e.kind() == ErrorKind::NotFound || e.kind() == ErrorKind::InvalidFilename => {
+                Ok(FileContent::NotFound)
+            }
+            Err(e) => Err(anyhow!(e).context(format!("reading file {}", full_path.display()))),
+        }?;
         Ok(content.cell())
     }
 
@@ -561,6 +598,7 @@ impl FileSystem for DiskFileSystem {
 
         // we use the sync std function here as it's a lot faster (600%) in
         // node-file-trace
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let read_dir = match retry_blocking(full_path.clone(), |path| {
             let _span =
                 tracing::info_span!("read directory", name = display(path.display())).entered();
@@ -569,6 +607,21 @@ impl FileSystem for DiskFileSystem {
         .concurrency_limited(&self.inner.semaphore)
         .await
         {
+            Ok(dir) => dir,
+            Err(e)
+                if e.kind() == ErrorKind::NotFound
+                    || e.kind() == ErrorKind::NotADirectory
+                    || e.kind() == ErrorKind::InvalidFilename =>
+            {
+                return Ok(RawDirectoryContent::not_found());
+            }
+            Err(e) => {
+                bail!(anyhow!(e).context(format!("reading dir {}", full_path.display())))
+            }
+        };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let read_dir = match wasm_fs_offload::CLIENT.read_dir(full_path.clone()).await {
             Ok(dir) => dir,
             Err(e)
                 if e.kind() == ErrorKind::NotFound
@@ -615,6 +668,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let link_path =
             match retry_blocking(full_path.clone(), |path: &Path| std::fs::read_link(path))
                 .concurrency_limited(&self.inner.semaphore)
@@ -627,6 +681,13 @@ impl FileSystem for DiskFileSystem {
                 Ok(res) => res,
                 Err(_) => return Ok(LinkContent::NotFound.cell()),
             };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let link_path: PathBuf = {
+            // TODO: not supported now
+            todo!()
+        };
+
         let is_link_absolute = link_path.is_absolute();
 
         let mut file = link_path.clone();
@@ -759,41 +820,59 @@ impl FileSystem for DiskFileSystem {
 
                     let full_path_to_write = full_path.clone();
                     let content = content.clone();
-                    retry_blocking(full_path_to_write.into_owned(), move |full_path| {
-                        use std::io::Write;
+                    {
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                        {
+                            retry_blocking(full_path_to_write.into_owned(), move |full_path| {
+                                use std::io::Write;
 
-                        let mut f = std::fs::File::create(full_path)?;
-                        let FileContent::Content(file) = &*content else {
-                            unreachable!()
-                        };
-                        std::io::copy(&mut file.read(), &mut f)?;
-                        #[cfg(target_family = "unix")]
-                        f.set_permissions(file.meta.permissions.into())?;
-                        f.flush()?;
+                                let mut f = std::fs::File::create(full_path)?;
+                                let FileContent::Content(file) = &*content else {
+                                    unreachable!()
+                                };
+                                std::io::copy(&mut file.read(), &mut f)?;
+                                #[cfg(target_family = "unix")]
+                                f.set_permissions(file.meta.permissions.into())?;
+                                f.flush()?;
 
-                        static WRITE_VERSION: LazyLock<bool> = LazyLock::new(|| {
-                            std::env::var_os("TURBO_ENGINE_WRITE_VERSION")
-                                .is_some_and(|v| v == "1" || v == "true")
-                        });
-                        if *WRITE_VERSION {
-                            let mut full_path = full_path.to_owned();
-                            let hash = hash_xxh3_hash64(file);
-                            let ext = full_path.extension();
-                            let ext = if let Some(ext) = ext {
-                                format!("{:016x}.{}", hash, ext.to_string_lossy())
-                            } else {
-                                format!("{hash:016x}")
-                            };
-                            full_path.set_extension(ext);
-                            let mut f = std::fs::File::create(&full_path)?;
-                            std::io::copy(&mut file.read(), &mut f)?;
-                            #[cfg(target_family = "unix")]
-                            f.set_permissions(file.meta.permissions.into())?;
-                            f.flush()?;
+                                static WRITE_VERSION: LazyLock<bool> = LazyLock::new(|| {
+                                    std::env::var_os("TURBO_ENGINE_WRITE_VERSION")
+                                        .is_some_and(|v| v == "1" || v == "true")
+                                });
+                                if *WRITE_VERSION {
+                                    let mut full_path = full_path.to_owned();
+                                    let hash = hash_xxh3_hash64(file);
+                                    let ext = full_path.extension();
+                                    let ext = if let Some(ext) = ext {
+                                        format!("{:016x}.{}", hash, ext.to_string_lossy())
+                                    } else {
+                                        format!("{hash:016x}")
+                                    };
+                                    full_path.set_extension(ext);
+                                    let mut f = std::fs::File::create(&full_path)?;
+                                    std::io::copy(&mut file.read(), &mut f)?;
+                                    #[cfg(target_family = "unix")]
+                                    f.set_permissions(file.meta.permissions.into())?;
+                                    f.flush()?;
+                                }
+                                Ok::<(), io::Error>(())
+                            })
+                            .concurrency_limited(&inner.semaphore)
                         }
-                        Ok::<(), io::Error>(())
-                    })
-                    .concurrency_limited(&inner.semaphore)
+
+                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                        async move {
+                            if let FileContent::Content(file) = &*content {
+                                let mut content_buf = vec![];
+                                std::io::copy(&mut file.read(), &mut content_buf)?;
+                                wasm_fs_offload::CLIENT
+                                    .write(full_path_to_write.clone(), &content_buf)
+                                    .await
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                    }
                     .instrument(tracing::info_span!(
                         "write file",
                         name = display(full_path.display())
@@ -802,10 +881,19 @@ impl FileSystem for DiskFileSystem {
                     .with_context(|| format!("failed to write to {}", full_path.display()))?;
                 }
                 FileContent::NotFound => {
-                    retry_blocking(full_path.clone().into_owned(), |path| {
-                        std::fs::remove_file(path)
-                    })
-                    .concurrency_limited(&inner.semaphore)
+                    {
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                        {
+                            retry_blocking(full_path.clone().into_owned(), |path| {
+                                std::fs::remove_file(path)
+                            })
+                            .concurrency_limited(&inner.semaphore)
+                        }
+                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                        {
+                            wasm_fs_offload::CLIENT.remove_file(full_path.clone())
+                        }
+                    }
                     .instrument(tracing::info_span!(
                         "remove file",
                         name = display(full_path.display())
@@ -831,6 +919,10 @@ impl FileSystem for DiskFileSystem {
     }
 
     #[turbo_tasks::function(fs)]
+    #[cfg_attr(
+        all(target_family = "wasm", target_os = "unknown"),
+        allow(unused_variables)
+    )]
     async fn write_link(&self, fs_path: FileSystemPath, target: Vc<LinkContent>) -> Result<()> {
         // You might be tempted to use `mark_session_dependent` here, but
         // `write_link` purely declares a side effect and does not need to be reexecuted in the next
@@ -854,6 +946,7 @@ impl FileSystem for DiskFileSystem {
 
             // TODO(sokra) preform a untracked read here, register an invalidator and get
             // all existing invalidators
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             let old_content = match retry_blocking(full_path.clone().into_owned(), |path| {
                 std::fs::read_link(path)
             })
@@ -867,6 +960,9 @@ impl FileSystem for DiskFileSystem {
                 Ok(res) => Some((res.is_absolute(), res)),
                 Err(_) => None,
             };
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            let old_content = Option::<(bool, PathBuf)>::None;
+
             let is_equal = match (&*content, &old_content) {
                 (LinkContent::Link { target, link_type }, Some((old_is_absolute, old_target))) => {
                     Path::new(&**target) == old_target
@@ -908,6 +1004,7 @@ impl FileSystem for DiskFileSystem {
                         PathBuf::from(unix_to_sys(target).as_ref())
                     };
                     let full_path = full_path.into_owned();
+                    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     retry_blocking(target_path, move |target_path| {
                         let _span = tracing::info_span!(
                             "write symlink",
@@ -936,10 +1033,19 @@ impl FileSystem for DiskFileSystem {
                     anyhow::bail!("invalid symlink target: {}", full_path.display())
                 }
                 LinkContent::NotFound => {
-                    retry_blocking(full_path.clone().into_owned(), |path| {
-                        std::fs::remove_file(path)
-                    })
-                    .concurrency_limited(&inner.semaphore)
+                    {
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                        {
+                            retry_blocking(full_path.clone().into_owned(), |path| {
+                                std::fs::remove_file(path)
+                            })
+                            .concurrency_limited(&inner.semaphore)
+                        }
+                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                        {
+                            wasm_fs_offload::CLIENT.remove_file(full_path.clone())
+                        }
+                    }
                     .await
                     .or_else(|err| {
                         if err.kind() == ErrorKind::NotFound {
@@ -964,6 +1070,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let meta = retry_blocking(full_path.clone(), |path| std::fs::metadata(path))
             .concurrency_limited(&self.inner.semaphore)
             .instrument(tracing::info_span!(
@@ -973,7 +1080,19 @@ impl FileSystem for DiskFileSystem {
             .await
             .with_context(|| format!("reading metadata for {}", full_path.display()))?;
 
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let meta = wasm_fs_offload::CLIENT
+            .metadata(&full_path)
+            .await
+            .with_context(|| format!("reading metadata for {}", full_path.display()))?;
         Ok(FileMeta::cell(meta.into()))
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl From<tokio_fs_ext::Metadata> for FileMeta {
+    fn from(meta: tokio_fs_ext::Metadata) -> Self {
+        FileMeta::default()
     }
 }
 
@@ -1564,6 +1683,7 @@ enum FileComparison {
 impl FileContent {
     /// Performs a comparison of self's data against a disk file's streamed
     /// read.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
         let old_file = extract_disk_access(
             retry_blocking(path.to_path_buf(), |path| std::fs::File::open(path)).await,
@@ -1603,6 +1723,51 @@ impl FileContent {
         // if they match.
         let mut new_contents = new_file.read();
         let mut old_contents = BufReader::new(old_file);
+        Ok(loop {
+            let new_chunk = new_contents.fill_buf()?;
+            let Ok(old_chunk) = old_contents.fill_buf() else {
+                break FileComparison::NotEqual;
+            };
+
+            let len = min(new_chunk.len(), old_chunk.len());
+            if len == 0 {
+                if new_chunk.len() == old_chunk.len() {
+                    break FileComparison::Equal;
+                } else {
+                    break FileComparison::NotEqual;
+                }
+            }
+
+            if new_chunk[0..len] != old_chunk[0..len] {
+                break FileComparison::NotEqual;
+            }
+
+            new_contents.consume(len);
+            old_contents.consume(len);
+        })
+    }
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
+        let old_meta = extract_disk_access(wasm_fs_offload::CLIENT.metadata(path).await, path)?;
+        let Some(old_meta) = old_meta else {
+            return Ok(FileComparison::Create);
+        };
+        let FileContent::Content(new_file) = self else {
+            return Ok(FileComparison::NotEqual);
+        };
+        if new_file.meta != old_meta.into() {
+            return Ok(FileComparison::NotEqual);
+        }
+        let mut new_contents = new_file.read();
+        let mut old_contents = if let Some(content) =
+            extract_disk_access(wasm_fs_offload::CLIENT.read(path).await, path)?
+        {
+            let cursor = std::io::Cursor::new(content);
+            BufReader::new(cursor)
+        } else {
+            return Ok(FileComparison::Create);
+        };
         Ok(loop {
             let new_chunk = new_contents.fill_buf()?;
             let Ok(old_chunk) = old_contents.fill_buf() else {

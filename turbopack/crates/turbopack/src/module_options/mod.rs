@@ -31,11 +31,14 @@ use turbopack_node::{
     execution_context::ExecutionContext,
     transforms::{postcss::PostCssTransform, webpack::WebpackLoaders},
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
-use crate::{
-    evaluate_context::node_evaluate_asset_context, resolve_options_context::ResolveOptionsContext,
-};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::evaluate_context::node_evaluate_asset_context;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use crate::evaluate_context::webworker_evaluate_asset_context;
+use crate::resolve_options_context::ResolveOptionsContext;
 
 #[turbo_tasks::function]
 fn package_import_map_from_import_mapping(
@@ -488,6 +491,7 @@ impl ModuleOptions {
                 vec![ModuleRuleEffect::ModuleType(ModuleType::NodeAddon)],
             ),
             // WebAssembly
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleRule::new(
                 RuleCondition::any(vec![
                     RuleCondition::ResourcePathEndsWith(".wasm".to_string()),
@@ -497,6 +501,7 @@ impl ModuleOptions {
                     source_ty: WebAssemblySourceType::Binary,
                 })],
             ),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleRule::new(
                 RuleCondition::any(vec![RuleCondition::ResourcePathEndsWith(
                     ".wat".to_string(),
@@ -597,11 +602,23 @@ impl ModuleOptions {
                         vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
                             ResolvedVc::upcast(
                                 WebpackLoaders::new(
+                                    #[cfg(not(all(
+                                        target_family = "wasm",
+                                        target_os = "unknown"
+                                    )))]
                                     node_evaluate_asset_context(
                                         *execution_context,
                                         Some(import_map),
                                         None,
                                         Layer::new(rcstr!("webpack_loaders")),
+                                        false,
+                                    ),
+                                    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                                    webworker_evaluate_asset_context(
+                                        *execution_context,
+                                        Some(import_map),
+                                        None,
+                                        Layer::new(rcstr!("webpack_loaders_webworker")),
                                         false,
                                     ),
                                     *execution_context,
@@ -666,13 +683,40 @@ impl ModuleOptions {
                         module_css_external_transform_conditions.clone(),
                     ]),
                     vec![ModuleRuleEffect::SourceTransforms(ResolvedVc::cell(vec![
+                        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                         ResolvedVc::upcast(
                             PostCssTransform::new(
+                                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                                 node_evaluate_asset_context(
                                     *execution_context,
                                     Some(import_map),
                                     None,
-                                    Layer::new(rcstr!("postcss")),
+                                    Layer::new(rcstr!("webpack_loaders")),
+                                    false,
+                                ),
+                                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                                webworker_evaluate_asset_context(
+                                    *execution_context,
+                                    Some(import_map),
+                                    None,
+                                    Layer::new(rcstr!("webpack_loaders_webworker")),
+                                    false,
+                                ),
+                                *execution_context,
+                                options.config_location,
+                                matches!(css_source_maps, SourceMapsType::Full),
+                            )
+                            .to_resolved()
+                            .await?,
+                        ),
+                        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                        ResolvedVc::upcast(
+                            PostCssTransform::new(
+                                webworker_evaluate_asset_context(
+                                    *execution_context,
+                                    Some(import_map),
+                                    None,
+                                    Layer::new(rcstr!("postcss_webworker")),
                                     true,
                                 ),
                                 *execution_context,

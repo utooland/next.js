@@ -534,7 +534,7 @@ impl ChunkingContext for BrowserChunkingContext {
         let asset_path = ident.to_string();
         let asset_path = asset_path
             .strip_prefix(&format!("{}/", self.client_root.path))
-            .context("expected asset_path to contain client_root")?;
+            .unwrap_or(&asset_path);
 
         Ok(Vc::cell(
             format!(
