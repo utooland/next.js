@@ -70,7 +70,6 @@ pub async fn node_evaluate_asset_context(
                 .await?,
         ),
         enable_node_externals: true,
-        enable_node_native_modules: true,
         custom_conditions: vec![node_env.clone(), rcstr!("node")],
         ..Default::default()
     };

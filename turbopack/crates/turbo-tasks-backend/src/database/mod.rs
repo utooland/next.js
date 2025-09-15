@@ -12,5 +12,6 @@ pub mod noop_kv;
 pub mod read_transaction_cache;
 #[cfg(feature = "lmdb")]
 pub mod startup_cache;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod turbo;
 pub mod write_batch;

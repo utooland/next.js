@@ -87,6 +87,7 @@ type AsyncModule = (
 
 type ResolveAbsolutePath = (modulePath?: string) => string
 type GetWorkerBlobURL = (chunks: ChunkPath[]) => string
+type GetPublicPath = () => string
 
 type ExternalRequire = (
   id: DependencySpecifier,
@@ -138,4 +139,5 @@ interface TurbopackBaseContext<M> {
   y: ExternalImport
   z: CommonJsRequire
   g: typeof globalThis
+  p: GetPublicPath
 }

@@ -1,7 +1,6 @@
 use std::{
-    borrow::Cow,
     cmp::max,
-    fmt::{Debug, Display},
+    fmt::Debug,
     future::Future,
     mem::take,
     path::{Path, PathBuf},
@@ -13,10 +12,9 @@ use std::{
 use anyhow::{Context, Result, bail};
 use futures::join;
 use once_cell::sync::Lazy;
-use owo_colors::{OwoColorize, Style};
+use owo_colors::OwoColorize;
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
-use serde::{Serialize, de::DeserializeOwned};
 use tokio::{
     io::{
         AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, Stderr,
@@ -30,50 +28,22 @@ use tokio::{
 };
 use turbo_rcstr::RcStr;
 use turbo_tasks::{FxIndexSet, ResolvedVc, Vc, duration_span};
-use turbo_tasks_fs::{FileSystemPath, json::parse_json_with_source_context};
+use turbo_tasks_fs::FileSystemPath;
 use turbopack_ecmascript::magic_identifier::unmangle_identifiers;
 
-use crate::{AssetsForSourceMapping, heap_queue::HeapQueue, source_map::apply_source_mapping};
+use crate::{
+    AssetsForSourceMapping,
+    evaluate::{EvaluateOperation, EvaluatePool, Operation},
+    format::FormattingMode,
+    source_map::apply_source_mapping,
+};
 
-#[derive(Clone, Copy)]
-pub enum FormattingMode {
-    /// No formatting, just print the output
-    Plain,
-    /// Use ansi colors to format the output
-    AnsiColors,
-}
-
-impl FormattingMode {
-    pub fn magic_identifier<'a>(&self, content: impl Display + 'a) -> impl Display + 'a {
-        match self {
-            FormattingMode::Plain => format!("{{{content}}}"),
-            FormattingMode::AnsiColors => format!("{{{content}}}").italic().to_string(),
-        }
-    }
-
-    pub fn lowlight<'a>(&self, content: impl Display + 'a) -> impl Display + 'a {
-        match self {
-            FormattingMode::Plain => Style::new(),
-            FormattingMode::AnsiColors => Style::new().dimmed(),
-        }
-        .style(content)
-    }
-
-    pub fn highlight<'a>(&self, content: impl Display + 'a) -> impl Display + 'a {
-        match self {
-            FormattingMode::Plain => Style::new(),
-            FormattingMode::AnsiColors => Style::new().bold().underline(),
-        }
-        .style(content)
-    }
-}
+mod heap_queue;
+use heap_queue::HeapQueue;
 
 struct NodeJsPoolProcess {
     child: Option<Child>,
     connection: TcpStream,
-    assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
-    assets_root: FileSystemPath,
-    project_dir: FileSystemPath,
     stdout_handler: OutputStreamHandler<ChildStdout, Stdout>,
     stderr_handler: OutputStreamHandler<ChildStderr, Stderr>,
     debug: bool,
@@ -104,39 +74,6 @@ impl Eq for NodeJsPoolProcess {}
 impl PartialEq for NodeJsPoolProcess {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == std::cmp::Ordering::Equal
-    }
-}
-
-impl NodeJsPoolProcess {
-    pub async fn apply_source_mapping<'a>(
-        &self,
-        text: &'a str,
-        formatting_mode: FormattingMode,
-    ) -> Result<Cow<'a, str>> {
-        let text = unmangle_identifiers(text, |content| formatting_mode.magic_identifier(content));
-        match text {
-            Cow::Borrowed(text) => {
-                apply_source_mapping(
-                    text,
-                    *self.assets_for_source_mapping,
-                    self.assets_root.clone(),
-                    self.project_dir.clone(),
-                    formatting_mode,
-                )
-                .await
-            }
-            Cow::Owned(ref text) => {
-                let cow = apply_source_mapping(
-                    text,
-                    *self.assets_for_source_mapping,
-                    self.assets_root.clone(),
-                    self.project_dir.clone(),
-                    formatting_mode,
-                )
-                .await?;
-                Ok(Cow::Owned(cow.into_owned()))
-            }
-        }
     }
 }
 
@@ -456,9 +393,6 @@ impl NodeJsPoolProcess {
         let mut process = Self {
             child: Some(child),
             connection,
-            assets_for_source_mapping,
-            assets_root: assets_root.clone(),
-            project_dir: project_dir.clone(),
             stdout_handler,
             stderr_handler,
             debug,
@@ -726,7 +660,7 @@ static ACTIVE_POOLS: Lazy<IdleProcessQueues> = Lazy::new(Default::default);
 /// The worker will *not* use the env of the parent process by default. All env
 /// vars need to be provided to make the execution as pure as possible.
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
-pub struct NodeJsPool {
+pub struct ChildProcessPool {
     cwd: PathBuf,
     entrypoint: PathBuf,
     env: FxHashMap<RcStr, RcStr>,
@@ -751,10 +685,10 @@ pub struct NodeJsPool {
     stats: Arc<Mutex<NodeJsPoolStats>>,
 }
 
-impl NodeJsPool {
+impl ChildProcessPool {
     /// * debug: Whether to automatically enable Node's `--inspect-brk` when spawning it. Note:
     ///   automatically overrides concurrency to 1.
-    pub(super) fn new(
+    pub fn create(
         cwd: PathBuf,
         entrypoint: PathBuf,
         env: FxHashMap<RcStr, RcStr>,
@@ -763,24 +697,58 @@ impl NodeJsPool {
         project_dir: FileSystemPath,
         concurrency: usize,
         debug: bool,
-    ) -> Self {
-        Self {
-            cwd,
-            entrypoint,
-            env,
+    ) -> EvaluatePool {
+        EvaluatePool::new(
+            entrypoint.to_string_lossy().to_string().into(),
+            Box::new(Self {
+                cwd,
+                entrypoint,
+                env,
+                assets_for_source_mapping,
+                assets_root: assets_root.clone(),
+                project_dir: project_dir.clone(),
+                concurrency_semaphore: Arc::new(Semaphore::new(if debug {
+                    1
+                } else {
+                    concurrency
+                })),
+                bootup_semaphore: Arc::new(Semaphore::new(1)),
+                idle_processes: Arc::new(HeapQueue::new()),
+                shared_stdout: Arc::new(Mutex::new(FxIndexSet::default())),
+                shared_stderr: Arc::new(Mutex::new(FxIndexSet::default())),
+                debug,
+                stats: Default::default(),
+            }),
             assets_for_source_mapping,
             assets_root,
             project_dir,
-            concurrency_semaphore: Arc::new(Semaphore::new(if debug { 1 } else { concurrency })),
-            bootup_semaphore: Arc::new(Semaphore::new(1)),
-            idle_processes: Arc::new(HeapQueue::new()),
-            shared_stdout: Arc::new(Mutex::new(FxIndexSet::default())),
-            shared_stderr: Arc::new(Mutex::new(FxIndexSet::default())),
-            debug,
-            stats: Default::default(),
-        }
+        )
     }
+}
 
+#[async_trait::async_trait]
+impl EvaluateOperation for ChildProcessPool {
+    async fn operation(&self) -> Result<Box<dyn Operation>> {
+        // Acquire a running process (handles concurrency limits, boots up the process)
+
+        let operation = {
+            let _guard = duration_span!("Node.js operation");
+            let (process, permits) = self.acquire_process().await?;
+            ChildProcessOperation {
+                process: Some(process),
+                permits,
+                idle_processes: self.idle_processes.clone(),
+                start: Instant::now(),
+                stats: self.stats.clone(),
+                allow_process_reuse: true,
+            }
+        };
+
+        Ok(Box::new(operation))
+    }
+}
+
+impl ChildProcessPool {
     async fn acquire_process(&self) -> Result<(NodeJsPoolProcess, AcquiredPermits)> {
         {
             self.stats.lock().add_queued_task();
@@ -837,20 +805,7 @@ impl NodeJsPool {
         Ok((process, start.elapsed()))
     }
 
-    pub async fn operation(&self) -> Result<NodeJsOperation> {
-        // Acquire a running process (handles concurrency limits, boots up the process)
-        let (process, permits) = self.acquire_process().await?;
-
-        Ok(NodeJsOperation {
-            process: Some(process),
-            permits,
-            idle_processes: self.idle_processes.clone(),
-            start: Instant::now(),
-            stats: self.stats.clone(),
-            allow_process_reuse: true,
-        })
-    }
-
+    #[allow(dead_code)]
     pub fn scale_down() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {
@@ -858,6 +813,7 @@ impl NodeJsPool {
         }
     }
 
+    #[allow(dead_code)]
     pub fn scale_zero() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {
@@ -866,7 +822,7 @@ impl NodeJsPool {
     }
 }
 
-pub struct NodeJsOperation {
+pub struct ChildProcessOperation {
     process: Option<NodeJsPoolProcess>,
     // This is used for drop
     #[allow(dead_code)]
@@ -877,48 +833,20 @@ pub struct NodeJsOperation {
     allow_process_reuse: bool,
 }
 
-impl NodeJsOperation {
-    async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
-        &'a mut self,
-        f: impl FnOnce(&'a mut NodeJsPoolProcess) -> F,
-    ) -> Result<T> {
-        let process = self
-            .process
-            .as_mut()
-            .context("Node.js operation already finished")?;
-
-        if !self.allow_process_reuse {
-            bail!("Node.js process is no longer usable");
-        }
-
-        let result = f(process).await;
-        if result.is_err() && self.allow_process_reuse {
-            self.stats.lock().remove_worker();
-            self.allow_process_reuse = false;
-        }
-        result
-    }
-
-    pub async fn recv<M>(&mut self) -> Result<M>
-    where
-        M: DeserializeOwned,
-    {
-        let message = self
+#[async_trait::async_trait]
+impl Operation for ChildProcessOperation {
+    async fn recv(&mut self) -> Result<String> {
+        let vec = self
             .with_process(|process| async move {
                 process.recv().await.context("failed to receive message")
             })
             .await?;
-        let message = std::str::from_utf8(&message).context("message is not valid UTF-8")?;
-        parse_json_with_source_context(message).context("failed to deserialize message")
+        Ok(String::from_utf8(vec)?)
     }
 
-    pub async fn send<M>(&mut self, message: M) -> Result<()>
-    where
-        M: Serialize,
-    {
-        let message = serde_json::to_vec(&message).context("failed to serialize message")?;
+    async fn send(&mut self, message: String) -> Result<()> {
         self.with_process(|process| async move {
-            timeout(Duration::from_secs(30), process.send(message))
+            timeout(Duration::from_secs(30), process.send(message.into_bytes()))
                 .await
                 .context("timeout while sending message")?
                 .context("failed to send message")?;
@@ -927,7 +855,7 @@ impl NodeJsOperation {
         .await
     }
 
-    pub async fn wait_or_kill(mut self) -> Result<ExitStatus> {
+    async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
         let mut process = self
             .process
             .take()
@@ -952,27 +880,38 @@ impl NodeJsOperation {
         Ok(status)
     }
 
-    pub fn disallow_reuse(&mut self) {
+    fn disallow_reuse(&mut self) {
         if self.allow_process_reuse {
             self.stats.lock().remove_worker();
             self.allow_process_reuse = false;
         }
     }
+}
 
-    pub async fn apply_source_mapping<'a>(
-        &self,
-        text: &'a str,
-        formatting_mode: FormattingMode,
-    ) -> Result<Cow<'a, str>> {
-        if let Some(process) = self.process.as_ref() {
-            process.apply_source_mapping(text, formatting_mode).await
-        } else {
-            Ok(Cow::Borrowed(text))
+impl ChildProcessOperation {
+    async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
+        &'a mut self,
+        f: impl FnOnce(&'a mut NodeJsPoolProcess) -> F,
+    ) -> Result<T> {
+        let process = self
+            .process
+            .as_mut()
+            .context("Node.js operation already finished")?;
+
+        if !self.allow_process_reuse {
+            bail!("Node.js process is no longer usable");
         }
+
+        let result = f(process).await;
+        if result.is_err() && self.allow_process_reuse {
+            self.stats.lock().remove_worker();
+            self.allow_process_reuse = false;
+        }
+        result
     }
 }
 
-impl Drop for NodeJsOperation {
+impl Drop for ChildProcessOperation {
     fn drop(&mut self) {
         if let Some(mut process) = self.process.take() {
             let elapsed = self.start.elapsed();
