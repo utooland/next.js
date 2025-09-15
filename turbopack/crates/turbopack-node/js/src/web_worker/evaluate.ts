@@ -1,21 +1,18 @@
-import { threadId as workerId, workerData } from 'worker_threads'
+import {
+  Binding,
+  TaskChannel,
+  TEXT_DECODER,
+  TEXT_ENCODER,
+} from '../worker_thread/taskChannel'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
-import { Binding, TaskChannel, TEXT_DECODER, TEXT_ENCODER } from './taskChannel'
+import { workerData, threadId as workerId } from 'worker_threads'
 
-let binding: Binding
+export type Self = DedicatedWorkerGlobalScope
 
-if (workerData.binding) {
-  binding = workerData.binding
-} else {
-  if (!workerData.hasOwnProperty('bindingPath')) {
-    throw new Error('bindingPath not set in loader worker thread')
-  }
+export declare const self: Self
 
-  // turbopackIgnore: true does not take effects, this may be a bug
-  // use module.require to workaround
-  binding = module.require(/* turbopackIgnore: true */ workerData.bindingPath)
-}
+let binding: Binding = workerData.binding
 
 binding.workerCreated(workerId)
 
@@ -102,8 +99,8 @@ export const run = async (
           if (msg.error) {
             // Need to reject at next macro task queue, because some rejection callbacks is not registered when executing to here,
             // that will cause the error be propergated to schedule thread, then causing panic.
-            // The situation always happen when using sass-loader, it will try to resolve many posible dependencies,
-            // some of them may fail with error.
+            // The situation always happen when using sass-loader, it will try to resolve many possible dependencies,
+            // some of then will got a failure.
             setTimeout(() => request.reject(new Error(msg.error)), 0)
           } else {
             request.resolve(msg.data)

@@ -13,10 +13,13 @@ use tokio::sync::{
 };
 use turbo_rcstr::RcStr;
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use crate::worker_pool::web_worker;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::worker_pool::worker_thread;
 use crate::{
     evaluate::Operation,
     pool_stats::{AcquiredPermits, NodeJsPoolStats},
-    worker_pool::worker_thread,
 };
 
 #[derive(Clone)]
@@ -59,9 +62,9 @@ pub(crate) struct PoolState {
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub(super) struct WorkerOptions {
-    pub(super) filename: RcStr,
-    pub(super) cwd: RcStr,
+pub struct WorkerOptions {
+    pub filename: RcStr,
+    pub cwd: RcStr,
 }
 
 pub(super) struct TaskMessage {
@@ -162,7 +165,10 @@ impl WorkerPoolOperation {
         worker_id: u32,
     ) -> Result<()> {
         self.remove_worker_channel(worker_id);
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         worker_thread::terminate_worker(worker_options, worker_id);
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        web_worker::terminate_worker(worker_options, worker_id);
         Ok(())
     }
 

@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow, iter, process::ExitStatus, sync::Arc, thread::available_parallelism,
-    time::Duration,
-};
+use std::{borrow::Cow, iter, process::ExitStatus, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use bincode::{Decode, Encode};
@@ -40,8 +37,9 @@ use crate::process_pool::ChildProcessPool;
 #[cfg(feature = "worker_pool")]
 use crate::worker_pool::WorkerThreadPool;
 use crate::{
-    AssetsForSourceMapping, embed_js::embed_file_path, emit, emit_package_json,
-    format::FormattingMode, internal_assets_for_source_mapping, source_map::StructuredError,
+    AssetsForSourceMapping, available_parallelism::available_parallelism,
+    embed_js::embed_file_path, emit, emit_package_json, format::FormattingMode,
+    internal_assets_for_source_mapping, source_map::StructuredError,
 };
 
 #[derive(Serialize)]
@@ -251,7 +249,7 @@ pub async fn get_evaluate_pool(
         assets_for_source_mapping,
         output_root.clone(),
         chunking_context.root_path().owned().await?,
-        available_parallelism().map_or(1, |v| v.get()),
+        available_parallelism(),
         debug,
     );
     #[cfg(feature = "worker_pool")]
@@ -262,7 +260,7 @@ pub async fn get_evaluate_pool(
         assets_for_source_mapping,
         output_root.clone(),
         chunking_context.root_path().owned().await?,
-        available_parallelism().map_or(1, |v| v.get()),
+        available_parallelism(),
         debug,
     )
     .await;

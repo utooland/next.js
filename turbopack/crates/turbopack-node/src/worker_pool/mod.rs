@@ -17,19 +17,23 @@ use turbo_rcstr::RcStr;
 use turbo_tasks::{ResolvedVc, duration_span};
 use turbo_tasks_fs::FileSystemPath;
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use self::web_worker::create_worker;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use self::worker_thread::create_worker;
 use crate::{
     AssetsForSourceMapping,
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
     pool_stats::AcquiredPermits,
-    worker_pool::{
-        operation::{
-            PoolState, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions, get_pool_state,
-        },
-        worker_thread::create_worker,
+    worker_pool::operation::{
+        PoolState, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions, get_pool_state,
     },
 };
 
 mod operation;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub mod web_worker;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod worker_thread;
 
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
@@ -91,24 +95,32 @@ impl WorkerThreadPool {
 
         {
             let mut idle = self.state.idle_workers.lock();
+
             if let Some(worker_id) = idle.pop() {
                 return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
+            } else {
             }
         }
 
         let (tx, rx) = oneshot::channel();
         {
             let mut waiters = self.state.waiters.lock();
+
             let mut idle = self.state.idle_workers.lock();
             if let Some(worker_id) = idle.pop() {
                 return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
+            } else {
             }
             waiters.push(tx);
         }
 
         let bootup = async {
             let permit = self.bootup_semaphore.clone().acquire_owned().await;
+
             let wait_time = self.state.stats.lock().wait_time_before_bootup();
+
+            // FIXME: hanging when using wasmtimer::sleep
+            #[cfg(not(target_arch = "wasm32"))]
             sleep(wait_time).await;
             permit
         };
@@ -116,6 +128,7 @@ impl WorkerThreadPool {
         select! {
             worker_id = rx => {
                 let worker_id = worker_id?;
+
                 Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }))
             }
             bootup_permit = bootup => {
@@ -123,7 +136,9 @@ impl WorkerThreadPool {
                 {
                     self.state.stats.lock().add_booting_worker();
                 }
+
                 let worker_id = create_worker(self.worker_options.clone()).await?;
+
 
                 {
                     let mut stats = self.state.stats.lock();

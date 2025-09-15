@@ -28,14 +28,12 @@ use turbopack_core::{
 };
 
 use crate::{
-    references::util::{
+    chunk::EcmascriptChunkPlaceable, references::util::{
         request_to_string, throw_module_not_found_error_expr, throw_module_not_found_expr,
-    },
-    runtime_functions::{
+    }, runtime_functions::{
         TURBOPACK_ASYNC_LOADER, TURBOPACK_EXTERNAL_IMPORT, TURBOPACK_EXTERNAL_REQUIRE,
         TURBOPACK_IMPORT, TURBOPACK_MODULE_CONTEXT, TURBOPACK_REQUIRE,
-    },
-    utils::module_id_to_lit,
+    }, utils::module_id_to_lit
 };
 
 #[derive(PartialEq, Eq, ValueDebugFormat, TraceRawVcs, NonLocalValue, Encode, Decode)]
@@ -352,6 +350,13 @@ async fn to_single_pattern_mapping(
         }
     };
     if let Some(chunkable) = ResolvedVc::try_downcast::<Box<dyn ChunkableModule>>(module) {
+        // Check if it's an EcmascriptChunkPlaceable
+        // Non-JS modules should be ignored as their side effects
+        // are handled through their own chunk types
+        if ResolvedVc::try_downcast::<Box<dyn EcmascriptChunkPlaceable>>(module).is_none() {
+            return Ok(SinglePatternMapping::Ignored);
+        }
+
         match resolve_type {
             ResolveType::AsyncChunkLoader => {
                 let loader_id = chunking_context.async_loader_chunk_item_id(*chunkable);

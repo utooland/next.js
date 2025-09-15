@@ -363,10 +363,10 @@ impl AssetIdent {
         // We need to make sure that `.json` and `.json.js` doesn't end up with the same
         // name. So when we add an extra extension when want to mark that with a "._"
         // suffix.
-        if !removed_extension {
-            name += "._";
-        }
-        name += &expected_extension;
+        // if !removed_extension {
+        //     name += "._";
+        // }
+        // name += &expected_extension;
         Ok(Vc::cell(name.into()))
     }
 }
@@ -433,8 +433,8 @@ impl ValueToString for AssetIdent {
     }
 }
 
-fn clean_separators(s: &str) -> String {
-    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?]").unwrap());
+pub fn clean_separators(s: &str) -> String {
+    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?\[\]<>@]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "_").to_string()
 }
 
