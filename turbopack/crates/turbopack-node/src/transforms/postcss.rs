@@ -385,7 +385,7 @@ async fn postcss_executor(
 
     Ok(asset_context.process(
         Vc::upcast(FileSource::new(
-            embed_file_path(rcstr!("transforms/postcss.ts"))
+            embed_file_path(rcstr!("child_process/transforms/postcss.ts"))
                 .owned()
                 .await?,
         )),

@@ -376,10 +376,13 @@ impl ChunkingContext for NodeJsChunkingContext {
         extension: RcStr,
     ) -> Result<Vc<FileSystemPath>> {
         let root_path = self.chunk_root_path.clone();
-        let name = ident
-            .output_name(self.root_path.clone(), prefix, extension)
-            .owned()
-            .await?;
+        let mut name = ident
+            .output_name(self.root_path.clone(), prefix, extension.clone())
+            .await?
+            .to_string();
+        if !name.ends_with(extension.as_str()) {
+            name.push_str(&extension);
+        }
         Ok(root_path.join(&name)?.cell())
     }
 
