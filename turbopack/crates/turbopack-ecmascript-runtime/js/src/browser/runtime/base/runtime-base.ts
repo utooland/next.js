@@ -24,13 +24,7 @@ declare var CHUNK_SUFFIX_PATH: string
 // Support runtime public path from window.publicPath
 function getRuntimeChunkBasePath(): string {
   if (CHUNK_BASE_PATH === "__RUNTIME_PUBLIC_PATH__") {
-    if (typeof globalThis !== 'undefined' && typeof (globalThis as any).publicPath === "string") {
-      return (globalThis as any).publicPath;
-    }
-    console.warn(
-      "publicPath is set to 'runtime' but window.publicPath is not defined or not a string, falling back to '/'"
-    );
-    return "/";
+    return contextPrototype.p();
   }
   return CHUNK_BASE_PATH;
 }
