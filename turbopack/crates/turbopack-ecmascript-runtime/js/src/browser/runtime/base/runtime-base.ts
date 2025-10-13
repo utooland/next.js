@@ -21,6 +21,20 @@ declare var TURBOPACK_NEXT_CHUNK_URLS: ChunkUrl[] | undefined
 declare var CHUNK_BASE_PATH: string
 declare var CHUNK_SUFFIX_PATH: string
 
+// Support runtime public path from window.publicPath
+function getRuntimeChunkBasePath(): string {
+  if (CHUNK_BASE_PATH === "__RUNTIME_PUBLIC_PATH__") {
+    if (typeof globalThis !== 'undefined' && typeof (globalThis as any).publicPath === "string") {
+      return (globalThis as any).publicPath;
+    }
+    console.warn(
+      "publicPath is set to 'runtime' but window.publicPath is not defined or not a string, falling back to '/'"
+    );
+    return "/";
+  }
+  return CHUNK_BASE_PATH;
+}
+
 interface TurbopackBrowserBaseContext<M> extends TurbopackBaseContext<M> {
   R: ResolvePathFromModule
 }
@@ -344,7 +358,7 @@ function instantiateRuntimeModule(
  * Returns the URL relative to the origin where a chunk can be fetched from.
  */
 function getChunkRelativeUrl(chunkPath: ChunkPath | ChunkListPath): ChunkUrl {
-  return `${CHUNK_BASE_PATH}${chunkPath
+  return `${getRuntimeChunkBasePath()}${chunkPath
     .split('/')
     .map((p) => encodeURIComponent(p))
     .join('/')}${CHUNK_SUFFIX_PATH}` as ChunkUrl
@@ -368,8 +382,9 @@ function getPathFromScript(
       ? TURBOPACK_NEXT_CHUNK_URLS.pop()!
       : chunkScript.getAttribute('src')!
   const src = decodeURIComponent(chunkUrl.replace(/[?#].*$/, ''))
-  const path = src.startsWith(CHUNK_BASE_PATH)
-    ? src.slice(CHUNK_BASE_PATH.length)
+  const runtimeBasePath = getRuntimeChunkBasePath()
+  const path = src.startsWith(runtimeBasePath)
+    ? src.slice(runtimeBasePath.length)
     : src
   return path as ChunkPath | ChunkListPath
 }
