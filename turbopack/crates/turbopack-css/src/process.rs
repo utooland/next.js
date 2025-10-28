@@ -468,7 +468,17 @@ async fn process_content(
                 // `.await` in the loop.
                 let warnings = warnings.read().unwrap().iter().cloned().collect::<Vec<_>>();
                 for err in warnings.iter() {
-                    match err.kind {
+                    // Ignore :global pseudo-class errors from preprocessors like LESS
+                    if let lightningcss::error::ParserError::SelectorError(
+                        lightningcss::error::SelectorError::UnsupportedPseudoClass(name),
+                    ) = &err.kind
+                    {
+                        if name.as_ref() == "global" {
+                            continue;
+                        }
+                    }
+
+                    match &err.kind {
                         lightningcss::error::ParserError::UnexpectedToken(_)
                         | lightningcss::error::ParserError::UnexpectedImportRule
                         | lightningcss::error::ParserError::SelectorError(..)
@@ -495,7 +505,7 @@ async fn process_content(
                         }
 
                         _ => {
-                            // Ignore
+                            // Ignore other warnings
                         }
                     }
                 }
