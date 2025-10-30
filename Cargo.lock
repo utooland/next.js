@@ -584,7 +584,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -3659,8 +3659,7 @@ dependencies = [
 [[package]]
 name = "lightningcss"
 version = "1.0.0-alpha.68"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b407ca668368d1d5a86cea58ac82d9f9f9ca4bac1e9dce6f16f875f0f081a911"
+source = "git+https://github.com/utooland/lightningcss?branch=support-css-module-global#cb37890ff8f5ddf17e90f2df486417bcb13fc001"
 dependencies = [
  "ahash 0.8.12",
  "bitflags 2.9.1",
@@ -3689,8 +3688,7 @@ dependencies = [
 [[package]]
 name = "lightningcss-derive"
 version = "1.0.0-alpha.43"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84c12744d1279367caed41739ef094c325d53fb0ffcd4f9b84a368796f870252"
+source = "git+https://github.com/utooland/lightningcss?branch=support-css-module-global#cb37890ff8f5ddf17e90f2df486417bcb13fc001"
 dependencies = [
  "convert_case 0.6.0",
  "proc-macro2",
@@ -4855,8 +4853,7 @@ dependencies = [
 [[package]]
 name = "parcel_selectors"
 version = "0.28.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54fd03f1ad26cb6b3ec1b7414fa78a3bd639e7dbb421b1a60513c96ce886a196"
+source = "git+https://github.com/utooland/lightningcss?branch=support-css-module-global#cb37890ff8f5ddf17e90f2df486417bcb13fc001"
 dependencies = [
  "bitflags 2.9.1",
  "cssparser",
@@ -5377,7 +5374,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "157c5a9d7ea5c2ed2d9fb8f495b64759f7816c7eaea54ba3978f0d63000162e3"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.104",
@@ -6925,8 +6922,7 @@ dependencies = [
 [[package]]
 name = "static-self"
 version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6635404b73efc136af3a7956e53c53d4f34b2f16c95a15c438929add0f69412"
+source = "git+https://github.com/utooland/lightningcss?branch=support-css-module-global#cb37890ff8f5ddf17e90f2df486417bcb13fc001"
 dependencies = [
  "indexmap 2.9.0",
  "smallvec",
@@ -6936,8 +6932,7 @@ dependencies = [
 [[package]]
 name = "static-self-derive"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5268c96d4b907c558a9a52d8492522d6c7b559651a5e1d8f2d551e461b9425d5"
+source = "git+https://github.com/utooland/lightningcss?branch=support-css-module-global#cb37890ff8f5ddf17e90f2df486417bcb13fc001"
 dependencies = [
  "proc-macro2",
  "quote",

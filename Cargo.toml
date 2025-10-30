@@ -459,3 +459,5 @@ inventory = "0.3.21"
 mdxjs = { git = "https://github.com/mischnic/mdxjs-rs.git", branch = "swc-core-32" }
 tokio = { git = "https://github.com/utooland/tokio.git", package = "tokio" }
 tokio-util = { git = "https://github.com/utooland/tokio.git", package = "tokio-util" }
+lightningcss = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
+parcel_selectors = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
