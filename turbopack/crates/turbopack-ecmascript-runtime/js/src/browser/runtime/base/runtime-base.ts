@@ -377,9 +377,12 @@ function getPathFromScript(
       : chunkScript.getAttribute('src')!
   const src = decodeURIComponent(chunkUrl.replace(/[?#].*$/, ''))
   const runtimeBasePath = getRuntimeChunkBasePath()
-  const path = src.startsWith(runtimeBasePath)
+  let path = src.startsWith(runtimeBasePath)
     ? src.slice(runtimeBasePath.length)
     : src
+  if (path.startsWith('/')) {
+    path = path.slice(1)
+  }
   return path as ChunkPath | ChunkListPath
 }
 
