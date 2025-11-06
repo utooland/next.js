@@ -459,9 +459,10 @@ async fn process_content(
                     let mut validator = CssValidator { errors: Vec::new() };
                     ss.visit(&mut validator).unwrap();
 
-                    for err in validator.errors {
-                        err.report(source);
-                    }
+                    // TODO: remove pure selector
+                    // for err in validator.errors {
+                    //     err.report(source);
+                    // }
                 }
 
                 // We need to collect here because we need to avoid holding the lock while calling
@@ -469,15 +470,12 @@ async fn process_content(
                 let warnings = warnings.read().unwrap().iter().cloned().collect::<Vec<_>>();
                 for err in warnings.iter() {
                     match &err.kind {
-                        // Ignore :global pseudo-class errors from preprocessors like LESS
-                        lightningcss::error::ParserError::SelectorError(
-                            lightningcss::error::SelectorError::UnsupportedPseudoClass(name),
-                        ) if name.as_ref() == "global" => {
+                        // Ignore all SelectorError errors
+                        lightningcss::error::ParserError::SelectorError(..) => {
                             continue;
                         }
                         lightningcss::error::ParserError::UnexpectedToken(_)
                         | lightningcss::error::ParserError::UnexpectedImportRule
-                        | lightningcss::error::ParserError::SelectorError(..)
                         | lightningcss::error::ParserError::EndOfInput => {
                             let source = match &err.loc {
                                 Some(loc) => {
@@ -541,6 +539,11 @@ async fn process_content(
                 stylesheet_into_static(&ss, without_warnings(config.clone()))
             }
             Err(e) => {
+                // Ignore all SelectorError errors
+                if matches!(e.kind, lightningcss::error::ParserError::SelectorError(..)) {
+                    return Ok(ParseCssResult::Unparsable.cell());
+                }
+
                 let source = match &e.loc {
                     Some(loc) => {
                         let pos = SourcePos {
@@ -597,6 +600,7 @@ enum CssError {
 }
 
 impl CssError {
+    #[allow(unused)]
     fn report(self, source: ResolvedVc<Box<dyn Source>>) {
         match self {
             CssError::CssSelectorInModuleNotPure { selector } => {
