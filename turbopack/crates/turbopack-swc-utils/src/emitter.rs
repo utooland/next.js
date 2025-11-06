@@ -123,14 +123,29 @@ impl Emitter for IssueEmitter {
         let severity = if is_lint {
             IssueSeverity::Suggestion
         } else {
+            // Check if this is a duplicate binding error and downgrade to warning
+            let is_duplicate_binding_error = message.contains("defined multiple times");
+
             match level {
                 Level::Bug => IssueSeverity::Bug,
                 Level::Fatal | Level::PhaseFatal => IssueSeverity::Fatal,
-                Level::Error => IssueSeverity::Error,
+                Level::Error => {
+                    if is_duplicate_binding_error {
+                        IssueSeverity::Warning
+                    } else {
+                        IssueSeverity::Error
+                    }
+                }
                 Level::Warning => IssueSeverity::Warning,
                 Level::Note => IssueSeverity::Note,
                 Level::Help => IssueSeverity::Hint,
-                Level::Cancelled => IssueSeverity::Error,
+                Level::Cancelled => {
+                    if is_duplicate_binding_error {
+                        IssueSeverity::Warning
+                    } else {
+                        IssueSeverity::Error
+                    }
+                }
                 Level::FailureNote => IssueSeverity::Note,
             }
         };
