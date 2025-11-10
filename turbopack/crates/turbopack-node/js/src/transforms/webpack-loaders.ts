@@ -1,5 +1,5 @@
 declare const __turbopack_external_require__: {
-  resolve: (name: string, opt: { paths: string[] }) => string
+  resolve: (name: string, opt?: { paths: string[] }) => string
 } & ((id: string, thunk: () => any, esm?: boolean) => any)
 
 import type { Ipc } from '../ipc/evaluate'
@@ -462,7 +462,7 @@ const transform = (
         },
 
         loaders: loadersWithOptions.map((loader) => ({
-          loader: __turbopack_external_require__.resolve(loader.loader, {}),
+          loader: __turbopack_external_require__.resolve(loader.loader),
           options: loader.options,
         })),
         readResource: (_filename, callback) => {
