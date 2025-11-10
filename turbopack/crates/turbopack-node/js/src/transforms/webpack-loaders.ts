@@ -156,7 +156,6 @@ const transform = (
 ) => {
   return new Promise((resolve, reject) => {
     const resource = pathResolve(contextDir, name)
-    const resourceDir = dirname(resource)
 
     const loadersWithOptions = loaders.map((loader) =>
       typeof loader === 'string' ? { loader, options: {} } : loader
@@ -463,9 +462,7 @@ const transform = (
         },
 
         loaders: loadersWithOptions.map((loader) => ({
-          loader: __turbopack_external_require__.resolve(loader.loader, {
-            paths: [contextDir, resourceDir],
-          }),
+          loader: __turbopack_external_require__.resolve(loader.loader, {}),
           options: loader.options,
         })),
         readResource: (_filename, callback) => {
