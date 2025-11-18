@@ -34,6 +34,18 @@ export declare class ExternalObject<T> {
     [K: symbol]: T
   }
 }
+export declare function recvPoolRequest(): Promise<string>
+export declare function notifyPoolCreated(filename: string): Promise<void>
+export declare function recvWorkerRequest(poolId: string): Promise<void>
+export declare function notifyWorkerAck(poolId: string): Promise<void>
+export declare function recvEvaluation(poolId: string): Promise<Array<number>>
+export declare function recvMessageInWorker(
+  workerId: number
+): Promise<Array<number>>
+export declare function sendTaskResponse(
+  taskId: string,
+  data: Array<number>
+): Promise<void>
 export declare function lockfileTryAcquireSync(
   path: string
 ): { __napiType: 'Lockfile' } | null

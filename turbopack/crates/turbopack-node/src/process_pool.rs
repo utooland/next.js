@@ -1,6 +1,6 @@
 use std::{
     cmp::max,
-    fmt::{Debug, Display},
+    fmt::Debug,
     future::Future,
     mem::take,
     path::{Path, PathBuf},
@@ -12,10 +12,9 @@ use std::{
 use anyhow::{Context, Result, bail};
 use futures::join;
 use once_cell::sync::Lazy;
-use owo_colors::{OwoColorize, Style};
+use owo_colors::OwoColorize;
 use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
-use serde::{Serialize, de::DeserializeOwned};
 use tokio::{
     io::{
         AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, Stderr,
@@ -29,43 +28,16 @@ use tokio::{
 };
 use turbo_rcstr::RcStr;
 use turbo_tasks::{FxIndexSet, ResolvedVc, Vc, duration_span};
-use turbo_tasks_fs::{FileSystemPath, json::parse_json_with_source_context};
+use turbo_tasks_fs::FileSystemPath;
 use turbopack_ecmascript::magic_identifier::unmangle_identifiers;
 
-use crate::{AssetsForSourceMapping, heap_queue::HeapQueue, source_map::apply_source_mapping};
-
-#[derive(Clone, Copy)]
-pub enum FormattingMode {
-    /// No formatting, just print the output
-    Plain,
-    /// Use ansi colors to format the output
-    AnsiColors,
-}
-
-impl FormattingMode {
-    pub fn magic_identifier<'a>(&self, content: impl Display + 'a) -> impl Display + 'a {
-        match self {
-            FormattingMode::Plain => format!("{{{content}}}"),
-            FormattingMode::AnsiColors => format!("{{{content}}}").italic().to_string(),
-        }
-    }
-
-    pub fn lowlight<'a>(&self, content: impl Display + 'a) -> impl Display + 'a {
-        match self {
-            FormattingMode::Plain => Style::new(),
-            FormattingMode::AnsiColors => Style::new().dimmed(),
-        }
-        .style(content)
-    }
-
-    pub fn highlight<'a>(&self, content: impl Display + 'a) -> impl Display + 'a {
-        match self {
-            FormattingMode::Plain => Style::new(),
-            FormattingMode::AnsiColors => Style::new().bold().underline(),
-        }
-        .style(content)
-    }
-}
+use crate::{
+    AssetsForSourceMapping,
+    evaluate::{EvaluateOperation, EvaluatePool, Operation},
+    format::FormattingMode,
+    heap_queue::HeapQueue,
+    source_map::apply_source_mapping,
+};
 
 struct NodeJsPoolProcess {
     child: Option<Child>,
@@ -686,7 +658,7 @@ static ACTIVE_POOLS: Lazy<IdleProcessQueues> = Lazy::new(Default::default);
 /// The worker will *not* use the env of the parent process by default. All env
 /// vars need to be provided to make the execution as pure as possible.
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
-pub struct NodeJsPool {
+pub struct ChildProcessPool {
     cwd: PathBuf,
     entrypoint: PathBuf,
     env: FxHashMap<RcStr, RcStr>,
@@ -711,10 +683,10 @@ pub struct NodeJsPool {
     stats: Arc<Mutex<NodeJsPoolStats>>,
 }
 
-impl NodeJsPool {
+impl ChildProcessPool {
     /// * debug: Whether to automatically enable Node's `--inspect-brk` when spawning it. Note:
     ///   automatically overrides concurrency to 1.
-    pub(super) fn new(
+    pub fn create(
         cwd: PathBuf,
         entrypoint: PathBuf,
         env: FxHashMap<RcStr, RcStr>,
@@ -723,24 +695,53 @@ impl NodeJsPool {
         project_dir: FileSystemPath,
         concurrency: usize,
         debug: bool,
-    ) -> Self {
-        Self {
-            cwd,
-            entrypoint,
-            env,
+    ) -> EvaluatePool {
+        EvaluatePool::new(
+            entrypoint.to_string_lossy().to_string().into(),
+            Box::new(Self {
+                cwd,
+                entrypoint,
+                env,
+                assets_for_source_mapping,
+                assets_root: assets_root.clone(),
+                project_dir: project_dir.clone(),
+                concurrency_semaphore: Arc::new(Semaphore::new(if debug {
+                    1
+                } else {
+                    concurrency
+                })),
+                bootup_semaphore: Arc::new(Semaphore::new(1)),
+                idle_processes: Arc::new(HeapQueue::new()),
+                shared_stdout: Arc::new(Mutex::new(FxIndexSet::default())),
+                shared_stderr: Arc::new(Mutex::new(FxIndexSet::default())),
+                debug,
+                stats: Default::default(),
+            }),
             assets_for_source_mapping,
             assets_root,
             project_dir,
-            concurrency_semaphore: Arc::new(Semaphore::new(if debug { 1 } else { concurrency })),
-            bootup_semaphore: Arc::new(Semaphore::new(1)),
-            idle_processes: Arc::new(HeapQueue::new()),
-            shared_stdout: Arc::new(Mutex::new(FxIndexSet::default())),
-            shared_stderr: Arc::new(Mutex::new(FxIndexSet::default())),
-            debug,
-            stats: Default::default(),
-        }
+        )
     }
+}
 
+#[async_trait::async_trait]
+impl EvaluateOperation for ChildProcessPool {
+    async fn operation(&self) -> Result<Box<dyn Operation>> {
+        // Acquire a running process (handles concurrency limits, boots up the process)
+        let (process, permits) = self.acquire_process().await?;
+
+        Ok(Box::new(NodeJsOperation {
+            process: Some(process),
+            permits,
+            idle_processes: self.idle_processes.clone(),
+            start: Instant::now(),
+            stats: self.stats.clone(),
+            allow_process_reuse: true,
+        }))
+    }
+}
+
+impl ChildProcessPool {
     async fn acquire_process(&self) -> Result<(NodeJsPoolProcess, AcquiredPermits)> {
         {
             self.stats.lock().add_queued_task();
@@ -797,20 +798,6 @@ impl NodeJsPool {
         Ok((process, start.elapsed()))
     }
 
-    pub async fn operation(&self) -> Result<NodeJsOperation> {
-        // Acquire a running process (handles concurrency limits, boots up the process)
-        let (process, permits) = self.acquire_process().await?;
-
-        Ok(NodeJsOperation {
-            process: Some(process),
-            permits,
-            idle_processes: self.idle_processes.clone(),
-            start: Instant::now(),
-            stats: self.stats.clone(),
-            allow_process_reuse: true,
-        })
-    }
-
     pub fn scale_down() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {
@@ -837,6 +824,27 @@ pub struct NodeJsOperation {
     allow_process_reuse: bool,
 }
 
+#[async_trait::async_trait]
+impl Operation for NodeJsOperation {
+    async fn recv(&mut self) -> Result<Vec<u8>> {
+        self.with_process(|process| async move {
+            process.recv().await.context("failed to receive message")
+        })
+        .await
+    }
+
+    async fn send(&mut self, data: Vec<u8>) -> Result<()> {
+        self.with_process(|process| async move {
+            timeout(Duration::from_secs(30), process.send(data))
+                .await
+                .context("timeout while sending message")?
+                .context("failed to send message")?;
+            Ok(())
+        })
+        .await
+    }
+}
+
 impl NodeJsOperation {
     async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
         &'a mut self,
@@ -859,34 +867,7 @@ impl NodeJsOperation {
         result
     }
 
-    pub async fn recv<M>(&mut self) -> Result<M>
-    where
-        M: DeserializeOwned,
-    {
-        let message = self
-            .with_process(|process| async move {
-                process.recv().await.context("failed to receive message")
-            })
-            .await?;
-        let message = std::str::from_utf8(&message).context("message is not valid UTF-8")?;
-        parse_json_with_source_context(message).context("failed to deserialize message")
-    }
-
-    pub async fn send<M>(&mut self, message: M) -> Result<()>
-    where
-        M: Serialize,
-    {
-        let message = serde_json::to_vec(&message).context("failed to serialize message")?;
-        self.with_process(|process| async move {
-            timeout(Duration::from_secs(30), process.send(message))
-                .await
-                .context("timeout while sending message")?
-                .context("failed to send message")?;
-            Ok(())
-        })
-        .await
-    }
-
+    #[allow(dead_code)]
     pub async fn wait_or_kill(mut self) -> Result<ExitStatus> {
         let mut process = self
             .process
@@ -912,6 +893,7 @@ impl NodeJsOperation {
         Ok(status)
     }
 
+    #[allow(dead_code)]
     pub fn disallow_reuse(&mut self) {
         if self.allow_process_reuse {
             self.stats.lock().remove_worker();

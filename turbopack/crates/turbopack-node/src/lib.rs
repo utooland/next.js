@@ -22,10 +22,15 @@ pub mod debug;
 pub mod embed_js;
 pub mod evaluate;
 pub mod execution_context;
+mod format;
+#[cfg(feature = "child_process")]
 mod heap_queue;
-mod pool;
+#[cfg(feature = "child_process")]
+mod process_pool;
 pub mod source_map;
 pub mod transforms;
+#[cfg(feature = "worker_thread")]
+mod worker_pool;
 
 #[turbo_tasks::function]
 async fn emit(

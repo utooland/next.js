@@ -1057,11 +1057,12 @@ impl Project {
 
             // At this point all modules have been computed and we can get rid of the node.js
             // process pools
-            if *self.is_watch_enabled().await? {
-                turbopack_node::evaluate::scale_down();
-            } else {
-                turbopack_node::evaluate::scale_zero();
-            }
+            // TODO:
+            // if *self.is_watch_enabled().await? {
+            //     turbopack_node::evaluate::scale_down();
+            // } else {
+            //     turbopack_node::evaluate::scale_zero();
+            // }
 
             Ok(module_graphs_vc)
         }

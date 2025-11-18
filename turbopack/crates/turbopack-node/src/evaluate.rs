@@ -10,7 +10,7 @@ use turbo_tasks::{
     TryJoinIterExt, Vc, duration_span, fxindexmap, get_effects, trace::TraceRawVcs,
 };
 use turbo_tasks_env::{EnvMap, ProcessEnv};
-use turbo_tasks_fs::{File, FileSystemPath, to_sys_path};
+use turbo_tasks_fs::{File, FileSystemPath, json::parse_json_with_source_context, to_sys_path};
 use turbopack_core::{
     asset::AssetContent,
     changed::content_changed,
@@ -31,17 +31,18 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
+#[cfg(feature = "child_process")]
+use crate::process_pool::ChildProcessPool as Pool;
+#[cfg(feature = "worker_thread")]
+use crate::worker_pool::WorkerThreadPool as Pool;
 use crate::{
-    AssetsForSourceMapping,
-    embed_js::embed_file_path,
-    emit, emit_package_json, internal_assets_for_source_mapping,
-    pool::{FormattingMode, NodeJsOperation, NodeJsPool},
-    source_map::StructuredError,
+    AssetsForSourceMapping, embed_js::embed_file_path, emit, emit_package_json,
+    format::FormattingMode, internal_assets_for_source_mapping, source_map::StructuredError,
 };
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-enum EvalJavaScriptOutgoingMessage<'a> {
+pub enum EvalJavaScriptOutgoingMessage<'a> {
     #[serde(rename_all = "camelCase")]
     Evaluate { args: Vec<&'a JsonValue> },
     Result {
@@ -53,11 +54,57 @@ enum EvalJavaScriptOutgoingMessage<'a> {
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
-enum EvalJavaScriptIncomingMessage {
+pub enum EvalJavaScriptIncomingMessage {
     Info { data: JsonValue },
     Request { id: u64, data: JsonValue },
     End { data: Option<String> },
     Error(StructuredError),
+}
+
+#[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
+pub struct EvaluatePool {
+    pub id: RcStr,
+    #[turbo_tasks(trace_ignore, debug_ignore)]
+    pool: Box<dyn EvaluateOperation>,
+    pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+    pub assets_root: FileSystemPath,
+    pub project_dir: FileSystemPath,
+}
+
+impl EvaluatePool {
+    pub async fn operation(&self) -> Result<Box<dyn Operation>> {
+        self.pool.operation().await
+    }
+}
+
+impl EvaluatePool {
+    pub(crate) fn new(
+        id: RcStr,
+        pool: Box<dyn EvaluateOperation>,
+        assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+        assets_root: FileSystemPath,
+        project_dir: FileSystemPath,
+    ) -> Self {
+        Self {
+            id,
+            pool,
+            assets_for_source_mapping,
+            assets_root,
+            project_dir,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+pub trait EvaluateOperation: Send + Sync {
+    async fn operation(&self) -> Result<Box<dyn Operation>>;
+}
+
+#[async_trait::async_trait]
+pub trait Operation: Send {
+    async fn recv(&mut self) -> Result<Vec<u8>>;
+
+    async fn send(&mut self, data: Vec<u8>) -> Result<()>;
 }
 
 #[turbo_tasks::value]
@@ -161,7 +208,7 @@ pub async fn get_evaluate_pool(
     additional_invalidation: ResolvedVc<Completion>,
     debug: bool,
     env_var_tracking: EnvVarTracking,
-) -> Result<Vc<NodeJsPool>> {
+) -> Result<Vc<EvaluatePool>> {
     let operation =
         emit_evaluate_pool_assets_with_effects_operation(entries, chunking_context, module_graph);
     let EmittedEvaluatePoolAssetsWithEffects { assets, effects } =
@@ -199,7 +246,7 @@ pub async fn get_evaluate_pool(
             env.read_all().untracked().await?
         }
     };
-    let pool = NodeJsPool::new(
+    let pool = Pool::create(
         cwd,
         entrypoint,
         env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
@@ -256,7 +303,7 @@ pub trait EvaluateContext {
     type ResponseMessage: Serialize;
     type State: Default;
 
-    fn pool(&self) -> OperationVc<NodeJsPool>;
+    fn pool(&self) -> OperationVc<EvaluatePool>;
     fn keep_alive(&self) -> bool {
         false
     }
@@ -265,24 +312,24 @@ pub trait EvaluateContext {
     fn emit_error(
         &self,
         error: StructuredError,
-        pool: &NodeJsPool,
+        pool: &EvaluatePool,
     ) -> impl Future<Output = Result<()>> + Send;
     fn info(
         &self,
         state: &mut Self::State,
         data: Self::InfoMessage,
-        pool: &NodeJsPool,
+        pool: &EvaluatePool,
     ) -> impl Future<Output = Result<()>> + Send;
     fn request(
         &self,
         state: &mut Self::State,
         data: Self::RequestMessage,
-        pool: &NodeJsPool,
+        pool: &EvaluatePool,
     ) -> impl Future<Output = Result<Self::ResponseMessage>> + Send;
     fn finish(
         &self,
         state: Self::State,
-        pool: &NodeJsPool,
+        pool: &EvaluatePool,
     ) -> impl Future<Output = Result<()>> + Send;
 }
 
@@ -297,7 +344,7 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
     let args = evaluate_context.args().iter().try_join().await?;
     // Assume this is a one-off operation, so we can kill the process
     // TODO use a better way to decide that.
-    let kill = !evaluate_context.keep_alive();
+    // let kill = !evaluate_context.keep_alive();
 
     // Workers in the pool could be in a bad state that we didn't detect yet.
     // The bad state might even be unnoticeable until we actually send the job to the
@@ -308,9 +355,11 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
         || async {
             let mut operation = pool.operation().await?;
             operation
-                .send(EvalJavaScriptOutgoingMessage::Evaluate {
-                    args: args.iter().map(|v| &**v).collect(),
-                })
+                .send(serde_json::to_vec(
+                    &EvalJavaScriptOutgoingMessage::Evaluate {
+                        args: args.iter().map(|v| &**v).collect(),
+                    },
+                )?)
                 .await?;
             Ok(operation)
         },
@@ -326,9 +375,9 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
 
     evaluate_context.finish(state, &pool).await?;
 
-    if kill {
-        operation.wait_or_kill().await?;
-    }
+    // if kill {
+    //     operation.wait_or_kill().await?;
+    // }
 
     Ok(Vc::cell(result.map(RcStr::from)))
 }
@@ -455,19 +504,22 @@ pub async fn evaluate(
 /// Repeatedly pulls from the NodeJsOperation until we receive a
 /// value/error/end.
 async fn pull_operation<T: EvaluateContext>(
-    operation: &mut NodeJsOperation,
-    pool: &NodeJsPool,
+    operation: &mut Box<dyn Operation>,
+    pool: &EvaluatePool,
     evaluate_context: &T,
     state: &mut T::State,
 ) -> Result<Option<String>> {
     let _guard = duration_span!("Node.js evaluation");
 
     loop {
-        match operation.recv().await? {
+        let buf = operation.recv().await?;
+        let message = parse_json_with_source_context(std::str::from_utf8(&buf)?)?;
+
+        match message {
             EvalJavaScriptIncomingMessage::Error(error) => {
                 evaluate_context.emit_error(error, pool).await?;
                 // Do not reuse the process in case of error
-                operation.disallow_reuse();
+                // operation.disallow_reuse();
                 // Issue emitted, we want to break but don't want to return an error
                 return Ok(None);
             }
@@ -484,20 +536,24 @@ async fn pull_operation<T: EvaluateContext>(
                 {
                     Ok(response) => {
                         operation
-                            .send(EvalJavaScriptOutgoingMessage::Result {
-                                id,
-                                error: None,
-                                data: Some(serde_json::to_value(response)?),
-                            })
+                            .send(serde_json::to_vec(
+                                &EvalJavaScriptOutgoingMessage::Result {
+                                    id,
+                                    error: None,
+                                    data: Some(serde_json::to_value(response)?),
+                                },
+                            )?)
                             .await?;
                     }
                     Err(e) => {
                         operation
-                            .send(EvalJavaScriptOutgoingMessage::Result {
-                                id,
-                                error: Some(PrettyPrintError(&e).to_string()),
-                                data: None,
-                            })
+                            .send(serde_json::to_vec(
+                                &EvalJavaScriptOutgoingMessage::Result {
+                                    id,
+                                    error: Some(PrettyPrintError(&e).to_string()),
+                                    data: None,
+                                },
+                            )?)
                             .await?;
                     }
                 }
@@ -525,7 +581,7 @@ impl EvaluateContext for BasicEvaluateContext {
     type ResponseMessage = ();
     type State = ();
 
-    fn pool(&self) -> OperationVc<crate::pool::NodeJsPool> {
+    fn pool(&self) -> OperationVc<EvaluatePool> {
         get_evaluate_pool(
             self.entries,
             self.cwd.clone(),
@@ -550,7 +606,7 @@ impl EvaluateContext for BasicEvaluateContext {
         !self.args.is_empty()
     }
 
-    async fn emit_error(&self, error: StructuredError, pool: &NodeJsPool) -> Result<()> {
+    async fn emit_error(&self, error: StructuredError, pool: &EvaluatePool) -> Result<()> {
         EvaluationIssue {
             error,
             source: IssueSource::from_source_only(self.context_source_for_issue),
@@ -567,7 +623,7 @@ impl EvaluateContext for BasicEvaluateContext {
         &self,
         _state: &mut Self::State,
         _data: Self::InfoMessage,
-        _pool: &NodeJsPool,
+        _pool: &EvaluatePool,
     ) -> Result<()> {
         bail!("BasicEvaluateContext does not support info messages")
     }
@@ -576,22 +632,14 @@ impl EvaluateContext for BasicEvaluateContext {
         &self,
         _state: &mut Self::State,
         _data: Self::RequestMessage,
-        _pool: &NodeJsPool,
+        _pool: &EvaluatePool,
     ) -> Result<Self::ResponseMessage> {
         bail!("BasicEvaluateContext does not support request messages")
     }
 
-    async fn finish(&self, _state: Self::State, _pool: &NodeJsPool) -> Result<()> {
+    async fn finish(&self, _state: Self::State, _pool: &EvaluatePool) -> Result<()> {
         Ok(())
     }
-}
-
-pub fn scale_zero() {
-    NodeJsPool::scale_zero();
-}
-
-pub fn scale_down() {
-    NodeJsPool::scale_down();
 }
 
 /// An issue that occurred while evaluating node code.

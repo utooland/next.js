@@ -10,8 +10,11 @@ autobenches = false
 bench = false
 
 [features]
+default = ["worker_thread"]
 # enable "HMR" for embedded assets
 dynamic_embed_contents = ["turbo-tasks-fs/dynamic_embed_contents"]
+child_process = ["tokio"]
+worker_thread = ["napi", "napi-derive"]
 
 [lints]
 workspace = true
@@ -20,6 +23,8 @@ workspace = true
 anyhow = { workspace = true }
 async-stream = "0.3.4"
 async-trait = { workspace = true }
+async-channel = "2.5.0"
+dashmap = { workspace = true }
 base64 = "0.21.0"
 const_format = { workspace = true }
 either = { workspace = true, features = ["serde"] }
@@ -34,7 +39,10 @@ rustc-hash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true, features = ["base64"] }
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true, optional = true, features = ["full"] }
+uuid = { workspace = true, features = ["v4"] }
+napi = { workspace = true, optional = true, features = ["anyhow"] }
+napi-derive = { workspace = true, optional = true }
 tracing = { workspace = true }
 turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
@@ -46,3 +54,5 @@ turbopack-core = { workspace = true }
 turbopack-ecmascript = { workspace = true }
 turbopack-resolve = { workspace = true }
 
+[build-dependencies]
+napi-build = { workspace = true }

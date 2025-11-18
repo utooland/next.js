@@ -20,7 +20,7 @@ use turbopack_core::{
 };
 use turbopack_ecmascript::magic_identifier::unmangle_identifiers;
 
-use crate::{AssetsForSourceMapping, pool::FormattingMode};
+use crate::{AssetsForSourceMapping, format::FormattingMode};
 
 pub mod trace;
 
