@@ -734,7 +734,7 @@ impl EvaluateOperation for ChildProcessPool {
         let operation = {
             let _guard = duration_span!("Node.js operation");
             let (process, permits) = self.acquire_process().await?;
-            NodeJsOperation {
+            ChildProcessOperation {
                 process: Some(process),
                 permits,
                 idle_processes: self.idle_processes.clone(),
@@ -822,7 +822,7 @@ impl ChildProcessPool {
     }
 }
 
-pub struct NodeJsOperation {
+pub struct ChildProcessOperation {
     process: Option<NodeJsPoolProcess>,
     // This is used for drop
     #[allow(dead_code)]
@@ -834,7 +834,7 @@ pub struct NodeJsOperation {
 }
 
 #[async_trait::async_trait]
-impl Operation for NodeJsOperation {
+impl Operation for ChildProcessOperation {
     async fn recv(&mut self) -> Result<String> {
         let vec = self
             .with_process(|process| async move {
@@ -856,7 +856,7 @@ impl Operation for NodeJsOperation {
     }
 }
 
-impl NodeJsOperation {
+impl ChildProcessOperation {
     async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
         &'a mut self,
         f: impl FnOnce(&'a mut NodeJsPoolProcess) -> F,
@@ -913,7 +913,7 @@ impl NodeJsOperation {
     }
 }
 
-impl Drop for NodeJsOperation {
+impl Drop for ChildProcessOperation {
     fn drop(&mut self) {
         if let Some(mut process) = self.process.take() {
             let elapsed = self.start.elapsed();
