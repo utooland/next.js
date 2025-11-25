@@ -14,11 +14,7 @@ use crate::{
 };
 
 mod operation;
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod worker_thread;
-
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
-mod web_worker;
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub struct WorkerThreadPool {
