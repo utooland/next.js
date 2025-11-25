@@ -30,6 +30,7 @@ import type {
   Endpoint,
   HmrIdentifiers,
   Lockfile,
+  PartialProjectOptions,
   Project,
   ProjectOptions,
   RawEntrypoints,
@@ -652,7 +653,7 @@ function bindingToApi(
   }
 
   async function rustifyPartialProjectOptions(
-    options: Partial<ProjectOptions>
+    options: PartialProjectOptions
   ): Promise<NapiPartialProjectOptions> {
     return {
       ...options,
@@ -660,7 +661,7 @@ function bindingToApi(
         options.nextConfig &&
         (await serializeNextConfig(
           options.nextConfig,
-          path.join(options.rootPath!, options.projectPath!)
+          path.join(options.rootPath, options.projectPath)
         )),
       env: options.env && rustifyEnv(options.env),
     }
@@ -699,7 +700,7 @@ function bindingToApi(
       }
     }
 
-    async update(options: Partial<ProjectOptions>) {
+    async update(options: PartialProjectOptions) {
       await binding.projectUpdate(
         this._nativeProject,
         await rustifyPartialProjectOptions(options)
