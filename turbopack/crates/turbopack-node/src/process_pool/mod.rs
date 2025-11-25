@@ -730,16 +730,21 @@ impl ChildProcessPool {
 impl EvaluateOperation for ChildProcessPool {
     async fn operation(&self) -> Result<Box<dyn Operation>> {
         // Acquire a running process (handles concurrency limits, boots up the process)
-        let (process, permits) = self.acquire_process().await?;
 
-        Ok(Box::new(NodeJsOperation {
-            process: Some(process),
-            permits,
-            idle_processes: self.idle_processes.clone(),
-            start: Instant::now(),
-            stats: self.stats.clone(),
-            allow_process_reuse: true,
-        }))
+        let operation = {
+            let _guard = duration_span!("Node.js operation");
+            let (process, permits) = self.acquire_process().await?;
+            NodeJsOperation {
+                process: Some(process),
+                permits,
+                idle_processes: self.idle_processes.clone(),
+                start: Instant::now(),
+                stats: self.stats.clone(),
+                allow_process_reuse: true,
+            }
+        };
+
+        Ok(Box::new(operation))
     }
 }
 
@@ -830,16 +835,18 @@ pub struct NodeJsOperation {
 
 #[async_trait::async_trait]
 impl Operation for NodeJsOperation {
-    async fn recv(&mut self) -> Result<Vec<u8>> {
-        self.with_process(|process| async move {
-            process.recv().await.context("failed to receive message")
-        })
-        .await
+    async fn recv(&mut self) -> Result<String> {
+        let vec = self
+            .with_process(|process| async move {
+                process.recv().await.context("failed to receive message")
+            })
+            .await?;
+        Ok(String::from_utf8(vec)?)
     }
 
-    async fn send(&mut self, data: Vec<u8>) -> Result<()> {
+    async fn send(&mut self, message: String) -> Result<()> {
         self.with_process(|process| async move {
-            timeout(Duration::from_secs(30), process.send(data))
+            timeout(Duration::from_secs(30), process.send(message.into_bytes()))
                 .await
                 .context("timeout while sending message")?
                 .context("failed to send message")?;

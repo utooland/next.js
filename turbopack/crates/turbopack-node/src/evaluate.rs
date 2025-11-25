@@ -31,10 +31,10 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
-#[cfg(feature = "child_process")]
-use crate::process_pool::ChildProcessPool as Pool;
-#[cfg(feature = "worker_thread")]
-use crate::worker_pool::WorkerThreadPool as Pool;
+#[cfg(feature = "process_pool")]
+use crate::process_pool::ChildProcessPool;
+#[cfg(feature = "worker_pool")]
+use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping, embed_js::embed_file_path, emit, emit_package_json,
     format::FormattingMode, internal_assets_for_source_mapping, source_map::StructuredError,
@@ -102,9 +102,9 @@ pub trait EvaluateOperation: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait Operation: Send {
-    async fn recv(&mut self) -> Result<Vec<u8>>;
+    async fn recv(&mut self) -> Result<String>;
 
-    async fn send(&mut self, data: Vec<u8>) -> Result<()>;
+    async fn send(&mut self, data: String) -> Result<()>;
 }
 
 #[turbo_tasks::value]
@@ -246,7 +246,21 @@ pub async fn get_evaluate_pool(
             env.read_all().untracked().await?
         }
     };
-    let pool = Pool::create(
+
+    #[cfg(feature = "process_pool")]
+    #[allow(unused_variables)]
+    let pool = ChildProcessPool::create(
+        cwd.clone(),
+        entrypoint.clone(),
+        env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+        assets_for_source_mapping,
+        output_root.clone(),
+        chunking_context.root_path().owned().await?,
+        available_parallelism().map_or(1, |v| v.get()),
+        debug,
+    );
+    #[cfg(feature = "worker_pool")]
+    let pool = WorkerThreadPool::create(
         cwd,
         entrypoint,
         env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
@@ -355,7 +369,7 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
         || async {
             let mut operation = pool.operation().await?;
             operation
-                .send(serde_json::to_vec(
+                .send(serde_json::to_string(
                     &EvalJavaScriptOutgoingMessage::Evaluate {
                         args: args.iter().map(|v| &**v).collect(),
                     },
@@ -409,10 +423,16 @@ pub async fn get_evaluate_entries(
     asset_context: ResolvedVc<Box<dyn AssetContext>>,
     runtime_entries: Option<ResolvedVc<EvaluatableAssets>>,
 ) -> Result<Vc<EvaluateEntries>> {
+    #[cfg(feature = "process_pool")]
+    #[allow(unused_variables)]
+    let runtime_module_path = rcstr!("child_process/evaluate.ts");
+    #[cfg(feature = "worker_pool")]
+    let runtime_module_path = rcstr!("worker_threads/evaluate.ts");
+
     let runtime_asset = asset_context
         .process(
             Vc::upcast(FileSource::new(
-                embed_file_path(rcstr!("ipc/evaluate.ts")).owned().await?,
+                embed_file_path(runtime_module_path).owned().await?,
             )),
             ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
         )
@@ -438,22 +458,29 @@ pub async fn get_evaluate_entries(
         .await?;
 
     let runtime_entries = {
-        let globals_module = asset_context
-            .process(
-                Vc::upcast(FileSource::new(
-                    embed_file_path(rcstr!("globals.ts")).owned().await?,
-                )),
-                ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
-            )
-            .module();
+        let mut entries = vec![];
 
-        let Some(globals_module) =
-            Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(globals_module).await?
-        else {
-            bail!("Internal module is not evaluatable");
-        };
+        #[cfg(feature = "process_pool")]
+        {
+            let globals_module = asset_context
+                .process(
+                    Vc::upcast(FileSource::new(
+                        embed_file_path(rcstr!("child_process/globals.ts"))
+                            .owned()
+                            .await?,
+                    )),
+                    ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
+                )
+                .module();
 
-        let mut entries = vec![globals_module.to_resolved().await?];
+            let Some(globals_module) =
+                Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(globals_module).await?
+            else {
+                bail!("Internal module is not evaluatable");
+            };
+
+            entries.push(globals_module.to_resolved().await?);
+        }
         if let Some(runtime_entries) = runtime_entries {
             for &entry in &*runtime_entries.await? {
                 entries.push(entry)
@@ -512,8 +539,7 @@ async fn pull_operation<T: EvaluateContext>(
     let _guard = duration_span!("Node.js evaluation");
 
     loop {
-        let buf = operation.recv().await?;
-        let message = parse_json_with_source_context(std::str::from_utf8(&buf)?)?;
+        let message = parse_json_with_source_context(&operation.recv().await?)?;
 
         match message {
             EvalJavaScriptIncomingMessage::Error(error) => {
@@ -536,7 +562,7 @@ async fn pull_operation<T: EvaluateContext>(
                 {
                     Ok(response) => {
                         operation
-                            .send(serde_json::to_vec(
+                            .send(serde_json::to_string(
                                 &EvalJavaScriptOutgoingMessage::Result {
                                     id,
                                     error: None,
@@ -547,7 +573,7 @@ async fn pull_operation<T: EvaluateContext>(
                     }
                     Err(e) => {
                         operation
-                            .send(serde_json::to_vec(
+                            .send(serde_json::to_string(
                                 &EvalJavaScriptOutgoingMessage::Result {
                                     id,
                                     error: Some(PrettyPrintError(&e).to_string()),

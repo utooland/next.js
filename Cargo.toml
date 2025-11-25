@@ -327,7 +327,7 @@ turbopack-env = { path = "turbopack/crates/turbopack-env" }
 turbopack-image = { path = "turbopack/crates/turbopack-image" }
 turbopack-json = { path = "turbopack/crates/turbopack-json" }
 turbopack-mdx = { path = "turbopack/crates/turbopack-mdx" }
-turbopack-node = { path = "turbopack/crates/turbopack-node" }
+turbopack-node = { path = "turbopack/crates/turbopack-node", default-features = false }
 turbopack-resolve = { path = "turbopack/crates/turbopack-resolve" }
 turbopack-static = { path = "turbopack/crates/turbopack-static" }
 turbopack-swc-utils = { path = "turbopack/crates/turbopack-swc-utils" }

@@ -1,100 +1,59 @@
-use anyhow::Context;
 use napi_derive::napi;
 
-use crate::worker_pool::operation::{
-    EVALUATION_REQUEST_CHANNAL, MessageChannel, POOL_CREATION_CHANNEL, POOL_REQUEST_CHANNEL,
-    TASK_ROUTERD_CHANNEL, WORKER_REQUEST_CHANNAL, WORKER_ROUTED_CHANNEL,
-};
+use crate::worker_pool::operation::WORKER_POOL_OPERATION;
 
-#[napi]
-pub async fn recv_pool_request() -> napi::Result<String> {
-    Ok(POOL_REQUEST_CHANNEL
-        .recv()
-        .await
-        .context("failed to recv pool request")?)
+#[napi(object)]
+pub struct PoolOptions {
+    pub filename: String,
+    pub concurrency: u32,
 }
 
 #[napi]
-pub async fn notify_pool_created(filename: String) -> napi::Result<()> {
-    let channel = if let Some(channel) = POOL_CREATION_CHANNEL.get(&filename) {
-        channel
-    } else {
-        return Err(napi::Error::from_reason(format!(
-            "pool creation channel for {filename} not found"
-        )));
-    };
-    Ok(channel
-        .send(())
-        .await
-        .context("failed to notify pool created")?)
+pub fn recv_pool_creation() -> Option<PoolOptions> {
+    WORKER_POOL_OPERATION
+        .try_recv_pool_creation()
+        .map(|(filename, concurrency)| PoolOptions {
+            filename,
+            concurrency: concurrency as u32,
+        })
 }
 
 #[napi]
-pub async fn recv_worker_request(pool_id: String) -> napi::Result<()> {
-    let channel = if let Some(channel) = WORKER_REQUEST_CHANNAL.get(&pool_id) {
-        channel
-    } else {
-        return Err(napi::Error::from_reason(format!(
-            "worker request channel for {pool_id} not found"
-        )));
-    };
-    Ok(channel
-        .send(())
+pub async fn recv_worker_request(pool_id: String) -> napi::Result<String> {
+    WORKER_POOL_OPERATION
+        .recv_worker_request(pool_id)
         .await
-        .context("failed to recv worker request")?)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 #[napi]
-pub async fn notify_worker_ack(pool_id: String) -> napi::Result<()> {
-    let channel = if let Some(channel) = POOL_CREATION_CHANNEL.get(&pool_id) {
-        channel
-    } else {
-        return Err(napi::Error::from_reason(format!(
-            "evaluation ack channel for {pool_id} not found"
-        )));
-    };
-    Ok(channel
-        .send(())
-        .await
-        .context("failed to notify evaluation ack")?)
+// TODO: use zero-copy externaled type array
+pub async fn recv_message_in_worker(worker_id: u32) -> napi::Result<String> {
+    Ok(WORKER_POOL_OPERATION
+        .recv_message_in_worker(worker_id)
+        .await?)
 }
 
 #[napi]
-pub async fn recv_evaluation(pool_id: String) -> napi::Result<Vec<u8>> {
-    let channel = if let Some(channel) = EVALUATION_REQUEST_CHANNAL.get(&pool_id) {
-        channel
-    } else {
-        return Err(napi::Error::from_reason(format!(
-            "evaluation request channel for {pool_id} not found"
-        )));
-    };
-
-    Ok(channel
-        .recv()
+pub async fn notify_one_worker_created(filename: String) -> napi::Result<()> {
+    WORKER_POOL_OPERATION
+        .notify_one_worker_created(filename)
         .await
-        .context("failed to recv evaluate request")?)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 #[napi]
-pub async fn recv_message_in_worker(worker_id: u32) -> napi::Result<Vec<u8>> {
-    let channel = WORKER_ROUTED_CHANNEL
-        .entry(worker_id)
-        .or_insert_with(MessageChannel::unbounded);
-    let data = channel
-        .recv()
+pub async fn notify_worker_ack(task_id: String, worker_id: u32) -> napi::Result<()> {
+    WORKER_POOL_OPERATION
+        .notify_worker_ack(task_id, worker_id)
         .await
-        .with_context(|| format!("failed to recv message in worker {worker_id}"))?;
-    Ok(data)
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 #[napi]
-pub async fn send_task_response(task_id: String, data: Vec<u8>) -> napi::Result<()> {
-    let channel = TASK_ROUTERD_CHANNEL
-        .entry(task_id.clone())
-        .or_insert_with(MessageChannel::unbounded);
-    channel
-        .send(data)
+pub async fn send_task_message(task_id: String, message: String) -> napi::Result<()> {
+    WORKER_POOL_OPERATION
+        .send_task_message(task_id, message)
         .await
-        .with_context(|| format!("failed to recv message in worker {task_id}"))?;
-    Ok(())
+        .map_err(|e| napi::Error::from_reason(e.to_string()))
 }

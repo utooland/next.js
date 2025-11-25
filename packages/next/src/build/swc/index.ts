@@ -1,6 +1,7 @@
 import path from 'path'
 import { pathToFileURL } from 'url'
 import { arch, platform } from 'os'
+import { Worker } from 'worker_threads'
 import { platformArchTriples } from 'next/dist/compiled/@napi-rs/triples'
 import * as Log from '../output/log'
 import { getParserOptions } from './options'
@@ -668,8 +669,34 @@ function bindingToApi(
   class ProjectImpl implements Project {
     private readonly _nativeProject: { __napiType: 'Project' }
 
+    #poolCreated: Record<string, Array<Worker>> = {}
+
+    #poolScheduler?: ReturnType<typeof setInterval>
+
     constructor(nativeProject: { __napiType: 'Project' }) {
       this._nativeProject = nativeProject
+
+      if (binding.recvPoolCreation) {
+        this.#poolScheduler = setInterval(() => {
+          let poolOptions = binding.recvPoolCreation()
+          if (poolOptions) {
+            const { filename, concurrency } = poolOptions
+            if (!this.#poolCreated[filename]) {
+              const workers = []
+              for (let i = 0; i < concurrency; i++) {
+                const worker = new Worker(filename, {
+                  workerData: {
+                    poolId: filename,
+                  },
+                })
+                worker.unref()
+                workers.push(worker)
+              }
+              this.#poolCreated[filename] = workers
+            }
+          }
+        }, 0)
+      }
     }
 
     async update(options: Partial<ProjectOptions>) {
@@ -796,6 +823,7 @@ function bindingToApi(
     }
 
     shutdown(): Promise<void> {
+      this.#poolScheduler && clearInterval(this.#poolScheduler)
       return binding.projectShutdown(this._nativeProject)
     }
 

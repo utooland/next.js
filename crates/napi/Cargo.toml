@@ -123,6 +123,7 @@ turbopack-ecmascript-hmr-protocol = { workspace = true }
 turbopack-trace-utils = { workspace = true }
 turbopack-trace-server = { workspace = true }
 turbopack-ecmascript-plugins = { workspace = true, optional = true }
+turbopack-node = { workspace = true, default-features = false, features = ["worker_pool"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = "0.60"

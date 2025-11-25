@@ -34,17 +34,21 @@ export declare class ExternalObject<T> {
     [K: symbol]: T
   }
 }
-export declare function recvPoolRequest(): Promise<string>
-export declare function notifyPoolCreated(filename: string): Promise<void>
-export declare function recvWorkerRequest(poolId: string): Promise<void>
-export declare function notifyWorkerAck(poolId: string): Promise<void>
-export declare function recvEvaluation(poolId: string): Promise<Array<number>>
-export declare function recvMessageInWorker(
-  workerId: number
-): Promise<Array<number>>
-export declare function sendTaskResponse(
+export interface PoolOptions {
+  filename: string
+  concurrency: number
+}
+export declare function recvPoolCreation(): PoolOptions | null
+export declare function recvWorkerRequest(poolId: string): Promise<string>
+export declare function recvMessageInWorker(workerId: number): Promise<string>
+export declare function notifyOneWorkerCreated(filename: string): Promise<void>
+export declare function notifyWorkerAck(
   taskId: string,
-  data: Array<number>
+  workerId: number
+): Promise<void>
+export declare function sendTaskMessage(
+  taskId: string,
+  message: string
 ): Promise<void>
 export declare function lockfileTryAcquireSync(
   path: string

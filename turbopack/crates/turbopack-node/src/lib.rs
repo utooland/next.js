@@ -18,11 +18,11 @@ pub mod embed_js;
 pub mod evaluate;
 pub mod execution_context;
 mod format;
-#[cfg(feature = "child_process")]
+#[cfg(feature = "process_pool")]
 mod process_pool;
 pub mod source_map;
 pub mod transforms;
-#[cfg(feature = "worker_thread")]
+#[cfg(feature = "worker_pool")]
 mod worker_pool;
 
 #[turbo_tasks::function]
