@@ -4341,6 +4341,7 @@ dependencies = [
  "turbo-tasks",
  "turbo-tasks-backend",
  "turbo-tasks-malloc",
+ "turbopack-node",
  "turbopack-trace-utils",
 ]
 
