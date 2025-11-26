@@ -10,8 +10,9 @@ interface Binding {
   sendTaskMessage(taskId: number, message: string): Promise<void>
 }
 
-// FIXME: require correct path on diffrent platform
-const binding: Binding = require(/* turbopackIgnore: true */ '@next/swc/native/next-swc.darwin-arm64.node')
+const binding: Binding = require(
+  /* turbopackIgnore: true */ workerData.bindingPath
+)
 
 binding.notifyOneWorkerCreated(workerData.poolId)
 

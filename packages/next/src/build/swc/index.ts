@@ -492,6 +492,7 @@ function rustifyOptionEnv(
 // TODO(sokra) Support wasm option.
 function bindingToApi(
   binding: RawBindings,
+  bindingPath: string,
   _wasm: boolean
 ): Binding['turbo']['createProject'] {
   type NativeFunction<T> = (
@@ -684,7 +685,7 @@ function bindingToApi(
             const worker = new Worker(filename, {
               workerData: {
                 poolId: filename,
-                bindingPath: require.resolve('./binding.js'),
+                bindingPath,
               },
             })
             worker.unref()
@@ -1369,20 +1370,24 @@ function loadNative(importPath?: string) {
     throw new Error('cannot run loadNative when `NEXT_TEST_WASM` is set')
   }
 
+  const customBindingsPath = !!__INTERNAL_CUSTOM_TURBOPACK_BINDINGS
+    ? require.resolve(__INTERNAL_CUSTOM_TURBOPACK_BINDINGS)
+    : null
   const customBindings: RawBindings = !!__INTERNAL_CUSTOM_TURBOPACK_BINDINGS
     ? require(__INTERNAL_CUSTOM_TURBOPACK_BINDINGS)
     : null
   let bindings: RawBindings = customBindings
+  let bindingsPath = customBindingsPath
   let attempts: any[] = []
 
   const NEXT_TEST_NATIVE_DIR = process.env.NEXT_TEST_NATIVE_DIR
   for (const triple of triples) {
     if (NEXT_TEST_NATIVE_DIR) {
       try {
+        const bindingForTest = `${NEXT_TEST_NATIVE_DIR}/next-swc.${triple.platformArchABI}.node`
         // Use the binary directly to skip `pnpm pack` for testing as it's slow because of the large native binary.
-        bindings = require(
-          `${NEXT_TEST_NATIVE_DIR}/next-swc.${triple.platformArchABI}.node`
-        )
+        bindings = require(bindingForTest)
+        bindingsPath = require.resolve(bindingForTest)
         infoLog(
           'next-swc build: local built @next/swc from NEXT_TEST_NATIVE_DIR'
         )
@@ -1390,9 +1395,9 @@ function loadNative(importPath?: string) {
       } catch (e) {}
     } else {
       try {
-        bindings = require(
-          `@next/swc/native/next-swc.${triple.platformArchABI}.node`
-        )
+        const normalBinding = `@next/swc/native/next-swc.${triple.platformArchABI}.node`
+        bindings = require(normalBinding)
+        bindingsPath = require.resolve(normalBinding)
         infoLog('next-swc build: local built @next/swc')
         break
       } catch (e) {}
@@ -1410,6 +1415,7 @@ function loadNative(importPath?: string) {
         : `@next/swc-${triple.platformArchABI}`
       try {
         bindings = require(pkg)
+        bindingsPath = require.resolve(pkg)
         if (!importPath) {
           checkVersionMismatch(require(`${pkg}/package.json`))
         }
@@ -1488,7 +1494,11 @@ function loadNative(importPath?: string) {
       initCustomTraceSubscriber: bindings.initCustomTraceSubscriber,
       teardownTraceSubscriber: bindings.teardownTraceSubscriber,
       turbo: {
-        createProject: bindingToApi(customBindings ?? bindings, false),
+        createProject: bindingToApi(
+          customBindings ?? bindings,
+          customBindingsPath ?? bindingsPath!,
+          false
+        ),
         startTurbopackTraceServer(traceFilePath, port) {
           Log.warn(
             `Turbopack trace server started. View trace at https://trace.nextjs.org${port != null ? `?port=${port}` : ''}`
