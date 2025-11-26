@@ -672,32 +672,29 @@ function bindingToApi(
 
     #poolCreated: Record<string, Array<Worker>> = {}
 
-    #poolScheduler?: ReturnType<typeof setInterval>
-
     constructor(nativeProject: { __napiType: 'Project' }) {
       this._nativeProject = nativeProject
 
-      if (binding.recvPoolCreation) {
-        this.#poolScheduler = setInterval(() => {
-          let poolOptions = binding.recvPoolCreation()
-          if (poolOptions) {
-            const { filename, concurrency } = poolOptions
-            if (!this.#poolCreated[filename]) {
-              const workers = []
-              for (let i = 0; i < concurrency; i++) {
-                const worker = new Worker(filename, {
-                  workerData: {
-                    poolId: filename,
-                  },
-                })
-                worker.unref()
-                workers.push(worker)
-              }
-              this.#poolCreated[filename] = workers
-            }
+      const createPool = async () => {
+        let poolOptions = await binding.recvPoolCreation()
+        const { filename, concurrency } = poolOptions
+        if (!this.#poolCreated[filename]) {
+          const workers = []
+          for (let i = 0; i < concurrency; i++) {
+            const worker = new Worker(filename, {
+              workerData: {
+                poolId: filename,
+                bindingPath: require.resolve('./binding.js'),
+              },
+            })
+            worker.unref()
+            workers.push(worker)
           }
-        }, 0)
+          this.#poolCreated[filename] = workers
+        }
+        createPool()
       }
+      createPool()
     }
 
     async update(options: PartialProjectOptions) {
@@ -824,7 +821,6 @@ function bindingToApi(
     }
 
     shutdown(): Promise<void> {
-      this.#poolScheduler && clearInterval(this.#poolScheduler)
       return binding.projectShutdown(this._nativeProject)
     }
 

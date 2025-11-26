@@ -27,10 +27,6 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
     pub(crate) async fn recv(&self) -> Result<T> {
         Ok(self.receiver.recv().await?)
     }
-
-    pub(crate) fn try_recv(&self) -> Result<T> {
-        Ok(self.receiver.try_recv()?)
-    }
 }
 
 pub(crate) struct WorkerPoolOperation {
@@ -137,8 +133,11 @@ impl WorkerPoolOperation {
         Ok(data)
     }
 
-    pub(crate) fn try_recv_pool_creation(&self) -> Option<(String, usize)> {
-        self.pool_request_channel.try_recv().ok()
+    pub(crate) async fn recv_pool_creation(&self) -> Result<(String, usize)> {
+        self.pool_request_channel
+            .recv()
+            .await
+            .context("failed to recv pool creation")
     }
 
     pub(crate) async fn notify_one_worker_created(&self, filename: String) -> Result<()> {
@@ -169,7 +168,7 @@ impl WorkerPoolOperation {
         let channel = self
             .worker_ack_channel
             .get(&task_id)
-            .context(format!("worker ack channel for {task_id} not found"))?;
+            .with_context(|| format!("worker ack channel for {task_id} not found"))?;
         channel
             .send(worker_id)
             .await
