@@ -9910,7 +9910,6 @@ dependencies = [
  "futures-retry",
  "indoc",
  "napi",
- "napi-build",
  "napi-derive",
  "once_cell",
  "owo-colors",
@@ -9931,7 +9930,6 @@ dependencies = [
  "turbopack-core",
  "turbopack-ecmascript",
  "turbopack-resolve",
- "uuid",
 ]
 
 [[package]]

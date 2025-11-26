@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::atomic::AtomicU32};
+use std::{
+    path::PathBuf,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
@@ -80,7 +83,7 @@ impl EvaluateOperation for WorkerThreadPool {
                 })
                 .await;
 
-            let task_id = OPERATION_TASK_ID.fetch_add(1, std::sync::atomic::Ordering::Release);
+            let task_id = OPERATION_TASK_ID.fetch_add(1, Ordering::Release);
 
             if task_id == 0 {
                 panic!("operation task id overflow")
