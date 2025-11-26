@@ -33,7 +33,7 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
     }
 }
 
-pub(crate) struct WorkerThreadOperation {
+pub(crate) struct WorkerPoolOperation {
     pool_request_channel: MessageChannel<(String, usize)>,
     pool_ack_channel: DashMap<String, MessageChannel<()>>,
     worker_request_channel: DashMap<String, MessageChannel<String>>,
@@ -42,7 +42,7 @@ pub(crate) struct WorkerThreadOperation {
     task_routed_channel: DashMap<String, MessageChannel<String>>,
 }
 
-impl Default for WorkerThreadOperation {
+impl Default for WorkerPoolOperation {
     fn default() -> Self {
         Self {
             pool_request_channel: MessageChannel::unbounded(),
@@ -55,7 +55,7 @@ impl Default for WorkerThreadOperation {
     }
 }
 
-impl WorkerThreadOperation {
+impl WorkerPoolOperation {
     pub(crate) async fn create_pool(
         &self,
         filename: String,
@@ -201,8 +201,8 @@ impl WorkerThreadOperation {
     }
 }
 
-pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerThreadOperation> =
-    LazyLock::new(WorkerThreadOperation::default);
+pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
+    LazyLock::new(WorkerPoolOperation::default);
 
 pub(crate) async fn create_pool(filename: String, concurrency: usize) -> anyhow::Result<()> {
     WORKER_POOL_OPERATION
