@@ -3,11 +3,11 @@ import { structuredError } from '../error'
 import type { Channel } from '../types'
 
 interface Binding {
-  recvWorkerRequest(poolId: string): Promise<string>
+  recvWorkerRequest(poolId: string): Promise<number>
   recvMessageInWorker(workerId: number): Promise<string>
   notifyOneWorkerCreated(filename: string): Promise<void>
-  notifyWorkerAck(taskId: string, workerId: number): Promise<void>
-  sendTaskMessage(taskId: string, message: string): Promise<void>
+  notifyWorkerAck(taskId: number, workerId: number): Promise<void>
+  sendTaskMessage(taskId: number, message: string): Promise<void>
 }
 
 // FIXME: require correct path on diffrent platform

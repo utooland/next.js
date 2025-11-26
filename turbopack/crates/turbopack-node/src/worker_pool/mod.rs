@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::atomic::AtomicU32};
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
@@ -15,6 +15,8 @@ use crate::{
 
 mod operation;
 mod worker_thread;
+
+static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub struct WorkerThreadPool {
@@ -78,13 +80,14 @@ impl EvaluateOperation for WorkerThreadPool {
                 })
                 .await;
 
-            let task_id = uuid::Uuid::new_v4().to_string();
+            let task_id = OPERATION_TASK_ID.fetch_add(1, std::sync::atomic::Ordering::Release);
 
-            let worker_id = connect_to_worker(
-                self.entrypoint.to_string_lossy().to_string(),
-                task_id.clone(),
-            )
-            .await?;
+            if task_id == 0 {
+                panic!("operation task id overflow")
+            }
+
+            let worker_id =
+                connect_to_worker(self.entrypoint.to_string_lossy().to_string(), task_id).await?;
 
             WorkerOperation { task_id, worker_id }
         };

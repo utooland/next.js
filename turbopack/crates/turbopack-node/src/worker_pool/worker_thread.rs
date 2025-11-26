@@ -22,7 +22,7 @@ pub fn recv_pool_creation() -> Option<PoolOptions> {
 
 #[napi]
 #[allow(unused)]
-pub async fn recv_worker_request(pool_id: String) -> napi::Result<String> {
+pub async fn recv_worker_request(pool_id: String) -> napi::Result<u32> {
     WORKER_POOL_OPERATION
         .recv_worker_request(pool_id)
         .await
@@ -49,7 +49,7 @@ pub async fn notify_one_worker_created(filename: String) -> napi::Result<()> {
 
 #[napi]
 #[allow(unused)]
-pub async fn notify_worker_ack(task_id: String, worker_id: u32) -> napi::Result<()> {
+pub async fn notify_worker_ack(task_id: u32, worker_id: u32) -> napi::Result<()> {
     WORKER_POOL_OPERATION
         .notify_worker_ack(task_id, worker_id)
         .await
@@ -58,7 +58,7 @@ pub async fn notify_worker_ack(task_id: String, worker_id: u32) -> napi::Result<
 
 #[napi]
 #[allow(unused)]
-pub async fn send_task_message(task_id: String, message: String) -> napi::Result<()> {
+pub async fn send_task_message(task_id: u32, message: String) -> napi::Result<()> {
     WORKER_POOL_OPERATION
         .send_task_message(task_id, message)
         .await

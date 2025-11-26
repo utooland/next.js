@@ -36,10 +36,10 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
 pub(crate) struct WorkerPoolOperation {
     pool_request_channel: MessageChannel<(String, usize)>,
     pool_ack_channel: DashMap<String, MessageChannel<()>>,
-    worker_request_channel: DashMap<String, MessageChannel<String>>,
-    worker_ack_channel: DashMap<String, MessageChannel<u32>>,
+    worker_request_channel: DashMap<String, MessageChannel<u32>>,
+    worker_ack_channel: DashMap<u32, MessageChannel<u32>>,
     worker_routed_channel: DashMap<u32, MessageChannel<String>>,
-    task_routed_channel: DashMap<String, MessageChannel<String>>,
+    task_routed_channel: DashMap<u32, MessageChannel<String>>,
 }
 
 impl Default for WorkerPoolOperation {
@@ -89,20 +89,20 @@ impl WorkerPoolOperation {
         Ok(())
     }
 
-    pub(crate) async fn connect_to_worker(&self, pool_id: String, task_id: String) -> Result<u32> {
+    pub(crate) async fn connect_to_worker(&self, pool_id: String, task_id: u32) -> Result<u32> {
         let channel = self
             .worker_request_channel
             .entry(pool_id.clone())
             .or_insert_with(MessageChannel::unbounded)
             .clone();
         channel
-            .send(task_id.clone())
+            .send(task_id)
             .await
             .context("failed to send worker request")?;
         let worker_id = async move {
             let channel = self
                 .worker_ack_channel
-                .entry(task_id.clone())
+                .entry(task_id)
                 .or_insert_with(MessageChannel::unbounded)
                 .clone();
             channel.recv().await.context("failed to recv worker ack")
@@ -124,10 +124,10 @@ impl WorkerPoolOperation {
         Ok(())
     }
 
-    pub async fn recv_task_response(&self, task_id: String) -> Result<String> {
+    pub async fn recv_task_response(&self, task_id: u32) -> Result<String> {
         let channel = self
             .task_routed_channel
-            .entry(task_id.clone())
+            .entry(task_id)
             .or_insert_with(MessageChannel::unbounded)
             .clone();
         let data = channel
@@ -153,7 +153,7 @@ impl WorkerPoolOperation {
             .context("failed to notify worker created")
     }
 
-    pub(crate) async fn recv_worker_request(&self, pool_id: String) -> Result<String> {
+    pub(crate) async fn recv_worker_request(&self, pool_id: String) -> Result<u32> {
         let channel = self
             .worker_request_channel
             .entry(pool_id.clone())
@@ -165,7 +165,7 @@ impl WorkerPoolOperation {
             .context("failed to recv worker request")
     }
 
-    pub(crate) async fn notify_worker_ack(&self, task_id: String, worker_id: u32) -> Result<()> {
+    pub(crate) async fn notify_worker_ack(&self, task_id: u32, worker_id: u32) -> Result<()> {
         let channel = self
             .worker_ack_channel
             .get(&task_id)
@@ -188,10 +188,10 @@ impl WorkerPoolOperation {
             .with_context(|| format!("failed to recv message in worker {worker_id}"))
     }
 
-    pub(crate) async fn send_task_message(&self, task_id: String, data: String) -> Result<()> {
+    pub(crate) async fn send_task_message(&self, task_id: u32, data: String) -> Result<()> {
         let channel = self
             .task_routed_channel
-            .entry(task_id.clone())
+            .entry(task_id)
             .or_insert_with(MessageChannel::unbounded)
             .clone();
         channel
@@ -210,7 +210,7 @@ pub(crate) async fn create_pool(filename: String, concurrency: usize) -> anyhow:
         .await
 }
 
-pub(crate) async fn connect_to_worker(pool_id: String, task_id: String) -> Result<u32> {
+pub(crate) async fn connect_to_worker(pool_id: String, task_id: u32) -> Result<u32> {
     WORKER_POOL_OPERATION
         .connect_to_worker(pool_id, task_id)
         .await
@@ -222,19 +222,19 @@ pub(crate) async fn send_message_to_worker(worker_id: u32, data: String) -> Resu
         .await
 }
 
-pub async fn recv_task_response(task_id: String) -> Result<String> {
+pub async fn recv_task_response(task_id: u32) -> Result<String> {
     WORKER_POOL_OPERATION.recv_task_response(task_id).await
 }
 
 pub(crate) struct WorkerOperation {
-    pub(crate) task_id: String,
+    pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
 }
 
 #[async_trait::async_trait]
 impl Operation for WorkerOperation {
     async fn recv(&mut self) -> Result<String> {
-        recv_task_response(self.task_id.clone()).await
+        recv_task_response(self.task_id).await
     }
 
     async fn send(&mut self, data: String) -> Result<()> {
