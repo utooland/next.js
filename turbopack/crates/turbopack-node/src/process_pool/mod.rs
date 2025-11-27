@@ -805,7 +805,6 @@ impl ChildProcessPool {
         Ok((process, start.elapsed()))
     }
 
-    #[allow(dead_code)]
     pub fn scale_down() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {
@@ -813,7 +812,6 @@ impl ChildProcessPool {
         }
     }
 
-    #[allow(dead_code)]
     pub fn scale_zero() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {

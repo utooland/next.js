@@ -730,3 +730,17 @@ impl Issue for EvaluationIssue {
         Vc::cell(Some(self.source))
     }
 }
+
+pub fn scale_down() {
+    #[cfg(feature = "process_pool")]
+    {
+        ChildProcessPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(feature = "process_pool")]
+    {
+        ChildProcessPool::scale_zero();
+    }
+}
