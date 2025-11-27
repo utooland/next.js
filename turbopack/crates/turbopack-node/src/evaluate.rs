@@ -13,7 +13,7 @@ use turbo_tasks::{
     TryJoinIterExt, Vc, duration_span, fxindexmap, get_effects, trace::TraceRawVcs,
 };
 use turbo_tasks_env::{EnvMap, ProcessEnv};
-use turbo_tasks_fs::{File, FileSystemPath, json::parse_json_with_source_context, to_sys_path};
+use turbo_tasks_fs::{File, FileContent, FileSystemPath, json::parse_json_with_source_context, to_sys_path};
 use turbopack_core::{
     asset::AssetContent,
     changed::content_changed,
@@ -452,7 +452,10 @@ pub async fn get_evaluate_entries(
             Vc::upcast(VirtualSource::new(
                 runtime_asset.ident().path().await?.join("evaluate.js")?,
                 AssetContent::file(
-                    File::from("import { run } from 'RUNTIME'; run(() => import('INNER'))").into(),
+                    FileContent::Content(File::from(
+                        "import { run } from 'RUNTIME'; run(() => import('INNER'))",
+                    ))
+                    .cell(),
                 ),
             )),
             ReferenceType::Internal(ResolvedVc::cell(fxindexmap! {
