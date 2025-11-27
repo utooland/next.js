@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{process::ExitStatus, sync::LazyLock};
 
 use anyhow::{Context, Result};
 use async_channel::{Receiver, Sender, unbounded};
@@ -31,7 +31,7 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
 
 pub(crate) struct WorkerPoolOperation {
     pool_request_channel: MessageChannel<(String, usize)>,
-    pool_ack_channel: DashMap<String, MessageChannel<()>>,
+    worker_termination_channel: MessageChannel<(String, u32)>,
     worker_request_channel: DashMap<String, MessageChannel<u32>>,
     worker_ack_channel: DashMap<u32, MessageChannel<u32>>,
     worker_routed_channel: DashMap<u32, MessageChannel<String>>,
@@ -42,7 +42,7 @@ impl Default for WorkerPoolOperation {
     fn default() -> Self {
         Self {
             pool_request_channel: MessageChannel::unbounded(),
-            pool_ack_channel: DashMap::new(),
+            worker_termination_channel: MessageChannel::unbounded(),
             worker_request_channel: DashMap::new(),
             worker_ack_channel: DashMap::new(),
             worker_routed_channel: DashMap::new(),
@@ -52,35 +52,15 @@ impl Default for WorkerPoolOperation {
 }
 
 impl WorkerPoolOperation {
-    pub(crate) async fn create_pool(
+    pub(crate) async fn create_or_scale_pool(
         &self,
         filename: String,
-        concurrency: usize,
-    ) -> anyhow::Result<()> {
+        max_concurrency: usize,
+    ) -> Result<()> {
         self.pool_request_channel
-            .send((filename.clone(), concurrency))
+            .send((filename.clone(), max_concurrency))
             .await
             .context("failed to send pool request")?;
-
-        let mut created_worker_count = 0;
-
-        {
-            let channel = self
-                .pool_ack_channel
-                .entry(filename.clone())
-                .or_insert_with(MessageChannel::unbounded)
-                .clone();
-
-            while created_worker_count < concurrency {
-                channel
-                    .recv()
-                    .await
-                    .context("failed to recv worker creation")?;
-                created_worker_count += 1;
-            }
-        };
-
-        self.pool_ack_channel.remove(&filename);
 
         Ok(())
     }
@@ -107,16 +87,34 @@ impl WorkerPoolOperation {
         Ok(worker_id)
     }
 
+    pub(crate) async fn send_worker_termination(
+        &self,
+        pool_id: String,
+        worker_id: u32,
+    ) -> Result<()> {
+        self.worker_termination_channel
+            .send((pool_id, worker_id))
+            .await
+            .context("failed to send worker termination")
+    }
+
+    pub(crate) async fn recv_worker_termination(&self) -> Result<(String, u32)> {
+        self.worker_termination_channel
+            .recv()
+            .await
+            .context("failed to recv worker termination")
+    }
+
     pub(crate) async fn send_message_to_worker(&self, worker_id: u32, data: String) -> Result<()> {
-        let entry = self
+        let channel = self
             .worker_routed_channel
             .entry(worker_id)
             .or_insert_with(MessageChannel::unbounded)
             .clone();
-        entry
+        channel
             .send(data)
             .await
-            .with_context(|| format!("failed to send message to worker {worker_id}"))?;
+            .context("failed to send message to worker")?;
         Ok(())
     }
 
@@ -129,27 +127,15 @@ impl WorkerPoolOperation {
         let data = channel
             .recv()
             .await
-            .with_context(|| format!("failed to recv message  for task {task_id}"))?;
+            .context("failed to recv task message")?;
         Ok(data)
     }
 
-    pub(crate) async fn recv_pool_creation(&self) -> Result<(String, usize)> {
+    pub(crate) async fn recv_pool_request(&self) -> Result<(String, usize)> {
         self.pool_request_channel
             .recv()
             .await
-            .context("failed to recv pool creation")
-    }
-
-    pub(crate) async fn notify_one_worker_created(&self, filename: String) -> Result<()> {
-        let channel = self
-            .pool_ack_channel
-            .entry(filename.clone())
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
-        channel
-            .send(())
-            .await
-            .context("failed to notify worker created")
+            .context("failed to recv pool request")
     }
 
     pub(crate) async fn recv_worker_request(&self, pool_id: String) -> Result<u32> {
@@ -203,9 +189,9 @@ impl WorkerPoolOperation {
 pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
     LazyLock::new(WorkerPoolOperation::default);
 
-pub(crate) async fn create_pool(filename: String, concurrency: usize) -> anyhow::Result<()> {
+pub(crate) async fn create_or_scale_pool(filename: String, max_concurrency: usize) -> Result<()> {
     WORKER_POOL_OPERATION
-        .create_pool(filename, concurrency)
+        .create_or_scale_pool(filename, max_concurrency)
         .await
 }
 
@@ -221,11 +207,18 @@ pub(crate) async fn send_message_to_worker(worker_id: u32, data: String) -> Resu
         .await
 }
 
-pub async fn recv_task_response(task_id: u32) -> Result<String> {
+pub(crate) async fn send_worker_termination(pool_id: String, worker_id: u32) -> Result<()> {
+    WORKER_POOL_OPERATION
+        .send_worker_termination(pool_id, worker_id)
+        .await
+}
+
+pub async fn recv_task_message(task_id: u32) -> Result<String> {
     WORKER_POOL_OPERATION.recv_task_response(task_id).await
 }
 
 pub(crate) struct WorkerOperation {
+    pub(crate) pool_id: String,
     pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
 }
@@ -233,10 +226,19 @@ pub(crate) struct WorkerOperation {
 #[async_trait::async_trait]
 impl Operation for WorkerOperation {
     async fn recv(&mut self) -> Result<String> {
-        recv_task_response(self.task_id).await
+        recv_task_message(self.task_id).await
     }
 
     async fn send(&mut self, data: String) -> Result<()> {
         send_message_to_worker(self.worker_id, data).await
+    }
+
+    async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
+        send_worker_termination(self.pool_id.clone(), self.worker_id).await?;
+        Ok(ExitStatus::default())
+    }
+
+    fn disallow_reuse(&mut self) {
+        // do nothing
     }
 }

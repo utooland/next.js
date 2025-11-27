@@ -14,8 +14,6 @@ const binding: Binding = require(
   /* turbopackIgnore: true */ workerData.bindingPath
 )
 
-binding.notifyOneWorkerCreated(workerData.poolId)
-
 const queue: string[][] = []
 
 export const run = async (

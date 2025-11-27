@@ -854,32 +854,8 @@ impl Operation for ChildProcessOperation {
         })
         .await
     }
-}
 
-impl ChildProcessOperation {
-    async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
-        &'a mut self,
-        f: impl FnOnce(&'a mut NodeJsPoolProcess) -> F,
-    ) -> Result<T> {
-        let process = self
-            .process
-            .as_mut()
-            .context("Node.js operation already finished")?;
-
-        if !self.allow_process_reuse {
-            bail!("Node.js process is no longer usable");
-        }
-
-        let result = f(process).await;
-        if result.is_err() && self.allow_process_reuse {
-            self.stats.lock().remove_worker();
-            self.allow_process_reuse = false;
-        }
-        result
-    }
-
-    #[allow(dead_code)]
-    pub async fn wait_or_kill(mut self) -> Result<ExitStatus> {
+    async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
         let mut process = self
             .process
             .take()
@@ -904,12 +880,34 @@ impl ChildProcessOperation {
         Ok(status)
     }
 
-    #[allow(dead_code)]
-    pub fn disallow_reuse(&mut self) {
+    fn disallow_reuse(&mut self) {
         if self.allow_process_reuse {
             self.stats.lock().remove_worker();
             self.allow_process_reuse = false;
         }
+    }
+}
+
+impl ChildProcessOperation {
+    async fn with_process<'a, F: Future<Output = Result<T>> + Send + 'a, T>(
+        &'a mut self,
+        f: impl FnOnce(&'a mut NodeJsPoolProcess) -> F,
+    ) -> Result<T> {
+        let process = self
+            .process
+            .as_mut()
+            .context("Node.js operation already finished")?;
+
+        if !self.allow_process_reuse {
+            bail!("Node.js process is no longer usable");
+        }
+
+        let result = f(process).await;
+        if result.is_err() && self.allow_process_reuse {
+            self.stats.lock().remove_worker();
+            self.allow_process_reuse = false;
+        }
+        result
     }
 }
 

@@ -1,4 +1,7 @@
-use std::{borrow::Cow, iter, sync::Arc, thread::available_parallelism, time::Duration};
+use std::{
+    borrow::Cow, iter, process::ExitStatus, sync::Arc, thread::available_parallelism,
+    time::Duration,
+};
 
 use anyhow::{Result, bail};
 use futures_retry::{FutureRetry, RetryPolicy};
@@ -42,7 +45,7 @@ use crate::{
 
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum EvalJavaScriptOutgoingMessage<'a> {
+enum EvalJavaScriptOutgoingMessage<'a> {
     #[serde(rename_all = "camelCase")]
     Evaluate { args: Vec<&'a JsonValue> },
     Result {
@@ -54,7 +57,7 @@ pub enum EvalJavaScriptOutgoingMessage<'a> {
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum EvalJavaScriptIncomingMessage {
+enum EvalJavaScriptIncomingMessage {
     Info { data: JsonValue },
     Request { id: u64, data: JsonValue },
     End { data: Option<String> },
@@ -105,6 +108,10 @@ pub trait Operation: Send {
     async fn recv(&mut self) -> Result<String>;
 
     async fn send(&mut self, data: String) -> Result<()>;
+
+    async fn wait_or_kill(&mut self) -> Result<ExitStatus>;
+
+    fn disallow_reuse(&mut self) -> ();
 }
 
 #[turbo_tasks::value]
@@ -358,7 +365,7 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
     let args = evaluate_context.args().iter().try_join().await?;
     // Assume this is a one-off operation, so we can kill the process
     // TODO use a better way to decide that.
-    // let kill = !evaluate_context.keep_alive();
+    let kill = !evaluate_context.keep_alive();
 
     // Workers in the pool could be in a bad state that we didn't detect yet.
     // The bad state might even be unnoticeable until we actually send the job to the
@@ -389,9 +396,9 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
 
     evaluate_context.finish(state, &pool).await?;
 
-    // if kill {
-    //     operation.wait_or_kill().await?;
-    // }
+    if kill {
+        operation.wait_or_kill().await?;
+    }
 
     Ok(Vc::cell(result.map(RcStr::from)))
 }
@@ -528,7 +535,7 @@ pub async fn evaluate(
     .await
 }
 
-/// Repeatedly pulls from the NodeJsOperation until we receive a
+/// Repeatedly pulls from the ChilProcessOperation until we receive a
 /// value/error/end.
 async fn pull_operation<T: EvaluateContext>(
     operation: &mut Box<dyn Operation>,
@@ -545,7 +552,7 @@ async fn pull_operation<T: EvaluateContext>(
             EvalJavaScriptIncomingMessage::Error(error) => {
                 evaluate_context.emit_error(error, pool).await?;
                 // Do not reuse the process in case of error
-                // operation.disallow_reuse();
+                operation.disallow_reuse();
                 // Issue emitted, we want to break but don't want to return an error
                 return Ok(None);
             }

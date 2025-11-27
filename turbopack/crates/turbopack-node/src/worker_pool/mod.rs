@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
-use tokio::sync::OnceCell;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ResolvedVc, duration_span};
 use turbo_tasks_fs::FileSystemPath;
@@ -13,7 +12,7 @@ use turbo_tasks_fs::FileSystemPath;
 use crate::{
     AssetsForSourceMapping,
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
-    worker_pool::operation::{WorkerOperation, connect_to_worker, create_pool},
+    worker_pool::operation::{WorkerOperation, connect_to_worker, create_or_scale_pool},
 };
 
 mod operation;
@@ -21,14 +20,12 @@ mod worker_thread;
 
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
-#[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
+#[turbo_tasks::value]
 pub struct WorkerThreadPool {
     cwd: PathBuf,
     entrypoint: PathBuf,
     env: FxHashMap<RcStr, RcStr>,
     concurrency: usize,
-    #[turbo_tasks(trace_ignore, debug_ignore)]
-    ready: OnceCell<()>,
     pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     pub assets_root: FileSystemPath,
     pub project_dir: FileSystemPath,
@@ -43,7 +40,7 @@ impl WorkerThreadPool {
         assets_root: FileSystemPath,
         project_dir: FileSystemPath,
         concurrency: usize,
-        _debug: bool,
+        debug: bool,
     ) -> EvaluatePool {
         EvaluatePool::new(
             entrypoint.to_string_lossy().to_string().into(),
@@ -51,8 +48,7 @@ impl WorkerThreadPool {
                 cwd,
                 entrypoint,
                 env,
-                concurrency,
-                ready: OnceCell::new(),
+                concurrency: (if debug { 1 } else { concurrency }),
                 assets_for_source_mapping,
                 assets_root: assets_root.clone(),
                 project_dir: project_dir.clone(),
@@ -69,19 +65,9 @@ impl EvaluateOperation for WorkerThreadPool {
     async fn operation(&self) -> Result<Box<dyn Operation>> {
         let operation = {
             let _guard = duration_span!("Node.js operation");
-            let entrypoint = self.entrypoint.to_string_lossy().to_string();
-            self.ready
-                .get_or_init(async || {
-                    create_pool(
-                        self.entrypoint.to_string_lossy().to_string(),
-                        self.concurrency,
-                    )
-                    .await
-                    .unwrap_or_else(|e| {
-                        panic!("failed to create worker pool for {entrypoint} for reason: {e}",)
-                    })
-                })
-                .await;
+            let pool_id = self.entrypoint.to_string_lossy().to_string();
+
+            create_or_scale_pool(pool_id.clone(), self.concurrency).await?;
 
             let task_id = OPERATION_TASK_ID.fetch_add(1, Ordering::Release);
 
@@ -89,10 +75,13 @@ impl EvaluateOperation for WorkerThreadPool {
                 panic!("operation task id overflow")
             }
 
-            let worker_id =
-                connect_to_worker(self.entrypoint.to_string_lossy().to_string(), task_id).await?;
+            let worker_id = connect_to_worker(pool_id.clone(), task_id).await?;
 
-            WorkerOperation { task_id, worker_id }
+            WorkerOperation {
+                pool_id,
+                task_id,
+                worker_id,
+            }
         };
 
         Ok(Box::new(operation))

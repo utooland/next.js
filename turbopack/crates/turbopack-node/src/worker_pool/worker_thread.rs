@@ -6,24 +6,41 @@ use crate::worker_pool::operation::WORKER_POOL_OPERATION;
 #[allow(unused)]
 pub struct PoolOptions {
     pub filename: String,
-    pub concurrency: u32,
+    pub max_concurrency: u32,
+}
+
+#[napi(object)]
+#[allow(unused)]
+pub struct WorkerTermination {
+    pub filename: String,
+    pub worker_id: u32,
 }
 
 #[napi]
 #[allow(unused)]
-pub async fn recv_pool_creation() -> napi::Result<PoolOptions> {
-    let (filename, concurrency) = WORKER_POOL_OPERATION.recv_pool_creation().await?;
+pub async fn recv_pool_request() -> napi::Result<PoolOptions> {
+    let (filename, max_concurrency) = WORKER_POOL_OPERATION.recv_pool_request().await?;
 
     Ok(PoolOptions {
         filename,
-        concurrency: concurrency as u32,
+        max_concurrency: max_concurrency as u32,
     })
 }
 
 #[napi]
 #[allow(unused)]
-pub async fn recv_worker_request(pool_id: String) -> napi::Result<u32> {
-    Ok(WORKER_POOL_OPERATION.recv_worker_request(pool_id).await?)
+pub async fn recv_worker_termination() -> napi::Result<WorkerTermination> {
+    let (filename, worker_id) = WORKER_POOL_OPERATION.recv_worker_termination().await?;
+    Ok(WorkerTermination {
+        filename,
+        worker_id,
+    })
+}
+
+#[napi]
+#[allow(unused)]
+pub async fn recv_worker_request(filename: String) -> napi::Result<u32> {
+    Ok(WORKER_POOL_OPERATION.recv_worker_request(filename).await?)
 }
 
 #[napi]
@@ -32,14 +49,6 @@ pub async fn recv_worker_request(pool_id: String) -> napi::Result<u32> {
 pub async fn recv_message_in_worker(worker_id: u32) -> napi::Result<String> {
     Ok(WORKER_POOL_OPERATION
         .recv_message_in_worker(worker_id)
-        .await?)
-}
-
-#[napi]
-#[allow(unused)]
-pub async fn notify_one_worker_created(filename: String) -> napi::Result<()> {
-    Ok(WORKER_POOL_OPERATION
-        .notify_one_worker_created(filename)
         .await?)
 }
 
