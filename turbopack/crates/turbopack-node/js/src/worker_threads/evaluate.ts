@@ -121,6 +121,9 @@ export const run = async (
   }
 
   while (true) {
+    // need await a micro task, or that if some some request rejected,
+    // the error will be propergated to schedule threat, then causing panic
+    await Promise.resolve()
     const msg_str = await binding.recvMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
