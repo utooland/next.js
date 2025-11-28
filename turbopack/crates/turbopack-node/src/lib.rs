@@ -23,7 +23,7 @@ mod process_pool;
 pub mod source_map;
 pub mod transforms;
 #[cfg(feature = "worker_pool")]
-mod worker_pool;
+pub mod worker_pool;
 
 #[turbo_tasks::function]
 async fn emit(

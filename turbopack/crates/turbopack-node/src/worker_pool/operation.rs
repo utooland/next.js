@@ -27,6 +27,11 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
     pub(crate) async fn recv(&self) -> Result<T> {
         Ok(self.receiver.recv().await?)
     }
+
+    pub(crate) fn close(&self) {
+        self.sender.close();
+        self.receiver.close();
+    }
 }
 
 pub(crate) struct WorkerPoolOperation {
@@ -138,6 +143,13 @@ impl WorkerPoolOperation {
             .context("failed to recv pool request")
     }
 
+    pub(crate) fn shutdown(&self) {
+        // We need to close channels connected to schedule thread,
+        // or else, it will be forever waiting in schedule thread
+        self.pool_request_channel.close();
+        self.worker_termination_channel.close();
+    }
+
     pub(crate) async fn recv_worker_request(&self, pool_id: String) -> Result<u32> {
         let channel = self
             .worker_request_channel
@@ -215,6 +227,10 @@ pub(crate) async fn send_worker_termination(pool_id: String, worker_id: u32) -> 
 
 pub async fn recv_task_message(task_id: u32) -> Result<String> {
     WORKER_POOL_OPERATION.recv_task_response(task_id).await
+}
+
+pub fn shutdown() {
+    WORKER_POOL_OPERATION.shutdown();
 }
 
 pub(crate) struct WorkerOperation {

@@ -121,6 +121,9 @@ export const run = async (
   }
 
   while (true) {
+    // need await a micro task, or else if some request rejected,
+    // the error will be propergated to schedule thread, then causing panic
+    await Promise.resolve()
     const msg_str = await binding.recvMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
@@ -150,9 +153,6 @@ export const run = async (
           requests.delete(msg.id)
           if (msg.error) {
             request.reject(new Error(msg.error))
-            // need await a micro task, or else if some request rejected,
-            // the error will be propergated to schedule thread, then causing panic
-            await Promise.resolve()
           } else {
             request.resolve(msg.data)
           }

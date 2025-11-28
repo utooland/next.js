@@ -16,23 +16,24 @@ use crate::{
 };
 
 mod operation;
+pub use operation::shutdown;
 mod worker_thread;
 
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
 #[turbo_tasks::value]
-pub struct WorkerThreadPool {
+pub(crate) struct WorkerThreadPool {
     cwd: PathBuf,
     entrypoint: PathBuf,
     env: FxHashMap<RcStr, RcStr>,
     concurrency: usize,
-    pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
-    pub assets_root: FileSystemPath,
-    pub project_dir: FileSystemPath,
+    pub(crate) assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
+    pub(crate) assets_root: FileSystemPath,
+    pub(crate) project_dir: FileSystemPath,
 }
 
 impl WorkerThreadPool {
-    pub fn create(
+    pub(crate) fn create(
         cwd: PathBuf,
         entrypoint: PathBuf,
         env: FxHashMap<RcStr, RcStr>,
