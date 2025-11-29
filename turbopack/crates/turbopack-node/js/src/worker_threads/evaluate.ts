@@ -121,9 +121,6 @@ export const run = async (
   }
 
   while (true) {
-    // need await a micro task, or else if some request rejected,
-    // the error will be propergated to schedule thread, then causing panic
-    await Promise.resolve()
     const msg_str = await binding.recvMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
@@ -152,7 +149,11 @@ export const run = async (
         if (request) {
           requests.delete(msg.id)
           if (msg.error) {
-            request.reject(new Error(msg.error))
+            // Need to reject at next macro task queue, because some rejection callbacks is not registered when executing to here,
+            // that will cause the error be propergated to schedule thread, then causing panic.
+            // The situation always happen when using sass-loader, it will try to resolve many posible dependencies,
+            // some of then will got a failure.
+            setTimeout(() => request.reject(new Error(msg.error)), 0)
           } else {
             request.resolve(msg.data)
           }
