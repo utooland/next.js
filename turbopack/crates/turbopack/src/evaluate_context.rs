@@ -69,8 +69,7 @@ pub async fn node_evaluate_asset_context(
                 .owned()
                 .await?,
         ),
-        enable_node_externals: !cfg!(all(target_family = "wasm", target_os = "unknown")),
-        browser: cfg!(all(target_family = "wasm", target_os = "unknown")),
+        enable_node_externals: true,
         custom_conditions: vec![node_env.clone(), rcstr!("node")],
         ..Default::default()
     };

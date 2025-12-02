@@ -625,7 +625,7 @@ impl ModuleOptions {
                                         Some(import_map),
                                         None,
                                         Layer::new(rcstr!("webpack_loaders")),
-                                        false,
+                                        cfg!(all(target_family = "wasm", target_os = "unknown")),
                                     ),
                                     *execution_context,
                                     *rule.loaders,

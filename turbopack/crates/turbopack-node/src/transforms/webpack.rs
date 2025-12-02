@@ -188,6 +188,7 @@ struct ProcessWebpackLoadersResult {
     assets: Vec<ResolvedVc<VirtualSource>>,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[turbo_tasks::function]
 async fn webpack_loaders_executor(
     evaluate_context: Vc<Box<dyn AssetContext>>,
@@ -195,6 +196,21 @@ async fn webpack_loaders_executor(
     Ok(evaluate_context.process(
         Vc::upcast(FileSource::new(
             embed_file_path(rcstr!("transforms/webpack-loaders.ts"))
+                .owned()
+                .await?,
+        )),
+        ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
+    ))
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[turbo_tasks::function]
+async fn webpack_loaders_executor(
+    evaluate_context: Vc<Box<dyn AssetContext>>,
+) -> Result<Vc<ProcessResult>> {
+    Ok(evaluate_context.process(
+        Vc::upcast(FileSource::new(
+            embed_file_path(rcstr!("web_worker/webpack-loaders.ts"))
                 .owned()
                 .await?,
         )),

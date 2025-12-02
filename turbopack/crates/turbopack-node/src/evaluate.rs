@@ -424,6 +424,7 @@ impl EvaluateEntries {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[turbo_tasks::function]
 pub async fn get_evaluate_entries(
     module_asset: ResolvedVc<Box<dyn Module>>,
@@ -502,6 +503,20 @@ pub async fn get_evaluate_entries(
             .copied()
             .chain(iter::once(ResolvedVc::try_downcast(entry_module).unwrap()))
             .collect(),
+        main_entry_ident: module_asset.ident().to_resolved().await?,
+    }
+    .cell())
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[turbo_tasks::function]
+pub async fn get_evaluate_entries(
+    module_asset: ResolvedVc<Box<dyn Module>>,
+    asset_context: ResolvedVc<Box<dyn AssetContext>>,
+    _runtime_entries: Option<ResolvedVc<EvaluatableAssets>>,
+) -> Result<Vc<EvaluateEntries>> {
+    Ok(EvaluateEntries {
+        entries: vec![ResolvedVc::try_downcast(module_asset).unwrap()],
         main_entry_ident: module_asset.ident().to_resolved().await?,
     }
     .cell())

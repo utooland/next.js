@@ -1,6 +1,20 @@
-import { threadId as workerId, workerData } from 'worker_threads'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
+
+export type Self = DedicatedWorkerGlobalScope & {
+  workerData: {
+    workerId: number
+    poolId: string
+    cwd: string
+    env?: Record<string, string>
+    binding: Binding
+    readFile(path: string, encoding?: 'utf8'): Promise<string>
+  }
+}
+
+export declare const self: Self
+// @ts-ignore
+const { workerId, poolId } = self.workerData
 
 interface Binding {
   recvWorkerRequest(poolId: string): Promise<number>
@@ -9,9 +23,7 @@ interface Binding {
   sendTaskMessage(taskId: number, message: string): Promise<void>
 }
 
-const binding: Binding = require(
-  /* turbopackIgnore: true */ workerData.bindingPath
-)
+let binding: Binding = self.workerData.binding
 
 const queue: string[][] = []
 
@@ -21,7 +33,7 @@ export const run = async (
     default: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
   }>
 ) => {
-  const taskId = await binding.recvWorkerRequest(workerData.poolId)
+  const taskId = await binding.recvWorkerRequest(poolId)
 
   await binding.notifyWorkerAck(taskId, workerId)
 
