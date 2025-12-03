@@ -14,7 +14,7 @@ pub struct PoolOptions {
 pub struct WorkerTermination {
     #[wasm_bindgen(getter_with_clone)]
     pub filename: String,
-    #[wasm_bindgen]
+    #[wasm_bindgen(js_name = "workerId")]
     pub worker_id: u32,
 }
 
