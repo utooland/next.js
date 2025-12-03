@@ -1,82 +1,40 @@
 import { threadId as workerId, workerData } from 'worker_threads'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
-
-interface Binding {
-  recvWorkerRequest(poolId: string): Promise<number>
-  recvMessageInWorker(workerId: number): Promise<string>
-  notifyWorkerAck(taskId: number, workerId: number): Promise<void>
-  sendTaskMessage(taskId: number, message: string): Promise<void>
-}
+import { Binding, TaskChannel } from './taskChannel'
 
 const binding: Binding = require(
   /* turbopackIgnore: true */ workerData.bindingPath
 )
-
-const queue: string[][] = []
-
 export const run = async (
   moduleFactory: () => Promise<{
     init?: () => Promise<void>
     default: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
   }>
 ) => {
-  const taskId = await binding.recvWorkerRequest(workerData.poolId)
+  let getValue: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
 
-  await binding.notifyWorkerAck(taskId, workerId)
+  let isRunning = false
 
-  let nextId = 1
-  const requests = new Map()
-  const internalIpc = {
-    sendInfo: (message: any) =>
-      binding.sendTaskMessage(
+  const run = async (taskId: number, args: string[]) => {
+    try {
+      if (typeof getValue !== 'function') {
+        const module = await moduleFactory()
+        if (typeof module.init === 'function') {
+          await module.init()
+        }
+        getValue = module.default
+      }
+      const value = await getValue(new TaskChannel(binding, taskId), ...args)
+      await binding.sendTaskMessage(
         taskId,
         JSON.stringify({
-          type: 'info',
-          data: message,
+          type: 'end',
+          data: value === undefined ? undefined : JSON.stringify(value),
+          duration: 0,
         })
-      ),
-    sendRequest: async (message: any) => {
-      const id = nextId++
-      let resolve, reject
-      const promise = new Promise((res, rej) => {
-        resolve = res
-        reject = rej
-      })
-      requests.set(id, { resolve, reject })
-      return binding
-        .sendTaskMessage(
-          taskId,
-          JSON.stringify({ type: 'request', id, data: message })
-        )
-        .then(() => promise)
-    },
-    sendError: async (error: Error) => {
-      try {
-        await binding.sendTaskMessage(
-          taskId,
-          JSON.stringify({
-            type: 'error',
-            ...structuredError(error),
-          })
-        )
-      } catch (err) {
-        // There's nothing we can do about errors that happen after this point, we can't tell anyone
-        // about them.
-        console.error('failed to send error back to rust:', err)
-      }
-    },
-  }
-
-  let getValue: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
-  try {
-    const module = await moduleFactory()
-    if (typeof module.init === 'function') {
-      await module.init()
-    }
-    getValue = module.default
-  } catch (err) {
-    try {
+      )
+    } catch (err) {
       await binding.sendTaskMessage(
         taskId,
         JSON.stringify({
@@ -84,42 +42,15 @@ export const run = async (
           ...structuredError(err as Error),
         })
       )
-    } catch (err) {
-      // There's nothing we can do about errors that happen after this point, we can't tell anyone
-      // about them.
-      console.error('failed to send error back to rust:', err)
-    }
-  }
-
-  let isRunning = false
-
-  const run = async () => {
-    while (queue.length > 0) {
-      const args = queue.shift()!
-      try {
-        const value = await getValue(internalIpc, ...args)
-        await binding.sendTaskMessage(
-          taskId,
-          JSON.stringify({
-            type: 'end',
-            data: value === undefined ? undefined : JSON.stringify(value),
-            duration: 0,
-          })
-        )
-      } catch (err) {
-        await binding.sendTaskMessage(
-          taskId,
-          JSON.stringify({
-            type: 'error',
-            ...structuredError(err as Error),
-          })
-        )
-      }
     }
     isRunning = false
   }
 
   while (true) {
+    const taskId = await binding.recvWorkerRequest(workerData.poolId)
+
+    await binding.notifyWorkerAck(taskId, workerId)
+
     const msg_str = await binding.recvMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
@@ -136,17 +67,16 @@ export const run = async (
 
     switch (msg.type) {
       case 'evaluate': {
-        queue.push(msg.args)
         if (!isRunning) {
           isRunning = true
-          run()
+          run(taskId, msg.args)
         }
         break
       }
       case 'result': {
-        const request = requests.get(msg.id)
+        const request = TaskChannel.requests.get(msg.id)
         if (request) {
-          requests.delete(msg.id)
+          TaskChannel.requests.delete(msg.id)
           if (msg.error) {
             // Need to reject at next macro task queue, because some rejection callbacks is not registered when executing to here,
             // that will cause the error be propergated to schedule thread, then causing panic.
