@@ -1,4 +1,4 @@
-import { threadId as workerId, workerData } from 'worker_threads'
+import { threadId as workerId, workerData, parentPort } from 'worker_threads'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
 import { Binding, TaskChannel } from './taskChannel'
@@ -6,6 +6,17 @@ import { Binding, TaskChannel } from './taskChannel'
 const binding: Binding = require(
   /* turbopackIgnore: true */ workerData.bindingPath
 )
+
+const KillMsg = '__kill__'
+
+let willKill = false
+
+parentPort!.on('message', (msg) => {
+  if (msg === KillMsg) {
+    willKill = true
+  }
+})
+
 export const run = async (
   moduleFactory: () => Promise<{
     init?: () => Promise<void>
@@ -15,6 +26,7 @@ export const run = async (
   let getValue: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
 
   let isRunning = false
+  let runningTask: Promise<void> | undefined
 
   const run = async (taskId: number, args: string[]) => {
     try {
@@ -44,9 +56,10 @@ export const run = async (
       )
     }
     isRunning = false
+    runningTask = undefined
   }
 
-  while (true) {
+  const loop = async () => {
     const taskId = await binding.recvWorkerRequest(workerData.poolId)
 
     await binding.notifyWorkerAck(taskId, workerId)
@@ -69,7 +82,7 @@ export const run = async (
       case 'evaluate': {
         if (!isRunning) {
           isRunning = true
-          run(taskId, msg.args)
+          runningTask = run(taskId, msg.args)
         }
         break
       }
@@ -78,11 +91,7 @@ export const run = async (
         if (request) {
           TaskChannel.requests.delete(msg.id)
           if (msg.error) {
-            // Need to reject at next macro task queue, because some rejection callbacks is not registered when executing to here,
-            // that will cause the error be propergated to schedule thread, then causing panic.
-            // The situation always happen when using sass-loader, it will try to resolve many posible dependencies,
-            // some of then will got a failure.
-            setTimeout(() => request.reject(new Error(msg.error)), 0)
+            request.reject(new Error(msg.error))
           } else {
             request.resolve(msg.data)
           }
@@ -93,5 +102,23 @@ export const run = async (
         console.error('unexpected message type', (msg as any).type)
       }
     }
+  }
+
+  while (true) {
+    if (willKill) {
+      if (runningTask) {
+        await runningTask
+      }
+      parentPort!.postMessage(KillMsg)
+      return
+    }
+
+    const loopTask = loop()
+
+    if (!isRunning) {
+      runningTask = loopTask
+    }
+
+    await loopTask
   }
 }

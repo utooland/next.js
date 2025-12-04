@@ -1,7 +1,6 @@
 import path from 'path'
 import { pathToFileURL } from 'url'
 import { arch, platform } from 'os'
-import { Worker } from 'worker_threads'
 import { platformArchTriples } from 'next/dist/compiled/@napi-rs/triples'
 import * as Log from '../output/log'
 import { getParserOptions } from './options'
@@ -43,6 +42,10 @@ import type {
   WrittenEndpoint,
 } from './types'
 import { throwTurbopackInternalError } from '../../shared/lib/turbopack/internal-error'
+import {
+  createOrScalePool,
+  waitingForWorkerTermination,
+} from './loaderWorkerPool'
 
 type RawBindings = typeof import('./generated-native')
 type RawWasmBindings = typeof import('./generated-wasm') & {
@@ -668,59 +671,6 @@ function bindingToApi(
     }
   }
 
-  const loaderWorkers: Record<string, Array<Worker>> = {}
-
-  const createOrScalePool = async () => {
-    while (true) {
-      try {
-        let poolOptions = await binding.recvPoolRequest()
-        const { filename, maxConcurrency } = poolOptions
-        const workers =
-          loaderWorkers[filename] || (loaderWorkers[filename] = [])
-        if (workers.length < maxConcurrency) {
-          for (let i = workers.length; i < maxConcurrency; i++) {
-            const worker = new Worker(filename, {
-              workerData: {
-                poolId: filename,
-                bindingPath,
-              },
-            })
-            worker.unref()
-            workers.push(worker)
-          }
-        } else if (workers.length > maxConcurrency) {
-          const workersToStop = workers.splice(
-            0,
-            workers.length - maxConcurrency
-          )
-          workersToStop.forEach((worker) => worker.terminate())
-        }
-      } catch (_) {
-        // rust channel closed, do nothing
-        return
-      }
-    }
-  }
-
-  const waitingForWorkerTermination = async () => {
-    while (true) {
-      try {
-        const { filename, workerId } = await binding.recvWorkerTermination()
-        const workers = loaderWorkers[filename]
-        const workerIdx = workers.findIndex(
-          (worker) => worker.threadId === workerId
-        )
-        if (workerIdx > -1) {
-          const worker = workers.splice(workerIdx, 1)
-          worker[0].terminate()
-        }
-      } catch (_) {
-        // rust channel closed, do nothing
-        return
-      }
-    }
-  }
-
   class ProjectImpl implements Project {
     private readonly _nativeProject: { __napiType: 'Project' }
 
@@ -728,10 +678,10 @@ function bindingToApi(
       this._nativeProject = nativeProject
 
       if (typeof binding.recvPoolRequest === 'function') {
-        createOrScalePool()
+        createOrScalePool(binding, bindingPath)
       }
       if (typeof binding.recvWorkerTermination === 'function') {
-        waitingForWorkerTermination()
+        waitingForWorkerTermination(binding)
       }
     }
 
