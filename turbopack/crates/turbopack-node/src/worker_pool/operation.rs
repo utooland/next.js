@@ -1,4 +1,4 @@
-use std::{process::ExitStatus, sync::LazyLock};
+use std::{collections::HashMap, process::ExitStatus, sync::LazyLock};
 
 use anyhow::{Context, Result};
 use async_channel::{Receiver, Sender, unbounded};
@@ -35,7 +35,7 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
 }
 
 pub(crate) struct WorkerPoolOperation {
-    pool_request_channel: MessageChannel<(String, usize)>,
+    pool_request_channel: MessageChannel<(String, usize, HashMap<String, String>)>,
     worker_termination_channel: MessageChannel<(String, u32)>,
     worker_request_channel: DashMap<String, MessageChannel<u32>>,
     worker_ack_channel: DashMap<u32, MessageChannel<u32>>,
@@ -61,9 +61,10 @@ impl WorkerPoolOperation {
         &self,
         filename: String,
         max_concurrency: usize,
+        env: HashMap<String, String>,
     ) -> Result<()> {
         self.pool_request_channel
-            .send((filename.clone(), max_concurrency))
+            .send((filename.clone(), max_concurrency, env))
             .await
             .context("failed to send pool request")?;
 
@@ -136,7 +137,9 @@ impl WorkerPoolOperation {
         Ok(data)
     }
 
-    pub(crate) async fn recv_pool_request(&self) -> Result<(String, usize)> {
+    pub(crate) async fn recv_pool_request(
+        &self,
+    ) -> Result<(String, usize, HashMap<String, String>)> {
         self.pool_request_channel
             .recv()
             .await
@@ -201,9 +204,13 @@ impl WorkerPoolOperation {
 pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
     LazyLock::new(WorkerPoolOperation::default);
 
-pub(crate) async fn create_or_scale_pool(filename: String, max_concurrency: usize) -> Result<()> {
+pub(crate) async fn create_or_scale_pool(
+    filename: String,
+    max_concurrency: usize,
+    env: HashMap<String, String>,
+) -> Result<()> {
     WORKER_POOL_OPERATION
-        .create_or_scale_pool(filename, max_concurrency)
+        .create_or_scale_pool(filename, max_concurrency, env)
         .await
 }
 

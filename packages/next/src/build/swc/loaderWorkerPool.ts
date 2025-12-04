@@ -31,7 +31,7 @@ export async function createOrScalePool(
   while (true) {
     try {
       let poolOptions = await binding.recvPoolRequest()
-      const { filename, maxConcurrency } = poolOptions
+      const { filename, maxConcurrency, env } = poolOptions
       const workers = loaderWorkers[filename] || (loaderWorkers[filename] = [])
       if (workers.length < maxConcurrency) {
         for (let i = workers.length; i < maxConcurrency; i++) {
@@ -40,6 +40,7 @@ export async function createOrScalePool(
               poolId: filename,
               bindingPath,
             },
+            env,
           })
           workers.push(worker)
         }

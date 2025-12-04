@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use napi_derive::napi;
 
 use crate::worker_pool::operation::WORKER_POOL_OPERATION;
@@ -7,6 +9,7 @@ use crate::worker_pool::operation::WORKER_POOL_OPERATION;
 pub struct PoolOptions {
     pub filename: String,
     pub max_concurrency: u32,
+    pub env: HashMap<String, String>,
 }
 
 #[napi(object)]
@@ -19,11 +22,12 @@ pub struct WorkerTermination {
 #[napi]
 #[allow(unused)]
 pub async fn recv_pool_request() -> napi::Result<PoolOptions> {
-    let (filename, max_concurrency) = WORKER_POOL_OPERATION.recv_pool_request().await?;
+    let (filename, max_concurrency, env) = WORKER_POOL_OPERATION.recv_pool_request().await?;
 
     Ok(PoolOptions {
         filename,
         max_concurrency: max_concurrency as u32,
+        env,
     })
 }
 

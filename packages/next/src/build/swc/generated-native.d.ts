@@ -37,6 +37,7 @@ export declare class ExternalObject<T> {
 export interface PoolOptions {
   filename: string
   maxConcurrency: number
+  env: Record<string, string>
 }
 export interface WorkerTermination {
   filename: string
