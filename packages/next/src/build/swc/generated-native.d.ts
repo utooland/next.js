@@ -34,16 +34,17 @@ export declare class ExternalObject<T> {
     [K: symbol]: T
   }
 }
-export interface PoolOptions {
+export interface NapiPoolOptions {
   filename: RcStr
-  maxConcurrency: number
+  concurrency: number
   env: FxHashMap
+  cwd: RcStr
 }
 export interface WorkerTermination {
   filename: RcStr
   workerId: number
 }
-export declare function recvPoolRequest(): Promise<PoolOptions>
+export declare function recvPoolRequest(): Promise<NapiPoolOptions>
 export declare function recvWorkerTermination(): Promise<WorkerTermination>
 export declare function recvWorkerRequest(filename: RcStr): Promise<number>
 export declare function recvMessageInWorker(workerId: number): Promise<string>

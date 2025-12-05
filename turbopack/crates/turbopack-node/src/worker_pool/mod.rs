@@ -1,6 +1,9 @@
 use std::{
     path::PathBuf,
-    sync::atomic::{AtomicU32, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU32, Ordering},
+    },
 };
 
 use anyhow::Result;
@@ -12,7 +15,9 @@ use turbo_tasks_fs::FileSystemPath;
 use crate::{
     AssetsForSourceMapping,
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
-    worker_pool::operation::{WorkerOperation, connect_to_worker, create_or_scale_pool},
+    worker_pool::operation::{
+        PoolOptions, WorkerOperation, connect_to_worker, create_or_scale_pool,
+    },
 };
 
 mod operation;
@@ -25,7 +30,7 @@ static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 pub(crate) struct WorkerThreadPool {
     cwd: PathBuf,
     entrypoint: PathBuf,
-    env: FxHashMap<RcStr, RcStr>,
+    env: Arc<FxHashMap<RcStr, RcStr>>,
     concurrency: usize,
     pub(crate) assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     pub(crate) assets_root: FileSystemPath,
@@ -48,7 +53,7 @@ impl WorkerThreadPool {
             Box::new(Self {
                 cwd,
                 entrypoint,
-                env,
+                env: Arc::new(env),
                 concurrency: (if debug { 1 } else { concurrency }),
                 assets_for_source_mapping,
                 assets_root: assets_root.clone(),
@@ -68,7 +73,13 @@ impl EvaluateOperation for WorkerThreadPool {
             let _guard = duration_span!("Node.js operation");
             let pool_id: RcStr = self.entrypoint.to_string_lossy().into();
 
-            create_or_scale_pool(pool_id.clone(), self.concurrency, self.env.clone()).await?;
+            create_or_scale_pool(PoolOptions {
+                filename: pool_id.clone(),
+                concurrency: self.concurrency as u32,
+                env: self.env.clone(),
+                cwd: self.cwd.to_string_lossy().into(),
+            })
+            .await?;
 
             let task_id = OPERATION_TASK_ID.fetch_add(1, Ordering::Release);
 

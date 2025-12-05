@@ -1,15 +1,35 @@
+use std::sync::Arc;
+
 use napi_derive::napi;
 use rustc_hash::FxHashMap;
 use turbo_rcstr::RcStr;
 
-use crate::worker_pool::operation::WORKER_POOL_OPERATION;
+use crate::worker_pool::{PoolOptions, operation::WORKER_POOL_OPERATION};
 
 #[napi(object)]
 #[allow(unused)]
-pub struct PoolOptions {
+pub struct NapiPoolOptions {
     pub filename: RcStr,
-    pub max_concurrency: u32,
-    pub env: FxHashMap<RcStr, RcStr>,
+    pub concurrency: u32,
+    pub env: Arc<FxHashMap<RcStr, RcStr>>,
+    pub cwd: RcStr,
+}
+
+impl From<PoolOptions> for NapiPoolOptions {
+    fn from(pool_options: PoolOptions) -> Self {
+        let PoolOptions {
+            filename,
+            concurrency,
+            env,
+            cwd,
+        } = pool_options;
+        NapiPoolOptions {
+            filename,
+            concurrency,
+            env,
+            cwd,
+        }
+    }
 }
 
 #[napi(object)]
@@ -21,14 +41,10 @@ pub struct WorkerTermination {
 
 #[napi]
 #[allow(unused)]
-pub async fn recv_pool_request() -> napi::Result<PoolOptions> {
-    let (filename, max_concurrency, env) = WORKER_POOL_OPERATION.recv_pool_request().await?;
+pub async fn recv_pool_request() -> napi::Result<NapiPoolOptions> {
+    let pool_options = WORKER_POOL_OPERATION.recv_pool_request().await?;
 
-    Ok(PoolOptions {
-        filename,
-        max_concurrency: max_concurrency as u32,
-        env,
-    })
+    Ok(pool_options.into())
 }
 
 #[napi]

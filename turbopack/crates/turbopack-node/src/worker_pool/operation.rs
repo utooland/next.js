@@ -1,4 +1,7 @@
-use std::{process::ExitStatus, sync::LazyLock};
+use std::{
+    process::ExitStatus,
+    sync::{Arc, LazyLock},
+};
 
 use anyhow::{Context, Result};
 use async_channel::{Receiver, Sender, unbounded};
@@ -36,8 +39,15 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
     }
 }
 
+pub(super) struct PoolOptions {
+    pub(super) filename: RcStr,
+    pub(super) concurrency: u32,
+    pub(super) env: Arc<FxHashMap<RcStr, RcStr>>,
+    pub(super) cwd: RcStr,
+}
+
 pub(crate) struct WorkerPoolOperation {
-    pool_request_channel: MessageChannel<(RcStr, usize, FxHashMap<RcStr, RcStr>)>,
+    pool_request_channel: MessageChannel<PoolOptions>,
     worker_termination_channel: MessageChannel<(RcStr, u32)>,
     worker_request_channel: DashMap<RcStr, MessageChannel<u32>>,
     worker_ack_channel: DashMap<u32, MessageChannel<u32>>,
@@ -59,14 +69,9 @@ impl Default for WorkerPoolOperation {
 }
 
 impl WorkerPoolOperation {
-    pub(crate) async fn create_or_scale_pool(
-        &self,
-        filename: RcStr,
-        max_concurrency: usize,
-        env: FxHashMap<RcStr, RcStr>,
-    ) -> Result<()> {
+    pub(crate) async fn create_or_scale_pool(&self, pool_options: PoolOptions) -> Result<()> {
         self.pool_request_channel
-            .send((filename.clone(), max_concurrency, env))
+            .send(pool_options)
             .await
             .context("failed to send pool request")?;
 
@@ -139,9 +144,7 @@ impl WorkerPoolOperation {
         Ok(data)
     }
 
-    pub(crate) async fn recv_pool_request(
-        &self,
-    ) -> Result<(RcStr, usize, FxHashMap<RcStr, RcStr>)> {
+    pub(crate) async fn recv_pool_request(&self) -> Result<PoolOptions> {
         self.pool_request_channel
             .recv()
             .await
@@ -206,13 +209,9 @@ impl WorkerPoolOperation {
 pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
     LazyLock::new(WorkerPoolOperation::default);
 
-pub(crate) async fn create_or_scale_pool(
-    filename: RcStr,
-    max_concurrency: usize,
-    env: FxHashMap<RcStr, RcStr>,
-) -> Result<()> {
+pub(crate) async fn create_or_scale_pool(pool_options: PoolOptions) -> Result<()> {
     WORKER_POOL_OPERATION
-        .create_or_scale_pool(filename, max_concurrency, env)
+        .create_or_scale_pool(pool_options)
         .await
 }
 

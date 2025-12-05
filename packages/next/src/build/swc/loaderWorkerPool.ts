@@ -31,21 +31,22 @@ export async function createOrScalePool(
   while (true) {
     try {
       let poolOptions = await binding.recvPoolRequest()
-      const { filename, maxConcurrency, env } = poolOptions
+      const { filename, concurrency, env, cwd } = poolOptions
       const workers = loaderWorkers[filename] || (loaderWorkers[filename] = [])
-      if (workers.length < maxConcurrency) {
-        for (let i = workers.length; i < maxConcurrency; i++) {
+      if (workers.length < concurrency) {
+        for (let i = workers.length; i < concurrency; i++) {
           const worker = new Worker(filename, {
             workerData: {
               poolId: filename,
               bindingPath,
+              cwd,
             },
             env,
           })
           workers.push(worker)
         }
-      } else if (workers.length > maxConcurrency) {
-        const workersToKill = workers.splice(0, workers.length - maxConcurrency)
+      } else if (workers.length > concurrency) {
+        const workersToKill = workers.splice(0, workers.length - concurrency)
         workersToKill.forEach(gracefullyKillWorker)
       }
     } catch (_) {
