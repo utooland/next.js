@@ -32,7 +32,11 @@ export async function createOrScalePool(
     try {
       let poolOptions = await binding.recvPoolRequest()
       const { filename, concurrency, env, cwd } = poolOptions
-      const workers = loaderWorkers[filename] || (loaderWorkers[filename] = [])
+      // Wildcard of "*" meaning to scale all of pools event with different poolId
+      const workers =
+        filename === '*'
+          ? Object.values(loaderWorkers).flat()
+          : loaderWorkers[filename] || (loaderWorkers[filename] = [])
       if (workers.length < concurrency) {
         for (let i = workers.length; i < concurrency; i++) {
           const worker = new Worker(filename, {

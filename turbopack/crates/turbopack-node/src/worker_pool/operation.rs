@@ -33,12 +33,13 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
         Ok(self.receiver.recv().await?)
     }
 
-    pub(crate) fn close(&self) {
-        self.sender.close();
+    pub(crate) async fn close(&self) {
+        self.sender.closed().await;
         self.receiver.close();
     }
 }
 
+#[derive(Default)]
 pub(super) struct PoolOptions {
     pub(super) filename: RcStr,
     pub(super) concurrency: u32,
@@ -151,11 +152,11 @@ impl WorkerPoolOperation {
             .context("failed to recv pool request")
     }
 
-    pub(crate) fn shutdown(&self) {
+    pub(crate) async fn kill_schedule_channels(&self) {
         // We need to close channels connected to schedule thread,
         // or else, it will be forever waiting in schedule thread
-        self.pool_request_channel.close();
-        self.worker_termination_channel.close();
+        self.pool_request_channel.close().await;
+        self.worker_termination_channel.close().await;
     }
 
     pub(crate) async fn recv_worker_request(&self, pool_id: RcStr) -> Result<u32> {
@@ -233,12 +234,12 @@ pub(crate) async fn send_worker_termination(pool_id: RcStr, worker_id: u32) -> R
         .await
 }
 
-pub async fn recv_task_message(task_id: u32) -> Result<String> {
+pub(crate) async fn recv_task_message(task_id: u32) -> Result<String> {
     WORKER_POOL_OPERATION.recv_task_response(task_id).await
 }
 
-pub fn shutdown() {
-    WORKER_POOL_OPERATION.shutdown();
+pub(crate) async fn kill_schedule_channels() {
+    WORKER_POOL_OPERATION.kill_schedule_channels().await;
 }
 
 pub(crate) struct WorkerOperation {

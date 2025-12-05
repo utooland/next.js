@@ -736,11 +736,19 @@ pub fn scale_down() {
     {
         ChildProcessPool::scale_down();
     }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
 }
 
 pub fn scale_zero() {
     #[cfg(feature = "process_pool")]
     {
         ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }

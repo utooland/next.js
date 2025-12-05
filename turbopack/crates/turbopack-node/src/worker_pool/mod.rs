@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Result;
 use rustc_hash::FxHashMap;
-use turbo_rcstr::RcStr;
+use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, duration_span};
 use turbo_tasks_fs::FileSystemPath;
 
@@ -17,11 +17,11 @@ use crate::{
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
     worker_pool::operation::{
         PoolOptions, WorkerOperation, connect_to_worker, create_or_scale_pool,
+        kill_schedule_channels,
     },
 };
 
 mod operation;
-pub use operation::shutdown;
 mod worker_thread;
 
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
@@ -63,6 +63,32 @@ impl WorkerThreadPool {
             assets_root,
             project_dir,
         )
+    }
+}
+
+impl WorkerThreadPool {
+    pub fn scale_down() {
+        napi::bindgen_prelude::spawn(async {
+            let _ = create_or_scale_pool(PoolOptions {
+                filename: rcstr!("*"),
+                concurrency: 1,
+                ..Default::default()
+            })
+            .await;
+        });
+    }
+
+    pub fn scale_zero() {
+        napi::bindgen_prelude::spawn(async {
+            let _ = create_or_scale_pool(PoolOptions {
+                // Wildcard of "*" meaning to scale all of pools event with different poolId
+                filename: rcstr!("*"),
+                concurrency: 0,
+                ..Default::default()
+            })
+            .await;
+            kill_schedule_channels().await;
+        });
     }
 }
 
