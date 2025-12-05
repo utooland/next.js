@@ -1,21 +1,21 @@
-use std::collections::HashMap;
-
 use napi_derive::napi;
+use rustc_hash::FxHashMap;
+use turbo_rcstr::RcStr;
 
 use crate::worker_pool::operation::WORKER_POOL_OPERATION;
 
 #[napi(object)]
 #[allow(unused)]
 pub struct PoolOptions {
-    pub filename: String,
+    pub filename: RcStr,
     pub max_concurrency: u32,
-    pub env: HashMap<String, String>,
+    pub env: FxHashMap<RcStr, RcStr>,
 }
 
 #[napi(object)]
 #[allow(unused)]
 pub struct WorkerTermination {
-    pub filename: String,
+    pub filename: RcStr,
     pub worker_id: u32,
 }
 
@@ -43,7 +43,7 @@ pub async fn recv_worker_termination() -> napi::Result<WorkerTermination> {
 
 #[napi]
 #[allow(unused)]
-pub async fn recv_worker_request(filename: String) -> napi::Result<u32> {
+pub async fn recv_worker_request(filename: RcStr) -> napi::Result<u32> {
     Ok(WORKER_POOL_OPERATION.recv_worker_request(filename).await?)
 }
 

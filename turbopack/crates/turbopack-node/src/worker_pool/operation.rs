@@ -1,8 +1,10 @@
-use std::{collections::HashMap, process::ExitStatus, sync::LazyLock};
+use std::{process::ExitStatus, sync::LazyLock};
 
 use anyhow::{Context, Result};
 use async_channel::{Receiver, Sender, unbounded};
 use dashmap::DashMap;
+use rustc_hash::FxHashMap;
+use turbo_rcstr::RcStr;
 
 use crate::evaluate::Operation;
 
@@ -35,9 +37,9 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
 }
 
 pub(crate) struct WorkerPoolOperation {
-    pool_request_channel: MessageChannel<(String, usize, HashMap<String, String>)>,
-    worker_termination_channel: MessageChannel<(String, u32)>,
-    worker_request_channel: DashMap<String, MessageChannel<u32>>,
+    pool_request_channel: MessageChannel<(RcStr, usize, FxHashMap<RcStr, RcStr>)>,
+    worker_termination_channel: MessageChannel<(RcStr, u32)>,
+    worker_request_channel: DashMap<RcStr, MessageChannel<u32>>,
     worker_ack_channel: DashMap<u32, MessageChannel<u32>>,
     worker_routed_channel: DashMap<u32, MessageChannel<String>>,
     task_routed_channel: DashMap<u32, MessageChannel<String>>,
@@ -59,9 +61,9 @@ impl Default for WorkerPoolOperation {
 impl WorkerPoolOperation {
     pub(crate) async fn create_or_scale_pool(
         &self,
-        filename: String,
+        filename: RcStr,
         max_concurrency: usize,
-        env: HashMap<String, String>,
+        env: FxHashMap<RcStr, RcStr>,
     ) -> Result<()> {
         self.pool_request_channel
             .send((filename.clone(), max_concurrency, env))
@@ -71,7 +73,7 @@ impl WorkerPoolOperation {
         Ok(())
     }
 
-    pub(crate) async fn connect_to_worker(&self, pool_id: String, task_id: u32) -> Result<u32> {
+    pub(crate) async fn connect_to_worker(&self, pool_id: RcStr, task_id: u32) -> Result<u32> {
         let channel = self
             .worker_request_channel
             .entry(pool_id.clone())
@@ -95,7 +97,7 @@ impl WorkerPoolOperation {
 
     pub(crate) async fn send_worker_termination(
         &self,
-        pool_id: String,
+        pool_id: RcStr,
         worker_id: u32,
     ) -> Result<()> {
         self.worker_termination_channel
@@ -104,7 +106,7 @@ impl WorkerPoolOperation {
             .context("failed to send worker termination")
     }
 
-    pub(crate) async fn recv_worker_termination(&self) -> Result<(String, u32)> {
+    pub(crate) async fn recv_worker_termination(&self) -> Result<(RcStr, u32)> {
         self.worker_termination_channel
             .recv()
             .await
@@ -139,7 +141,7 @@ impl WorkerPoolOperation {
 
     pub(crate) async fn recv_pool_request(
         &self,
-    ) -> Result<(String, usize, HashMap<String, String>)> {
+    ) -> Result<(RcStr, usize, FxHashMap<RcStr, RcStr>)> {
         self.pool_request_channel
             .recv()
             .await
@@ -153,7 +155,7 @@ impl WorkerPoolOperation {
         self.worker_termination_channel.close();
     }
 
-    pub(crate) async fn recv_worker_request(&self, pool_id: String) -> Result<u32> {
+    pub(crate) async fn recv_worker_request(&self, pool_id: RcStr) -> Result<u32> {
         let channel = self
             .worker_request_channel
             .entry(pool_id.clone())
@@ -205,16 +207,16 @@ pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
     LazyLock::new(WorkerPoolOperation::default);
 
 pub(crate) async fn create_or_scale_pool(
-    filename: String,
+    filename: RcStr,
     max_concurrency: usize,
-    env: HashMap<String, String>,
+    env: FxHashMap<RcStr, RcStr>,
 ) -> Result<()> {
     WORKER_POOL_OPERATION
         .create_or_scale_pool(filename, max_concurrency, env)
         .await
 }
 
-pub(crate) async fn connect_to_worker(pool_id: String, task_id: u32) -> Result<u32> {
+pub(crate) async fn connect_to_worker(pool_id: RcStr, task_id: u32) -> Result<u32> {
     WORKER_POOL_OPERATION
         .connect_to_worker(pool_id, task_id)
         .await
@@ -226,7 +228,7 @@ pub(crate) async fn send_message_to_worker(worker_id: u32, data: String) -> Resu
         .await
 }
 
-pub(crate) async fn send_worker_termination(pool_id: String, worker_id: u32) -> Result<()> {
+pub(crate) async fn send_worker_termination(pool_id: RcStr, worker_id: u32) -> Result<()> {
     WORKER_POOL_OPERATION
         .send_worker_termination(pool_id, worker_id)
         .await
@@ -241,7 +243,7 @@ pub fn shutdown() {
 }
 
 pub(crate) struct WorkerOperation {
-    pub(crate) pool_id: String,
+    pub(crate) pool_id: RcStr,
     pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
 }

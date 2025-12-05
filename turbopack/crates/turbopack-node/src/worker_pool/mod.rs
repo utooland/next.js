@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     path::PathBuf,
     sync::atomic::{AtomicU32, Ordering},
 };
@@ -67,14 +66,9 @@ impl EvaluateOperation for WorkerThreadPool {
     async fn operation(&self) -> Result<Box<dyn Operation>> {
         let operation = {
             let _guard = duration_span!("Node.js operation");
-            let pool_id = self.entrypoint.to_string_lossy().to_string();
+            let pool_id: RcStr = self.entrypoint.to_string_lossy().into();
 
-            create_or_scale_pool(
-                pool_id.clone(),
-                self.concurrency,
-                HashMap::from_iter(self.env.iter().map(|(k, v)| (k.to_string(), v.to_string()))),
-            )
-            .await?;
+            create_or_scale_pool(pool_id.clone(), self.concurrency, self.env.clone()).await?;
 
             let task_id = OPERATION_TASK_ID.fetch_add(1, Ordering::Release);
 

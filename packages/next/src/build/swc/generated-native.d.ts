@@ -35,17 +35,17 @@ export declare class ExternalObject<T> {
   }
 }
 export interface PoolOptions {
-  filename: string
+  filename: RcStr
   maxConcurrency: number
-  env: Record<string, string>
+  env: FxHashMap
 }
 export interface WorkerTermination {
-  filename: string
+  filename: RcStr
   workerId: number
 }
 export declare function recvPoolRequest(): Promise<PoolOptions>
 export declare function recvWorkerTermination(): Promise<WorkerTermination>
-export declare function recvWorkerRequest(filename: string): Promise<number>
+export declare function recvWorkerRequest(filename: RcStr): Promise<number>
 export declare function recvMessageInWorker(workerId: number): Promise<string>
 export declare function notifyWorkerAck(
   taskId: number,
