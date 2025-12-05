@@ -81,7 +81,7 @@ impl WorkerThreadPool {
     pub fn scale_zero() {
         napi::bindgen_prelude::spawn(async {
             let _ = create_or_scale_pool(PoolOptions {
-                // Wildcard of "*" meaning to scale all of pools event with different poolId
+                // Wildcard of "*" meaning to scale all of pools even with different poolId
                 filename: rcstr!("*"),
                 concurrency: 0,
                 ..Default::default()

@@ -6,20 +6,14 @@ const KillMsg = '__kill__'
 
 async function gracefullyKillWorker(worker: Worker) {
   await new Promise<void>((resolve) => {
-    let timeout: NodeJS.Timeout
     const onMessage = (msg: any) => {
       if (msg === KillMsg) {
-        clearTimeout(timeout)
         worker.off('message', onMessage)
         resolve()
       }
     }
     worker.on('message', onMessage)
     worker.postMessage(KillMsg)
-    timeout = setTimeout(() => {
-      worker.off('message', onMessage)
-      resolve()
-    }, 1000)
   })
   await worker.terminate()
 }
@@ -32,7 +26,7 @@ export async function createOrScalePool(
     try {
       let poolOptions = await binding.recvPoolRequest()
       const { filename, concurrency, env, cwd } = poolOptions
-      // Wildcard of "*" meaning to scale all of pools event with different poolId
+      // Wildcard of "*" meaning to scale all of pools even with different poolId
       const workers =
         filename === '*'
           ? Object.values(loaderWorkers).flat()
