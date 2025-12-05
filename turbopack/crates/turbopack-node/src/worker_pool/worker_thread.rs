@@ -11,6 +11,7 @@ use crate::worker_pool::{PoolOptions, operation::WORKER_POOL_OPERATION};
 pub struct NapiPoolOptions {
     pub filename: RcStr,
     pub concurrency: u32,
+    #[napi(ts_type = "Record<string, string>")]
     pub env: Arc<FxHashMap<RcStr, RcStr>>,
     pub cwd: RcStr,
 }

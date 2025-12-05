@@ -37,7 +37,7 @@ export declare class ExternalObject<T> {
 export interface NapiPoolOptions {
   filename: RcStr
   concurrency: number
-  env: FxHashMap
+  env: Record<string, string>
   cwd: RcStr
 }
 export interface WorkerTermination {
