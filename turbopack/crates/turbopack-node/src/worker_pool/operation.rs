@@ -152,7 +152,7 @@ impl WorkerPoolOperation {
             .context("failed to recv pool request")
     }
 
-    pub(crate) async fn kill_schedule_channels(&self) {
+    pub async fn close_schedule_channels(&self) {
         // We need to close channels connected to schedule thread,
         // or else, it will be forever waiting in schedule thread
         self.pool_request_channel.close().await;
@@ -238,8 +238,8 @@ pub(crate) async fn recv_task_message(task_id: u32) -> Result<String> {
     WORKER_POOL_OPERATION.recv_task_response(task_id).await
 }
 
-pub(crate) async fn kill_schedule_channels() {
-    WORKER_POOL_OPERATION.kill_schedule_channels().await;
+pub async fn close_schedule_channels() {
+    WORKER_POOL_OPERATION.close_schedule_channels().await;
 }
 
 pub(crate) struct WorkerOperation {

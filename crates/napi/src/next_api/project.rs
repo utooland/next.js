@@ -722,6 +722,10 @@ pub async fn project_shutdown(
 ) {
     project.turbopack_ctx.turbo_tasks().stop_and_wait().await;
     project_on_exit_internal(&project).await;
+    // This is need to close channel between rust and nodejs schedule thread of worker pool,
+    // or else, the schedule thread will need quit when all tasks finished
+    // Remove this if using feature `process_pool` of turbopack_node
+    turbopack_node::worker_pool::close_schedule_channels().await;
 }
 
 #[napi(object)]
