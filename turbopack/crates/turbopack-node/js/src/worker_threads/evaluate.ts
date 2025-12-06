@@ -60,11 +60,16 @@ export const run = async (
   }
 
   const loop = async () => {
-    const taskId = await binding.recvWorkerRequest(workerData.poolId)
+    let taskId: number | undefined
+    let msg_str: string
 
-    await binding.notifyWorkerAck(taskId, workerId)
-
-    const msg_str = await binding.recvMessageInWorker(workerId)
+    if (isRunning) {
+      msg_str = await binding.recvMessageInWorker(workerId)
+    } else {
+      taskId = await binding.recvWorkerRequest(workerData.poolId)
+      await binding.notifyWorkerAck(taskId, workerId)
+      msg_str = await binding.recvMessageInWorker(workerId)
+    }
 
     const msg = JSON.parse(msg_str) as
       | {
@@ -80,7 +85,7 @@ export const run = async (
 
     switch (msg.type) {
       case 'evaluate': {
-        if (!isRunning) {
+        if (!isRunning && taskId !== undefined) {
           isRunning = true
           runningTask = run(taskId, msg.args)
         }
