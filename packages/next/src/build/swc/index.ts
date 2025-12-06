@@ -42,10 +42,7 @@ import type {
   WrittenEndpoint,
 } from './types'
 import { throwTurbopackInternalError } from '../../shared/lib/turbopack/internal-error'
-import {
-  createOrScalePool,
-  waitingForWorkerTermination,
-} from './loaderWorkerPool'
+import { runLoaderWorkerPool } from './loaderWorkerPool'
 
 type RawBindings = typeof import('./generated-native')
 type RawWasmBindings = typeof import('./generated-wasm') & {
@@ -680,11 +677,11 @@ function bindingToApi(
     constructor(nativeProject: { __napiType: 'Project' }) {
       this._nativeProject = nativeProject
 
-      if (typeof binding.recvPoolRequest === 'function') {
-        createOrScalePool(binding, bindingPath)
-      }
-      if (typeof binding.recvWorkerTermination === 'function') {
-        waitingForWorkerTermination(binding)
+      if (
+        typeof binding.recvPoolRequest === 'function' &&
+        typeof binding.recvWorkerTermination === 'function'
+      ) {
+        runLoaderWorkerPool(binding, bindingPath)
       }
     }
 

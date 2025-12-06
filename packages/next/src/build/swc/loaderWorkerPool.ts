@@ -4,21 +4,17 @@ const loaderWorkers: Record<string, Array<Worker>> = {}
 
 const KillMsg = '__kill__'
 
-async function gracefullyKillWorker(worker: Worker) {
-  await new Promise<void>((resolve) => {
-    const onMessage = (msg: any) => {
-      if (msg === KillMsg) {
-        worker.off('message', onMessage)
-        resolve()
-      }
-    }
-    worker.on('message', onMessage)
-    worker.postMessage(KillMsg)
-  })
-  await worker.terminate()
+export async function runLoaderWorkerPool(
+  binding: typeof import('./generated-native'),
+  bindingPath: string
+) {
+  await Promise.all([
+    runPoolScaler(binding, bindingPath),
+    runWorkerTerminator(binding),
+  ])
 }
 
-export async function createOrScalePool(
+async function runPoolScaler(
   binding: typeof import('./generated-native'),
   bindingPath: string
 ) {
@@ -45,7 +41,7 @@ export async function createOrScalePool(
         }
       } else if (workers.length > concurrency) {
         const workersToKill = workers.splice(0, workers.length - concurrency)
-        workersToKill.forEach(gracefullyKillWorker)
+        workersToKill.forEach(terminateWorker)
       }
     } catch (_) {
       // rust channel closed, do nothing
@@ -54,7 +50,7 @@ export async function createOrScalePool(
   }
 }
 
-export async function waitingForWorkerTermination(
+async function runWorkerTerminator(
   binding: typeof import('./generated-native')
 ) {
   while (true) {
@@ -66,11 +62,25 @@ export async function waitingForWorkerTermination(
       )
       if (workerIdx > -1) {
         const workersToKill = workers.splice(workerIdx, 1)
-        workersToKill.forEach(gracefullyKillWorker)
+        workersToKill.forEach(terminateWorker)
       }
     } catch (_) {
       // rust channel closed, do nothing
       return
     }
   }
+}
+
+async function terminateWorker(worker: Worker) {
+  await new Promise<void>((resolve) => {
+    const onMessage = (msg: any) => {
+      if (msg === KillMsg) {
+        worker.off('message', onMessage)
+        resolve()
+      }
+    }
+    worker.on('message', onMessage)
+    worker.postMessage(KillMsg)
+  })
+  await worker.terminate()
 }
