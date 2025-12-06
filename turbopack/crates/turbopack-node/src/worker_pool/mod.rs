@@ -17,12 +17,13 @@ use crate::{
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
     worker_pool::operation::{
         PoolOptions, WorkerOperation, connect_to_worker, create_or_scale_pool,
-        kill_schedule_channels,
     },
 };
 
 mod operation;
 mod worker_thread;
+
+pub use operation::close_schedule_channels;
 
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
@@ -87,7 +88,6 @@ impl WorkerThreadPool {
                 ..Default::default()
             })
             .await;
-            kill_schedule_channels().await;
         });
     }
 }
