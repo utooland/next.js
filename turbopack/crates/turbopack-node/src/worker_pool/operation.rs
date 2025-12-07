@@ -49,6 +49,7 @@ pub(super) struct PoolOptions {
 }
 
 pub(crate) struct WorkerPoolOperation {
+    active_workers: DashMap<RcStr, u32>,
     pool_request_channel: MessageChannel<PoolOptions>,
     worker_termination_channel: MessageChannel<(RcStr, u32)>,
     worker_request_channel: DashMap<RcStr, MessageChannel<u32>>,
@@ -60,6 +61,7 @@ pub(crate) struct WorkerPoolOperation {
 impl Default for WorkerPoolOperation {
     fn default() -> Self {
         Self {
+            active_workers: DashMap::new(),
             pool_request_channel: MessageChannel::unbounded(),
             worker_termination_channel: MessageChannel::unbounded(),
             worker_request_channel: DashMap::new(),
@@ -72,10 +74,25 @@ impl Default for WorkerPoolOperation {
 
 impl WorkerPoolOperation {
     pub(crate) async fn create_or_scale_pool(&self, pool_options: PoolOptions) -> Result<()> {
-        self.pool_request_channel
-            .send(pool_options)
-            .await
-            .context("failed to send pool request")?;
+        let active_workers = {
+            *self
+                .active_workers
+                .entry(pool_options.filename.clone())
+                .or_insert(0)
+        };
+
+        if pool_options.concurrency != active_workers {
+            let filename = pool_options.filename.clone();
+            let concurrency = pool_options.concurrency;
+            self.pool_request_channel
+                .send(pool_options)
+                .await
+                .context("failed to send pool request")?;
+
+            {
+                self.active_workers.insert(filename, concurrency);
+            }
+        }
 
         Ok(())
     }
