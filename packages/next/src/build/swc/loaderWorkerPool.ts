@@ -1,86 +1,42 @@
 import { Worker } from 'worker_threads'
+import type {
+  WorkerCreationParams,
+  WorkerTermination,
+} from './generated-native'
 
 const loaderWorkers: Record<string, Array<Worker>> = {}
-
-const KillMsg = '__kill__'
 
 export async function runLoaderWorkerPool(
   binding: typeof import('./generated-native'),
   bindingPath: string
 ) {
-  await Promise.all([
-    runPoolScaler(binding, bindingPath),
-    runWorkerTerminator(binding),
-  ])
-}
+  binding.registerWorkerCreator((request: WorkerCreationParams) => {
+    const { options, taskId } = request
+    const { filename, cwd } = options
 
-async function runPoolScaler(
-  binding: typeof import('./generated-native'),
-  bindingPath: string
-) {
-  while (true) {
-    try {
-      let poolOptions = await binding.recvPoolRequest()
-      const { filename, concurrency, env, cwd } = poolOptions
-      // Wildcard of "*" meaning to scale all of pools even with different poolId
-      const workers =
-        filename === '*'
-          ? Object.values(loaderWorkers).flat()
-          : loaderWorkers[filename] || (loaderWorkers[filename] = [])
-      if (workers.length < concurrency) {
-        for (let i = workers.length; i < concurrency; i++) {
-          const worker = new Worker(filename, {
-            workerData: {
-              poolId: filename,
-              bindingPath,
-              cwd,
-            },
-            env,
-          })
-          workers.push(worker)
-        }
-      } else if (workers.length > concurrency) {
-        const workersToKill = workers.splice(0, workers.length - concurrency)
-        workersToKill.forEach(terminateWorker)
-      }
-    } catch (_) {
-      // rust channel closed, do nothing
-      return
-    }
-  }
-}
+    const worker = new Worker(filename, {
+      workerData: {
+        poolId: filename,
+        bindingPath,
+        cwd,
+      },
+    })
 
-async function runWorkerTerminator(
-  binding: typeof import('./generated-native')
-) {
-  while (true) {
-    try {
-      const { filename, workerId } = await binding.recvWorkerTermination()
-      const workers = loaderWorkers[filename]
-      const workerIdx = workers.findIndex(
-        (worker) => worker.threadId === workerId
-      )
-      if (workerIdx > -1) {
-        const workersToKill = workers.splice(workerIdx, 1)
-        workersToKill.forEach(terminateWorker)
-      }
-    } catch (_) {
-      // rust channel closed, do nothing
-      return
-    }
-  }
-}
+    const workers = loaderWorkers[filename] || (loaderWorkers[filename] = [])
+    workers.push(worker)
 
-async function terminateWorker(worker: Worker) {
-  await new Promise<void>((resolve) => {
-    const onMessage = (msg: any) => {
-      if (msg === KillMsg) {
-        worker.off('message', onMessage)
-        resolve()
-      }
-    }
-    worker.on('message', onMessage)
-    worker.postMessage(KillMsg)
+    binding.workerCreated(taskId, worker.threadId)
   })
-  await worker.terminate()
+
+  binding.registerWorkerTerminator((request: WorkerTermination) => {
+    const { filename, workerId } = request
+    const workers = loaderWorkers[filename]
+    const workerIdx = workers.findIndex(
+      (worker) => worker.threadId === workerId
+    )
+    if (workerIdx > -1) {
+      const workersToKill = workers.splice(workerIdx, 1)
+      workersToKill.forEach((worker) => worker.terminate())
+    }
+  })
 }

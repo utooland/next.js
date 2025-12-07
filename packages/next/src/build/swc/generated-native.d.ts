@@ -34,24 +34,32 @@ export declare class ExternalObject<T> {
     [K: symbol]: T
   }
 }
+export declare function registerWorkerCreator(
+  callback: (arg: WorkerCreationParams) => any
+): void
+export declare function registerWorkerTerminator(
+  callback: (arg: WorkerTermination) => any
+): void
+export declare function workerCreated(taskId: number, workerId: number): void
 export interface NapiPoolOptions {
   filename: RcStr
-  concurrency: number
-  env: Record<string, string>
   cwd: RcStr
+}
+export interface WorkerCreationParams {
+  options: NapiPoolOptions
+  taskId: number
 }
 export interface WorkerTermination {
   filename: RcStr
   workerId: number
 }
-export declare function recvPoolRequest(): Promise<NapiPoolOptions>
-export declare function recvWorkerTermination(): Promise<WorkerTermination>
-export declare function recvWorkerRequest(filename: RcStr): Promise<number>
-export declare function recvMessageInWorker(workerId: number): Promise<string>
-export declare function notifyWorkerAck(
-  taskId: number,
+export interface WorkerMessage {
+  taskId: number
+  message: string
+}
+export declare function recvMessageInWorker(
   workerId: number
-): Promise<void>
+): Promise<WorkerMessage>
 export declare function sendTaskMessage(
   taskId: number,
   message: string

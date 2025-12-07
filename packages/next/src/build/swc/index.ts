@@ -678,8 +678,8 @@ function bindingToApi(
       this._nativeProject = nativeProject
 
       if (
-        typeof binding.recvPoolRequest === 'function' &&
-        typeof binding.recvWorkerTermination === 'function'
+        typeof binding.registerWorkerCreator === 'function' &&
+        typeof binding.registerWorkerTerminator === 'function'
       ) {
         runLoaderWorkerPool(binding, bindingPath)
       }

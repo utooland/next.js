@@ -1,4 +1,4 @@
-import { threadId as workerId, workerData, parentPort } from 'worker_threads'
+import { threadId as workerId, workerData } from 'worker_threads'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
 import { Binding, TaskChannel } from './taskChannel'
@@ -6,16 +6,6 @@ import { Binding, TaskChannel } from './taskChannel'
 const binding: Binding = require(
   /* turbopackIgnore: true */ workerData.bindingPath
 )
-
-const KillMsg = '__kill__'
-
-let willKill = false
-
-parentPort!.on('message', (msg) => {
-  if (msg === KillMsg) {
-    willKill = true
-  }
-})
 
 export const run = async (
   moduleFactory: () => Promise<{
@@ -26,7 +16,7 @@ export const run = async (
   let getValue: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
 
   let isRunning = false
-  let runningTask: Promise<void> | undefined
+  const queue: Array<{ taskId: number; args: string[] }> = []
 
   const run = async (taskId: number, args: string[]) => {
     try {
@@ -55,21 +45,17 @@ export const run = async (
         })
       )
     }
-    isRunning = false
-    runningTask = undefined
+    if (queue.length > 0) {
+      const next = queue.shift()!
+      run(next.taskId, next.args)
+    } else {
+      isRunning = false
+    }
   }
 
-  const loop = async () => {
-    let taskId: number | undefined
-    let msg_str: string
-
-    if (isRunning) {
-      msg_str = await binding.recvMessageInWorker(workerId)
-    } else {
-      taskId = await binding.recvWorkerRequest(workerData.poolId)
-      await binding.notifyWorkerAck(taskId, workerId)
-      msg_str = await binding.recvMessageInWorker(workerId)
-    }
+  while (true) {
+    const { taskId, message: msg_str } =
+      await binding.recvMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
       | {
@@ -85,9 +71,11 @@ export const run = async (
 
     switch (msg.type) {
       case 'evaluate': {
-        if (!isRunning && taskId !== undefined) {
+        if (!isRunning) {
           isRunning = true
-          runningTask = run(taskId, msg.args)
+          run(taskId, msg.args)
+        } else {
+          queue.push({ taskId, args: msg.args })
         }
         break
       }
@@ -111,23 +99,5 @@ export const run = async (
         console.error('unexpected message type', (msg as any).type)
       }
     }
-  }
-
-  while (true) {
-    if (willKill) {
-      if (runningTask) {
-        await runningTask
-      }
-      parentPort!.postMessage(KillMsg)
-      return
-    }
-
-    const loopTask = loop()
-
-    if (!isRunning) {
-      runningTask = loopTask
-    }
-
-    await loopTask
   }
 }

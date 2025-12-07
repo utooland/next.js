@@ -1,9 +1,10 @@
 import { structuredError } from '../error'
 
 export interface Binding {
-  recvWorkerRequest(poolId: string): Promise<number>
-  recvMessageInWorker(workerId: number): Promise<string>
-  notifyWorkerAck(taskId: number, workerId: number): Promise<void>
+  recvMessageInWorker(workerId: number): Promise<{
+    taskId: number
+    message: string
+  }>
   sendTaskMessage(taskId: number, message: string): Promise<void>
 }
 

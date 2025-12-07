@@ -14,7 +14,7 @@ default = ["process_pool"]
 # enable "HMR" for embedded assets
 dynamic_embed_contents = ["turbo-tasks-fs/dynamic_embed_contents"]
 process_pool = ["tokio/full"]
-worker_pool = ["async-channel", "napi", "napi-derive", "turbo-rcstr/napi"]
+worker_pool = ["tokio/sync", "napi", "napi-derive", "turbo-rcstr/napi"]
 
 [lints]
 workspace = true
@@ -53,4 +53,3 @@ turbopack-ecmascript = { workspace = true }
 turbopack-resolve = { workspace = true }
 napi = { workspace = true, features = ["error_anyhow"], optional = true }
 napi-derive = { workspace = true, optional = true }
-async-channel = { version = "2.5.0", optional = true }

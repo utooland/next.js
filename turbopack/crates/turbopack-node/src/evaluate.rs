@@ -281,7 +281,8 @@ pub async fn get_evaluate_pool(
         chunking_context.root_path().owned().await?,
         available_parallelism().map_or(1, |v| v.get()),
         debug,
-    );
+    )
+    .await;
     additional_invalidation.await?;
     Ok(pool.cell())
 }

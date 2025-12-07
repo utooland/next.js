@@ -4,158 +4,175 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use async_channel::{Receiver, Sender, unbounded};
-use dashmap::DashMap;
+use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
+use tokio::sync::{
+    Mutex as AsyncMutex,
+    mpsc::{self, UnboundedReceiver, UnboundedSender},
+    oneshot,
+};
 use turbo_rcstr::RcStr;
 
-use crate::evaluate::Operation;
+use crate::{evaluate::Operation, pool_stats::NodeJsPoolStats, worker_pool::worker_thread};
 
 #[derive(Clone)]
 pub(crate) struct MessageChannel<T: Send + Sync + 'static> {
-    sender: Sender<T>,
-    receiver: Receiver<T>,
+    sender: UnboundedSender<T>,
+    receiver: Arc<AsyncMutex<UnboundedReceiver<T>>>,
 }
 
 impl<T: Send + Sync + 'static> MessageChannel<T> {
     pub(super) fn unbounded() -> Self {
-        let (sender, receiver) = unbounded::<T>();
-        Self { sender, receiver }
+        let (sender, receiver) = mpsc::unbounded_channel();
+        Self {
+            sender,
+            receiver: Arc::new(AsyncMutex::new(receiver)),
+        }
     }
 }
 
 impl<T: Send + Sync + 'static> MessageChannel<T> {
     pub(crate) async fn send(&self, data: T) -> Result<()> {
-        Ok(self.sender.send(data).await?)
+        self.sender
+            .send(data)
+            .map_err(|_| anyhow::anyhow!("failed to send message"))
     }
 
     pub(crate) async fn recv(&self) -> Result<T> {
-        Ok(self.receiver.recv().await?)
+        let mut rx = self.receiver.lock().await;
+        rx.recv()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("failed to recv message"))
     }
+}
 
-    pub(crate) async fn close(&self) {
-        // Close the receiver firstly
-        self.receiver.close();
-        self.sender.closed().await;
+pub(crate) struct PoolState {
+    pub(crate) idle_workers: Mutex<Vec<u32>>,
+    pub(crate) stats: Arc<Mutex<NodeJsPoolStats>>,
+    pub(crate) waiters: Mutex<Vec<oneshot::Sender<u32>>>,
+}
+
+impl Default for PoolState {
+    fn default() -> Self {
+        Self {
+            idle_workers: Mutex::new(Vec::new()),
+            stats: Arc::new(Mutex::new(NodeJsPoolStats::default())),
+            waiters: Mutex::new(Vec::new()),
+        }
     }
 }
 
 #[derive(Default)]
 pub(super) struct PoolOptions {
     pub(super) filename: RcStr,
-    pub(super) concurrency: u32,
-    pub(super) env: Arc<FxHashMap<RcStr, RcStr>>,
     pub(super) cwd: RcStr,
 }
 
 pub(crate) struct WorkerPoolOperation {
-    active_workers: DashMap<RcStr, u32>,
-    pool_request_channel: MessageChannel<PoolOptions>,
-    worker_termination_channel: MessageChannel<(RcStr, u32)>,
-    worker_request_channel: DashMap<RcStr, MessageChannel<u32>>,
-    worker_ack_channel: DashMap<u32, MessageChannel<u32>>,
-    worker_routed_channel: DashMap<u32, MessageChannel<String>>,
-    task_routed_channel: DashMap<u32, MessageChannel<String>>,
+    worker_routed_channel: Mutex<FxHashMap<u32, MessageChannel<(u32, String)>>>,
+    task_routed_channel: Mutex<FxHashMap<u32, MessageChannel<String>>>,
+    pools: Mutex<FxHashMap<RcStr, Arc<PoolState>>>,
 }
 
 impl Default for WorkerPoolOperation {
     fn default() -> Self {
         Self {
-            active_workers: DashMap::new(),
-            pool_request_channel: MessageChannel::unbounded(),
-            worker_termination_channel: MessageChannel::unbounded(),
-            worker_request_channel: DashMap::new(),
-            worker_ack_channel: DashMap::new(),
-            worker_routed_channel: DashMap::new(),
-            task_routed_channel: DashMap::new(),
+            worker_routed_channel: Mutex::new(FxHashMap::default()),
+            task_routed_channel: Mutex::new(FxHashMap::default()),
+            pools: Mutex::new(FxHashMap::default()),
         }
     }
 }
 
 impl WorkerPoolOperation {
-    pub(crate) async fn create_or_scale_pool(&self, pool_options: PoolOptions) -> Result<()> {
-        let active_workers = {
-            *self
-                .active_workers
-                .entry(pool_options.filename.clone())
-                .or_insert(0)
-        };
+    pub(crate) async fn get_pool_state(&self, pool_id: &RcStr) -> Arc<PoolState> {
+        self.pools
+            .lock()
+            .entry(pool_id.clone())
+            .or_default()
+            .clone()
+    }
 
-        if pool_options.concurrency != active_workers {
-            let filename = pool_options.filename.clone();
-            let concurrency = pool_options.concurrency;
-            self.pool_request_channel
-                .send(pool_options)
-                .await
-                .context("failed to send pool request")?;
+    pub(crate) fn scale_down(&self) -> Result<()> {
+        let mut to_terminate = Vec::new();
 
-            {
-                self.active_workers.insert(filename, concurrency);
+        {
+            let pools = self.pools.lock();
+            for (pool_id, state) in pools.iter() {
+                let mut idle = state.idle_workers.lock();
+                if idle.len() > 1 {
+                    let workers = idle.split_off(1);
+                    let mut stats = state.stats.lock();
+                    for worker_id in workers {
+                        stats.remove_worker();
+                        to_terminate.push((pool_id.clone(), worker_id));
+                    }
+                }
             }
         }
 
+        to_terminate
+            .into_iter()
+            .map(|(pool_id, worker_id)| self.terminate_worker(pool_id, worker_id))
+            .collect::<Result<Vec<_>>>()?;
         Ok(())
     }
 
-    pub(crate) async fn connect_to_worker(&self, pool_id: RcStr, task_id: u32) -> Result<u32> {
-        let channel = self
-            .worker_request_channel
-            .entry(pool_id.clone())
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
-        channel
-            .send(task_id)
-            .await
-            .context("failed to send worker request")?;
-        let worker_id = async move {
-            let channel = self
-                .worker_ack_channel
-                .entry(task_id)
-                .or_insert_with(MessageChannel::unbounded)
-                .clone();
-            channel.recv().await.context("failed to recv worker ack")
+    pub(crate) fn scale_zero(&self) -> Result<()> {
+        let mut to_terminate = Vec::new();
+
+        {
+            let pools = self.pools.lock();
+            for (pool_id, state) in pools.iter() {
+                let mut idle = state.idle_workers.lock();
+                let workers = std::mem::take(&mut *idle);
+                let mut stats = state.stats.lock();
+                for worker_id in workers {
+                    stats.remove_worker();
+                    to_terminate.push((pool_id.clone(), worker_id));
+                }
+            }
         }
-        .await?;
-        Ok(worker_id)
+
+        to_terminate
+            .into_iter()
+            .map(|(pool_id, worker_id)| self.terminate_worker(pool_id, worker_id))
+            .collect::<Result<Vec<_>>>()?;
+        Ok(())
     }
 
-    pub(crate) async fn send_worker_termination(
+    pub(crate) async fn send_message_to_worker(
         &self,
-        pool_id: RcStr,
         worker_id: u32,
+        task_id: u32,
+        data: String,
     ) -> Result<()> {
-        self.worker_termination_channel
-            .send((pool_id, worker_id))
-            .await
-            .context("failed to send worker termination")
-    }
-
-    pub(crate) async fn recv_worker_termination(&self) -> Result<(RcStr, u32)> {
-        self.worker_termination_channel
-            .recv()
-            .await
-            .context("failed to recv worker termination")
-    }
-
-    pub(crate) async fn send_message_to_worker(&self, worker_id: u32, data: String) -> Result<()> {
-        let channel = self
-            .worker_routed_channel
-            .entry(worker_id)
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
+        let channel = {
+            let mut map = self.worker_routed_channel.lock();
+            map.entry(worker_id)
+                .or_insert_with(MessageChannel::unbounded)
+                .clone()
+        };
         channel
-            .send(data)
+            .send((task_id, data))
             .await
             .context("failed to send message to worker")?;
         Ok(())
     }
 
-    pub async fn recv_task_response(&self, task_id: u32) -> Result<String> {
-        let channel = self
-            .task_routed_channel
-            .entry(task_id)
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
+    pub(crate) fn terminate_worker(&self, pool_id: RcStr, worker_id: u32) -> Result<()> {
+        self.worker_routed_channel.lock().remove(&worker_id);
+        worker_thread::terminate_worker(pool_id, worker_id);
+        Ok(())
+    }
+
+    pub async fn recv_task_message(&self, task_id: u32) -> Result<String> {
+        let channel = {
+            let mut map = self.task_routed_channel.lock();
+            map.entry(task_id)
+                .or_insert_with(MessageChannel::unbounded)
+                .clone()
+        };
         let data = channel
             .recv()
             .await
@@ -163,49 +180,17 @@ impl WorkerPoolOperation {
         Ok(data)
     }
 
-    pub(crate) async fn recv_pool_request(&self) -> Result<PoolOptions> {
-        self.pool_request_channel
-            .recv()
-            .await
-            .context("failed to recv pool request")
+    pub(crate) fn remove_task_channel(&self, task_id: u32) {
+        self.task_routed_channel.lock().remove(&task_id);
     }
 
-    pub async fn close_schedule_channels(&self) {
-        // We need to close channels connected to schedule thread,
-        // or else, it will be forever waiting in schedule thread
-        self.pool_request_channel.close().await;
-        self.worker_termination_channel.close().await;
-    }
-
-    pub(crate) async fn recv_worker_request(&self, pool_id: RcStr) -> Result<u32> {
-        let channel = self
-            .worker_request_channel
-            .entry(pool_id.clone())
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
-        channel
-            .recv()
-            .await
-            .context("failed to recv worker request")
-    }
-
-    pub(crate) async fn notify_worker_ack(&self, task_id: u32, worker_id: u32) -> Result<()> {
-        let channel = self
-            .worker_ack_channel
-            .get(&task_id)
-            .with_context(|| format!("worker ack channel for {task_id} not found"))?;
-        channel
-            .send(worker_id)
-            .await
-            .context("failed to notify worker ack")
-    }
-
-    pub(crate) async fn recv_message_in_worker(&self, worker_id: u32) -> Result<String> {
-        let channel = self
-            .worker_routed_channel
-            .entry(worker_id)
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
+    pub(crate) async fn recv_message_in_worker(&self, worker_id: u32) -> Result<(u32, String)> {
+        let channel = {
+            let mut map = self.worker_routed_channel.lock();
+            map.entry(worker_id)
+                .or_insert_with(MessageChannel::unbounded)
+                .clone()
+        };
         channel
             .recv()
             .await
@@ -213,11 +198,12 @@ impl WorkerPoolOperation {
     }
 
     pub(crate) async fn send_task_message(&self, task_id: u32, data: String) -> Result<()> {
-        let channel = self
-            .task_routed_channel
-            .entry(task_id)
-            .or_insert_with(MessageChannel::unbounded)
-            .clone();
+        let channel = {
+            let mut map = self.task_routed_channel.lock();
+            map.entry(task_id)
+                .or_insert_with(MessageChannel::unbounded)
+                .clone()
+        };
         channel
             .send(data)
             .await
@@ -228,42 +214,47 @@ impl WorkerPoolOperation {
 pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
     LazyLock::new(WorkerPoolOperation::default);
 
-pub(crate) async fn create_or_scale_pool(pool_options: PoolOptions) -> Result<()> {
+pub(crate) async fn send_message_to_worker(
+    worker_id: u32,
+    task_id: u32,
+    data: String,
+) -> Result<()> {
     WORKER_POOL_OPERATION
-        .create_or_scale_pool(pool_options)
+        .send_message_to_worker(worker_id, task_id, data)
         .await
 }
 
-pub(crate) async fn connect_to_worker(pool_id: RcStr, task_id: u32) -> Result<u32> {
-    WORKER_POOL_OPERATION
-        .connect_to_worker(pool_id, task_id)
-        .await
-}
-
-pub(crate) async fn send_message_to_worker(worker_id: u32, data: String) -> Result<()> {
-    WORKER_POOL_OPERATION
-        .send_message_to_worker(worker_id, data)
-        .await
-}
-
-pub(crate) async fn send_worker_termination(pool_id: RcStr, worker_id: u32) -> Result<()> {
-    WORKER_POOL_OPERATION
-        .send_worker_termination(pool_id, worker_id)
-        .await
+pub(crate) fn terminate_worker(pool_id: RcStr, worker_id: u32) -> Result<()> {
+    WORKER_POOL_OPERATION.terminate_worker(pool_id, worker_id)
 }
 
 pub(crate) async fn recv_task_message(task_id: u32) -> Result<String> {
-    WORKER_POOL_OPERATION.recv_task_response(task_id).await
+    WORKER_POOL_OPERATION.recv_task_message(task_id).await
 }
 
-pub async fn close_schedule_channels() {
-    WORKER_POOL_OPERATION.close_schedule_channels().await;
+pub(crate) fn remove_task_channel(task_id: u32) {
+    WORKER_POOL_OPERATION.remove_task_channel(task_id)
+}
+
+pub(crate) async fn get_pool_state(pool_id: &RcStr) -> Arc<PoolState> {
+    WORKER_POOL_OPERATION.get_pool_state(pool_id).await
 }
 
 pub(crate) struct WorkerOperation {
     pub(crate) pool_id: RcStr,
     pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
+    pub(crate) state: Arc<PoolState>,
+    pub(crate) on_drop: Option<Box<dyn FnOnce(u32) + Send + Sync>>,
+}
+
+impl Drop for WorkerOperation {
+    fn drop(&mut self) {
+        if let Some(on_drop) = self.on_drop.take() {
+            on_drop(self.worker_id);
+        }
+        remove_task_channel(self.task_id);
+    }
 }
 
 #[async_trait::async_trait]
@@ -273,15 +264,20 @@ impl Operation for WorkerOperation {
     }
 
     async fn send(&mut self, data: String) -> Result<()> {
-        send_message_to_worker(self.worker_id, data).await
+        send_message_to_worker(self.worker_id, self.task_id, data).await
     }
 
     async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
-        send_worker_termination(self.pool_id.clone(), self.worker_id).await?;
+        self.state.stats.lock().remove_worker();
+        self.on_drop = None;
+        terminate_worker(self.pool_id.clone(), self.worker_id)?;
         Ok(ExitStatus::default())
     }
 
     fn disallow_reuse(&mut self) {
-        // do nothing
+        if self.on_drop.is_some() {
+            self.state.stats.lock().remove_worker();
+            self.on_drop = None;
+        }
     }
 }

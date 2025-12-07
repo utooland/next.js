@@ -18,6 +18,7 @@ pub mod embed_js;
 pub mod evaluate;
 pub mod execution_context;
 mod format;
+mod pool_stats;
 #[cfg(feature = "process_pool")]
 mod process_pool;
 pub mod source_map;
