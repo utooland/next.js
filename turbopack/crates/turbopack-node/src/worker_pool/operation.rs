@@ -268,8 +268,10 @@ impl Operation for WorkerOperation {
     }
 
     async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
-        self.state.stats.lock().remove_worker();
-        self.on_drop = None;
+        if self.on_drop.is_some() {
+            self.state.stats.lock().remove_worker();
+            self.on_drop = None;
+        }
         terminate_worker(self.pool_id.clone(), self.worker_id)?;
         Ok(ExitStatus::default())
     }

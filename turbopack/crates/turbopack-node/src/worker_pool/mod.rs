@@ -31,8 +31,8 @@ static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub(crate) struct WorkerThreadPool {
-    cwd: PathBuf,
-    entrypoint: PathBuf,
+    cwd: RcStr,
+    entrypoint: RcStr,
     env: Arc<FxHashMap<RcStr, RcStr>>,
     concurrency: usize,
     pub(crate) assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
@@ -58,8 +58,8 @@ impl WorkerThreadPool {
         EvaluatePool::new(
             pool_id,
             Box::new(Self {
-                cwd,
-                entrypoint,
+                cwd: cwd.to_string_lossy().into(),
+                entrypoint: entrypoint.to_string_lossy().into(),
                 env: Arc::new(env),
                 concurrency: (if debug { 1 } else { concurrency }),
                 assets_for_source_mapping,
@@ -92,11 +92,11 @@ impl WorkerThreadPool {
         };
 
         if can_create {
-            let pool_id: RcStr = self.entrypoint.to_string_lossy().into();
+            let pool_id: RcStr = self.entrypoint.clone();
             let worker_id = create_worker(
                 NapiPoolOptions {
                     filename: pool_id,
-                    cwd: self.cwd.to_string_lossy().into(),
+                    cwd: self.cwd.clone(),
                 },
                 task_id,
             )
@@ -139,7 +139,7 @@ impl EvaluateOperation for WorkerThreadPool {
     async fn operation(&self) -> Result<Box<dyn Operation>> {
         let operation = {
             let _guard = duration_span!("Node.js operation");
-            let pool_id: RcStr = self.entrypoint.to_string_lossy().into();
+            let pool_id: RcStr = self.entrypoint.clone();
 
             let task_id = OPERATION_TASK_ID.fetch_add(1, Ordering::Release);
 

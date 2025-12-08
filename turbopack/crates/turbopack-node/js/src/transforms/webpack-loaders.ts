@@ -17,7 +17,6 @@ import {
 } from './transforms'
 import fs from 'fs'
 import path from 'path'
-import { isMainThread, workerData } from 'worker_threads'
 
 export type IpcInfoMessage =
   | {
@@ -60,8 +59,7 @@ const {
   runLoaders,
 }: typeof import('loader-runner') = require('@vercel/turbopack/loader-runner')
 
-const contextDir =
-  !isMainThread && workerData.cwd ? workerData.cwd : process.cwd()
+const contextDir = process.cwd()
 
 const LogType = Object.freeze({
   error: 'error',

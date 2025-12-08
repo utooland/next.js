@@ -440,7 +440,7 @@ pub async fn get_evaluate_entries(
     #[allow(unused_variables)]
     let runtime_module_path = rcstr!("child_process/evaluate.ts");
     #[cfg(feature = "worker_pool")]
-    let runtime_module_path = rcstr!("worker_threads/evaluate.ts");
+    let runtime_module_path = rcstr!("worker_thread/evaluate.ts");
 
     let runtime_asset = asset_context
         .process(
@@ -477,26 +477,27 @@ pub async fn get_evaluate_entries(
         let mut entries = vec![];
 
         #[cfg(feature = "process_pool")]
-        {
-            let globals_module = asset_context
-                .process(
-                    Vc::upcast(FileSource::new(
-                        embed_file_path(rcstr!("child_process/globals.ts"))
-                            .owned()
-                            .await?,
-                    )),
-                    ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
-                )
-                .module();
+        #[allow(unused_variables)]
+        let global_module_path = embed_file_path(rcstr!("child_process/globals.ts"));
 
-            let Some(globals_module) =
-                Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(globals_module).await?
-            else {
-                bail!("Internal module is not evaluatable");
-            };
+        #[cfg(feature = "worker_pool")]
+        let global_module_path = embed_file_path(rcstr!("worker_thread/globals.ts"));
 
-            entries.push(globals_module.to_resolved().await?);
-        }
+        let globals_module = asset_context
+            .process(
+                Vc::upcast(FileSource::new(global_module_path.owned().await?)),
+                ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
+            )
+            .module();
+
+        let Some(globals_module) =
+            Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(globals_module).await?
+        else {
+            bail!("Internal module is not evaluatable");
+        };
+
+        entries.push(globals_module.to_resolved().await?);
+
         if let Some(runtime_entries) = runtime_entries {
             for &entry in &*runtime_entries.await? {
                 entries.push(entry)

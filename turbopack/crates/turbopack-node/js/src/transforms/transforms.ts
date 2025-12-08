@@ -6,7 +6,6 @@ import type { Channel as Ipc } from '../types'
 import { relative, isAbsolute, join, sep } from 'path'
 import { type StructuredError } from '../error'
 import { type StackFrame } from '../compiled/stacktrace-parser'
-import { isMainThread, workerData } from 'worker_threads'
 
 export type IpcInfoMessage =
   | {
@@ -45,8 +44,7 @@ export type IpcRequestMessage =
 
 export type TransformIpc = Ipc<IpcInfoMessage, IpcRequestMessage>
 
-const contextDir =
-  !isMainThread && workerData.cwd ? workerData.cwd : process.cwd()
+const contextDir = process.cwd()
 export const toPath = (file: string) => {
   const relPath = relative(contextDir, file)
   if (isAbsolute(relPath)) {
