@@ -13,6 +13,7 @@
 
 pub mod attach;
 pub mod embed;
+mod fs_batch;
 pub mod glob;
 mod globset;
 pub mod invalidation;
@@ -21,7 +22,6 @@ pub mod json;
 mod mutex_map;
 mod path_map;
 mod read_glob;
-mod retry;
 pub mod rope;
 pub mod source_context;
 pub mod util;
@@ -68,13 +68,13 @@ use turbo_unix_path::{
 
 use crate::{
     attach::AttachedFileSystem,
+    fs_batch::retry_blocking,
     glob::Glob,
     invalidation::Write,
     invalidator_map::{InvalidatorMap, WriteContent},
     json::UnparsableJson,
     mutex_map::MutexMap,
     read_glob::{read_glob, track_glob},
-    retry::retry_blocking,
     rope::{Rope, RopeReader},
     util::extract_disk_access,
     watcher::DiskWatcher,
