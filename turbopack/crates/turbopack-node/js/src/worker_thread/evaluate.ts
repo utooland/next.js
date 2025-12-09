@@ -11,6 +11,8 @@ const binding: Binding = require(
   /* turbopackIgnore: true */ workerData.bindingPath
 )
 
+binding.workerCreated(workerId)
+
 export const run = async (
   moduleFactory: () => Promise<{
     init?: () => Promise<void>
@@ -60,8 +62,6 @@ export const run = async (
   while (true) {
     const { taskId, message: msg_str } =
       await binding.recvMessageInWorker(workerId)
-
-    binding.workerCreated(taskId, workerId)
 
     const msg = JSON.parse(msg_str) as
       | {

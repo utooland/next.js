@@ -38,7 +38,7 @@ export declare function registerWorkerScheduler(
   creator: (arg: NapiWorkerCreation) => any,
   terminator: (arg: NapiWorkerTermination) => any
 ): void
-export declare function workerCreated(taskId: number, workerId: number): void
+export declare function workerCreated(workerId: number): void
 export interface NapiWorkerCreation {
   options: NapiWorkerOptions
 }

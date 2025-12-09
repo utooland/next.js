@@ -1,8 +1,9 @@
+use std::collections::VecDeque;
+
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use rustc_hash::FxHashMap;
 use tokio::sync::oneshot;
 use turbo_rcstr::RcStr;
 
@@ -15,7 +16,7 @@ static WORKER_TERMINATOR: OnceCell<
     ThreadsafeFunction<NapiWorkerTermination, ErrorStrategy::Fatal>,
 > = OnceCell::new();
 
-static PENDING_CREATIONS: OnceCell<Mutex<FxHashMap<u32, oneshot::Sender<u32>>>> = OnceCell::new();
+static PENDING_CREATIONS: OnceCell<Mutex<VecDeque<oneshot::Sender<u32>>>> = OnceCell::new();
 
 #[napi]
 #[allow(unused)]
@@ -31,12 +32,12 @@ pub fn register_worker_scheduler(
         .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
 }
 
-pub async fn create_worker(options: WorkerOptions, task_id: u32) -> anyhow::Result<u32> {
+pub async fn create_worker(options: WorkerOptions, _task_id: u32) -> anyhow::Result<u32> {
     let (tx, rx) = oneshot::channel();
 
     {
-        let pending = PENDING_CREATIONS.get_or_init(|| Mutex::new(FxHashMap::default()));
-        pending.lock().insert(task_id, tx);
+        let pending = PENDING_CREATIONS.get_or_init(|| Mutex::new(VecDeque::new()));
+        pending.lock().push_back(tx);
     }
 
     if let Some(creator) = WORKER_CREATOR.get() {
@@ -56,9 +57,9 @@ pub async fn create_worker(options: WorkerOptions, task_id: u32) -> anyhow::Resu
 
 #[napi]
 #[allow(unused)]
-pub fn worker_created(task_id: u32, worker_id: u32) {
+pub fn worker_created(worker_id: u32) {
     if let Some(pending) = PENDING_CREATIONS.get()
-        && let Some(tx) = pending.lock().remove(&task_id)
+        && let Some(tx) = pending.lock().pop_front()
     {
         let _ = tx.send(worker_id);
     }
