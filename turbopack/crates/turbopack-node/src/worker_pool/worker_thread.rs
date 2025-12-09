@@ -6,21 +6,22 @@ use rustc_hash::FxHashMap;
 use tokio::sync::oneshot;
 use turbo_rcstr::RcStr;
 
-use crate::worker_pool::{PoolOptions, operation::WORKER_POOL_OPERATION};
+use crate::worker_pool::{WorkerOptions, operation::WORKER_POOL_OPERATION};
 
-static WORKER_CREATOR: OnceCell<ThreadsafeFunction<WorkerCreation, ErrorStrategy::Fatal>> =
+static WORKER_CREATOR: OnceCell<ThreadsafeFunction<NapiWorkerCreation, ErrorStrategy::Fatal>> =
     OnceCell::new();
 
-static WORKER_TERMINATOR: OnceCell<ThreadsafeFunction<WorkerTermination, ErrorStrategy::Fatal>> =
-    OnceCell::new();
+static WORKER_TERMINATOR: OnceCell<
+    ThreadsafeFunction<NapiWorkerTermination, ErrorStrategy::Fatal>,
+> = OnceCell::new();
 
 static PENDING_CREATIONS: OnceCell<Mutex<FxHashMap<u32, oneshot::Sender<u32>>>> = OnceCell::new();
 
 #[napi]
 #[allow(unused)]
 pub fn register_worker_scheduler(
-    creator: ThreadsafeFunction<WorkerCreation, ErrorStrategy::Fatal>,
-    terminator: ThreadsafeFunction<WorkerTermination, ErrorStrategy::Fatal>,
+    creator: ThreadsafeFunction<NapiWorkerCreation, ErrorStrategy::Fatal>,
+    terminator: ThreadsafeFunction<NapiWorkerTermination, ErrorStrategy::Fatal>,
 ) -> napi::Result<()> {
     WORKER_CREATOR
         .set(creator)
@@ -30,7 +31,7 @@ pub fn register_worker_scheduler(
         .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
 }
 
-pub async fn create_worker(options: WorkerCreation, task_id: u32) -> anyhow::Result<u32> {
+pub async fn create_worker(options: WorkerOptions, task_id: u32) -> anyhow::Result<u32> {
     let (tx, rx) = oneshot::channel();
 
     {
@@ -39,7 +40,12 @@ pub async fn create_worker(options: WorkerCreation, task_id: u32) -> anyhow::Res
     }
 
     if let Some(creator) = WORKER_CREATOR.get() {
-        creator.call(options, ThreadsafeFunctionCallMode::NonBlocking);
+        creator.call(
+            NapiWorkerCreation {
+                options: options.into(),
+            },
+            ThreadsafeFunctionCallMode::NonBlocking,
+        );
     } else {
         return Err(anyhow::anyhow!("Worker creator not registered"));
     }
@@ -58,11 +64,11 @@ pub fn worker_created(task_id: u32, worker_id: u32) {
     }
 }
 
-pub fn terminate_worker(pool_id: RcStr, worker_id: u32) {
+pub fn terminate_worker(options: WorkerOptions, worker_id: u32) {
     if let Some(terminator) = WORKER_TERMINATOR.get() {
         terminator.call(
-            WorkerTermination {
-                filename: pool_id,
+            NapiWorkerTermination {
+                options: options.into(),
                 worker_id,
             },
             ThreadsafeFunctionCallMode::NonBlocking,
@@ -73,22 +79,29 @@ pub fn terminate_worker(pool_id: RcStr, worker_id: u32) {
 #[napi(object)]
 #[allow(unused)]
 #[derive(Clone)]
-pub struct WorkerCreation {
+pub struct NapiWorkerCreation {
+    pub options: NapiWorkerOptions,
+}
+
+#[napi(object)]
+#[allow(unused)]
+#[derive(Clone)]
+pub struct NapiWorkerOptions {
     pub filename: RcStr,
     pub cwd: RcStr,
 }
 
-impl From<PoolOptions> for WorkerCreation {
-    fn from(pool_options: PoolOptions) -> Self {
-        let PoolOptions { filename, cwd } = pool_options;
-        WorkerCreation { filename, cwd }
+impl From<WorkerOptions> for NapiWorkerOptions {
+    fn from(pool_options: WorkerOptions) -> Self {
+        let WorkerOptions { filename, cwd } = pool_options;
+        NapiWorkerOptions { filename, cwd }
     }
 }
 
 #[napi(object)]
 #[allow(unused)]
-pub struct WorkerTermination {
-    pub filename: RcStr,
+pub struct NapiWorkerTermination {
+    pub options: NapiWorkerOptions,
     pub worker_id: u32,
 }
 

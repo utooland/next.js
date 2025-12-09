@@ -32,9 +32,9 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
 }
 
 impl<T: Send + Sync + 'static> MessageChannel<T> {
-    pub(crate) async fn send(&self, data: T) -> Result<()> {
+    pub(crate) async fn send(&self, message: T) -> Result<()> {
         self.sender
-            .send(data)
+            .send(message)
             .map_err(|_| anyhow::anyhow!("failed to send message"))
     }
 
@@ -62,7 +62,9 @@ impl Default for PoolState {
     }
 }
 
-pub(super) struct PoolOptions {
+#[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub(super) struct WorkerOptions {
     pub(super) filename: RcStr,
     pub(super) cwd: RcStr,
 }
@@ -73,14 +75,14 @@ pub(crate) struct WorkerPoolOperation {
     worker_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<(u32, String)>>>>,
     #[allow(clippy::type_complexity)]
     task_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<String>>>>,
-    pools: Mutex<FxHashMap<RcStr, Arc<PoolState>>>,
+    pools: Mutex<FxHashMap<WorkerOptions, Arc<PoolState>>>,
 }
 
 impl WorkerPoolOperation {
-    pub(crate) async fn get_pool_state(&self, pool_id: &RcStr) -> Arc<PoolState> {
+    pub(crate) async fn get_pool_state(&self, worker_options: &WorkerOptions) -> Arc<PoolState> {
         self.pools
             .lock()
-            .entry(pool_id.clone())
+            .entry(worker_options.clone())
             .or_default()
             .clone()
     }
@@ -90,14 +92,14 @@ impl WorkerPoolOperation {
 
         {
             let pools = self.pools.lock();
-            for (pool_id, state) in pools.iter() {
+            for (worker_options, state) in pools.iter() {
                 let mut idle = state.idle_workers.lock();
                 if idle.len() > 1 {
                     let workers = idle.split_off(1);
                     let mut stats = state.stats.lock();
                     for worker_id in workers {
                         stats.remove_worker();
-                        to_terminate.push((pool_id.clone(), worker_id));
+                        to_terminate.push((worker_options.clone(), worker_id));
                     }
                 }
             }
@@ -105,8 +107,9 @@ impl WorkerPoolOperation {
 
         to_terminate
             .into_iter()
-            .map(|(pool_id, worker_id)| self.terminate_worker(pool_id, worker_id))
+            .map(|(worker_options, worker_id)| self.terminate_worker(worker_options, worker_id))
             .collect::<Result<Vec<_>>>()?;
+
         Ok(())
     }
 
@@ -115,21 +118,22 @@ impl WorkerPoolOperation {
 
         {
             let pools = self.pools.lock();
-            for (pool_id, state) in pools.iter() {
+            for (worker_options, state) in pools.iter() {
                 let mut idle = state.idle_workers.lock();
                 let workers = std::mem::take(&mut *idle);
                 let mut stats = state.stats.lock();
                 for worker_id in workers {
                     stats.remove_worker();
-                    to_terminate.push((pool_id.clone(), worker_id));
+                    to_terminate.push((worker_options.clone(), worker_id));
                 }
             }
         }
 
         to_terminate
             .into_iter()
-            .map(|(pool_id, worker_id)| self.terminate_worker(pool_id, worker_id))
+            .map(|(worker_options, worker_id)| self.terminate_worker(worker_options, worker_id))
             .collect::<Result<Vec<_>>>()?;
+
         Ok(())
     }
 
@@ -137,7 +141,7 @@ impl WorkerPoolOperation {
         &self,
         worker_id: u32,
         task_id: u32,
-        data: String,
+        message: String,
     ) -> Result<()> {
         let channel = {
             let mut map = self.worker_routed_channel.lock();
@@ -146,15 +150,20 @@ impl WorkerPoolOperation {
                 .clone()
         };
         channel
-            .send((task_id, data))
+            .send((task_id, message))
             .await
             .context("failed to send message to worker")?;
+
         Ok(())
     }
 
-    pub(crate) fn terminate_worker(&self, pool_id: RcStr, worker_id: u32) -> Result<()> {
+    pub(crate) fn terminate_worker(
+        &self,
+        worker_options: WorkerOptions,
+        worker_id: u32,
+    ) -> Result<()> {
         self.worker_routed_channel.lock().remove(&worker_id);
-        worker_thread::terminate_worker(pool_id, worker_id);
+        worker_thread::terminate_worker(worker_options, worker_id);
         Ok(())
     }
 
@@ -165,11 +174,11 @@ impl WorkerPoolOperation {
                 .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
                 .clone()
         };
-        let data = channel
+        let message = channel
             .recv()
             .await
             .context("failed to recv task message")?;
-        Ok(data)
+        Ok(message)
     }
 
     pub(crate) fn remove_task_channel(&self, task_id: u32) {
@@ -189,7 +198,7 @@ impl WorkerPoolOperation {
             .with_context(|| format!("failed to recv message in worker {worker_id}"))
     }
 
-    pub(crate) async fn send_task_message(&self, task_id: u32, data: String) -> Result<()> {
+    pub(crate) async fn send_task_message(&self, task_id: u32, message: String) -> Result<()> {
         let channel = {
             let mut map = self.task_routed_channel.lock();
             map.entry(task_id)
@@ -197,7 +206,7 @@ impl WorkerPoolOperation {
                 .clone()
         };
         channel
-            .send(data)
+            .send(message)
             .await
             .with_context(|| format!("failed to send  response for task {task_id}"))
     }
@@ -209,15 +218,15 @@ pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
 pub(crate) async fn send_message_to_worker(
     worker_id: u32,
     task_id: u32,
-    data: String,
+    message: String,
 ) -> Result<()> {
     WORKER_POOL_OPERATION
-        .send_message_to_worker(worker_id, task_id, data)
+        .send_message_to_worker(worker_id, task_id, message)
         .await
 }
 
-pub(crate) fn terminate_worker(pool_id: RcStr, worker_id: u32) -> Result<()> {
-    WORKER_POOL_OPERATION.terminate_worker(pool_id, worker_id)
+pub(crate) fn terminate_worker(worker_options: WorkerOptions, worker_id: u32) -> Result<()> {
+    WORKER_POOL_OPERATION.terminate_worker(worker_options, worker_id)
 }
 
 pub(crate) async fn recv_task_message(task_id: u32) -> Result<String> {
@@ -228,12 +237,12 @@ pub(crate) fn remove_task_channel(task_id: u32) {
     WORKER_POOL_OPERATION.remove_task_channel(task_id)
 }
 
-pub(crate) async fn get_pool_state(pool_id: &RcStr) -> Arc<PoolState> {
-    WORKER_POOL_OPERATION.get_pool_state(pool_id).await
+pub(crate) async fn get_pool_state(worker_options: &WorkerOptions) -> Arc<PoolState> {
+    WORKER_POOL_OPERATION.get_pool_state(worker_options).await
 }
 
 pub(crate) struct WorkerOperation {
-    pub(crate) pool_id: RcStr,
+    pub(crate) worker_options: WorkerOptions,
     pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
     pub(crate) state: Arc<PoolState>,
@@ -255,8 +264,8 @@ impl Operation for WorkerOperation {
         recv_task_message(self.task_id).await
     }
 
-    async fn send(&mut self, data: String) -> Result<()> {
-        send_message_to_worker(self.worker_id, self.task_id, data).await
+    async fn send(&mut self, message: String) -> Result<()> {
+        send_message_to_worker(self.worker_id, self.task_id, message).await
     }
 
     async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
@@ -264,7 +273,7 @@ impl Operation for WorkerOperation {
             self.state.stats.lock().remove_worker();
             self.on_drop = None;
         }
-        terminate_worker(self.pool_id.clone(), self.worker_id)?;
+        terminate_worker(self.worker_options.clone(), self.worker_id)?;
         Ok(ExitStatus::default())
     }
 

@@ -18,9 +18,9 @@ use crate::{
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
     worker_pool::{
         operation::{
-            PoolOptions, PoolState, WORKER_POOL_OPERATION, WorkerOperation, get_pool_state,
+            PoolState, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions, get_pool_state,
         },
-        worker_thread::{WorkerCreation, create_worker},
+        worker_thread::create_worker,
     },
 };
 
@@ -31,9 +31,7 @@ static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub(crate) struct WorkerThreadPool {
-    cwd: RcStr,
-    entrypoint: RcStr,
-    env: Arc<FxHashMap<RcStr, RcStr>>,
+    worker_options: WorkerOptions,
     concurrency: usize,
     pub(crate) assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     pub(crate) assets_root: FileSystemPath,
@@ -46,7 +44,8 @@ impl WorkerThreadPool {
     pub(crate) async fn create(
         cwd: PathBuf,
         entrypoint: PathBuf,
-        env: FxHashMap<RcStr, RcStr>,
+        // The worker thread will inherit env from parent process, so it's not needed
+        _env: FxHashMap<RcStr, RcStr>,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
         assets_root: FileSystemPath,
         project_dir: FileSystemPath,
@@ -54,15 +53,12 @@ impl WorkerThreadPool {
         debug: bool,
     ) -> EvaluatePool {
         let cwd: RcStr = cwd.to_string_lossy().into();
-        let entrypoint: RcStr = entrypoint.to_string_lossy().into();
-        let pool_id: RcStr = format!("${cwd}:${entrypoint}").into();
-        let state = get_pool_state(&pool_id).await;
+        let filename: RcStr = entrypoint.to_string_lossy().into();
+        let worker_options = WorkerOptions { cwd, filename };
+        let state = get_pool_state(&worker_options).await;
         EvaluatePool::new(
-            pool_id,
             Box::new(Self {
-                cwd,
-                entrypoint,
-                env: Arc::new(env),
+                worker_options,
                 concurrency: (if debug { 1 } else { concurrency }),
                 assets_for_source_mapping,
                 assets_root: assets_root.clone(),
@@ -94,14 +90,7 @@ impl WorkerThreadPool {
         };
 
         if can_create {
-            let worker_id = create_worker(
-                WorkerCreation {
-                    filename: self.entrypoint.clone(),
-                    cwd: self.cwd.clone(),
-                },
-                task_id,
-            )
-            .await?;
+            let worker_id = create_worker(self.worker_options.clone(), task_id).await?;
 
             {
                 let mut stats = self.state.stats.lock();
@@ -140,12 +129,12 @@ impl EvaluateOperation for WorkerThreadPool {
     async fn operation(&self) -> Result<Box<dyn Operation>> {
         let operation = {
             let _guard = duration_span!("Node.js operation");
-            let pool_id: RcStr = self.entrypoint.clone();
+            let worker_options = self.worker_options.clone();
 
             let task_id = OPERATION_TASK_ID.fetch_add(1, Ordering::Release);
 
             if task_id == 0 {
-                panic!("operation task id overflow")
+                panic!("Node.js operation task id overflow")
             }
 
             let worker_id = self.acquire_worker(task_id).await?;
@@ -153,7 +142,7 @@ impl EvaluateOperation for WorkerThreadPool {
             let state = self.state.clone();
 
             WorkerOperation {
-                pool_id,
+                worker_options,
                 task_id,
                 worker_id,
                 state: state.clone(),

@@ -1,21 +1,25 @@
 import { Worker } from 'worker_threads'
-import type { WorkerCreation, WorkerTermination } from './generated-native'
 
 const loaderWorkers: Record<string, Map<number, Worker>> = {}
+
+function getPoolId(cwd: string, filename: string) {
+  return `${cwd}:${filename}`
+}
 
 export async function runLoaderWorkerPool(
   binding: typeof import('./generated-native'),
   bindingPath: string
 ) {
   binding.registerWorkerScheduler(
-    (creation: WorkerCreation) => {
-      const { filename, cwd } = creation
+    (creation) => {
+      const {
+        options: { filename, cwd },
+      } = creation
 
-      let poolId = `${cwd}:${filename}`
+      let poolId = getPoolId(cwd, filename)
 
       const worker = new Worker(filename, {
         workerData: {
-          poolId,
           bindingPath,
           cwd,
         },
@@ -26,10 +30,19 @@ export async function runLoaderWorkerPool(
 
       workers.set(worker.threadId, worker)
     },
-    (termination: WorkerTermination) => {
-      const { filename, workerId } = termination
-      const workers = loaderWorkers[filename]
+    (termination) => {
+      const {
+        options: { filename, cwd },
+        workerId,
+      } = termination
+
+      let poolId = getPoolId(cwd, filename)
+
+      const workers = loaderWorkers[poolId]
+
       workers.get(workerId)?.terminate()
+
+      workers.delete(workerId)
     }
   )
 }

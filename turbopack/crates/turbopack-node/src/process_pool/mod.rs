@@ -553,7 +553,6 @@ impl ChildProcessPool {
         debug: bool,
     ) -> EvaluatePool {
         EvaluatePool::new(
-            entrypoint.to_string_lossy().to_string().into(),
             Box::new(Self {
                 cwd,
                 entrypoint,

@@ -35,16 +35,19 @@ export declare class ExternalObject<T> {
   }
 }
 export declare function registerWorkerScheduler(
-  creator: (arg: WorkerCreation) => any,
-  terminator: (arg: WorkerTermination) => any
+  creator: (arg: NapiWorkerCreation) => any,
+  terminator: (arg: NapiWorkerTermination) => any
 ): void
 export declare function workerCreated(taskId: number, workerId: number): void
-export interface WorkerCreation {
+export interface NapiWorkerCreation {
+  options: NapiWorkerOptions
+}
+export interface NapiWorkerOptions {
   filename: RcStr
   cwd: RcStr
 }
-export interface WorkerTermination {
-  filename: RcStr
+export interface NapiWorkerTermination {
+  options: NapiWorkerOptions
   workerId: number
 }
 export interface WorkerMessage {

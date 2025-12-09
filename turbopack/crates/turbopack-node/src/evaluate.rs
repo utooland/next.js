@@ -69,7 +69,6 @@ enum EvalJavaScriptIncomingMessage {
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub struct EvaluatePool {
-    pub id: RcStr,
     #[turbo_tasks(trace_ignore, debug_ignore)]
     pool: Box<dyn EvaluateOperation>,
     pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
@@ -85,14 +84,12 @@ impl EvaluatePool {
 
 impl EvaluatePool {
     pub(crate) fn new(
-        id: RcStr,
         pool: Box<dyn EvaluateOperation>,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
         assets_root: FileSystemPath,
         project_dir: FileSystemPath,
     ) -> Self {
         Self {
-            id,
             pool,
             assets_for_source_mapping,
             assets_root,
@@ -545,7 +542,7 @@ pub async fn evaluate(
     .await
 }
 
-/// Repeatedly pulls from the ChilProcessOperation until we receive a
+/// Repeatedly pulls from the Operation until we receive a
 /// value/error/end.
 async fn pull_operation<T: EvaluateContext>(
     operation: &mut Box<dyn Operation>,
