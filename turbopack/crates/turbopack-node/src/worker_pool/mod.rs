@@ -20,7 +20,7 @@ use crate::{
         operation::{
             PoolOptions, PoolState, WORKER_POOL_OPERATION, WorkerOperation, get_pool_state,
         },
-        worker_thread::{NapiPoolOptions, create_worker},
+        worker_thread::{WorkerCreation, create_worker},
     },
 };
 
@@ -53,13 +53,15 @@ impl WorkerThreadPool {
         concurrency: usize,
         debug: bool,
     ) -> EvaluatePool {
-        let pool_id: RcStr = entrypoint.to_string_lossy().to_string().into();
+        let cwd: RcStr = cwd.to_string_lossy().into();
+        let entrypoint: RcStr = entrypoint.to_string_lossy().into();
+        let pool_id: RcStr = format!("${cwd}:${entrypoint}").into();
         let state = get_pool_state(&pool_id).await;
         EvaluatePool::new(
             pool_id,
             Box::new(Self {
-                cwd: cwd.to_string_lossy().into(),
-                entrypoint: entrypoint.to_string_lossy().into(),
+                cwd,
+                entrypoint,
                 env: Arc::new(env),
                 concurrency: (if debug { 1 } else { concurrency }),
                 assets_for_source_mapping,
@@ -92,10 +94,9 @@ impl WorkerThreadPool {
         };
 
         if can_create {
-            let pool_id: RcStr = self.entrypoint.clone();
             let worker_id = create_worker(
-                NapiPoolOptions {
-                    filename: pool_id,
+                WorkerCreation {
+                    filename: self.entrypoint.clone(),
                     cwd: self.cwd.clone(),
                 },
                 task_id,

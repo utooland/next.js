@@ -34,20 +34,14 @@ export declare class ExternalObject<T> {
     [K: symbol]: T
   }
 }
-export declare function registerWorkerCreator(
-  callback: (arg: WorkerCreationParams) => any
-): void
-export declare function registerWorkerTerminator(
-  callback: (arg: WorkerTermination) => any
+export declare function registerWorkerScheduler(
+  creator: (arg: WorkerCreation) => any,
+  terminator: (arg: WorkerTermination) => any
 ): void
 export declare function workerCreated(taskId: number, workerId: number): void
-export interface NapiPoolOptions {
+export interface WorkerCreation {
   filename: RcStr
   cwd: RcStr
-}
-export interface WorkerCreationParams {
-  options: NapiPoolOptions
-  taskId: number
 }
 export interface WorkerTermination {
   filename: RcStr

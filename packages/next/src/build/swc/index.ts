@@ -677,10 +677,7 @@ function bindingToApi(
     constructor(nativeProject: { __napiType: 'Project' }) {
       this._nativeProject = nativeProject
 
-      if (
-        typeof binding.registerWorkerCreator === 'function' &&
-        typeof binding.registerWorkerTerminator === 'function'
-      ) {
+      if (typeof binding.registerWorkerScheduler === 'function') {
         runLoaderWorkerPool(binding, bindingPath)
       }
     }

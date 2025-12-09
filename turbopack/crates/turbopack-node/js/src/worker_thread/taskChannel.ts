@@ -6,6 +6,7 @@ export interface Binding {
     message: string
   }>
   sendTaskMessage(taskId: number, message: string): Promise<void>
+  workerCreated(taskId: number, workerId: number): void
 }
 
 // Export this, maybe in the future, we can add an implementation via web worker on browser

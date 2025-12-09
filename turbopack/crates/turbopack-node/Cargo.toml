@@ -10,7 +10,7 @@ autobenches = false
 bench = false
 
 [features]
-default = ["process_pool"]
+default = ["worker_pool"]
 # enable "HMR" for embedded assets
 dynamic_embed_contents = ["turbo-tasks-fs/dynamic_embed_contents"]
 process_pool = ["tokio/full"]

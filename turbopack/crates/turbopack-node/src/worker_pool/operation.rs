@@ -62,26 +62,18 @@ impl Default for PoolState {
     }
 }
 
-#[derive(Default)]
 pub(super) struct PoolOptions {
     pub(super) filename: RcStr,
     pub(super) cwd: RcStr,
 }
 
+#[derive(Default)]
 pub(crate) struct WorkerPoolOperation {
-    worker_routed_channel: Mutex<FxHashMap<u32, MessageChannel<(u32, String)>>>,
-    task_routed_channel: Mutex<FxHashMap<u32, MessageChannel<String>>>,
+    #[allow(clippy::type_complexity)]
+    worker_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<(u32, String)>>>>,
+    #[allow(clippy::type_complexity)]
+    task_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<String>>>>,
     pools: Mutex<FxHashMap<RcStr, Arc<PoolState>>>,
-}
-
-impl Default for WorkerPoolOperation {
-    fn default() -> Self {
-        Self {
-            worker_routed_channel: Mutex::new(FxHashMap::default()),
-            task_routed_channel: Mutex::new(FxHashMap::default()),
-            pools: Mutex::new(FxHashMap::default()),
-        }
-    }
 }
 
 impl WorkerPoolOperation {
@@ -150,7 +142,7 @@ impl WorkerPoolOperation {
         let channel = {
             let mut map = self.worker_routed_channel.lock();
             map.entry(worker_id)
-                .or_insert_with(MessageChannel::unbounded)
+                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
                 .clone()
         };
         channel
@@ -170,7 +162,7 @@ impl WorkerPoolOperation {
         let channel = {
             let mut map = self.task_routed_channel.lock();
             map.entry(task_id)
-                .or_insert_with(MessageChannel::unbounded)
+                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
                 .clone()
         };
         let data = channel
@@ -188,7 +180,7 @@ impl WorkerPoolOperation {
         let channel = {
             let mut map = self.worker_routed_channel.lock();
             map.entry(worker_id)
-                .or_insert_with(MessageChannel::unbounded)
+                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
                 .clone()
         };
         channel
@@ -201,7 +193,7 @@ impl WorkerPoolOperation {
         let channel = {
             let mut map = self.task_routed_channel.lock();
             map.entry(task_id)
-                .or_insert_with(MessageChannel::unbounded)
+                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
                 .clone()
         };
         channel
