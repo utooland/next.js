@@ -86,7 +86,7 @@ impl WorkerThreadPool {
         )
     }
 
-    async fn acquire_worker(&self, task_id: u32) -> Result<(u32, AcquiredPermits)> {
+    async fn acquire_worker(&self) -> Result<(u32, AcquiredPermits)> {
         let concurrency_permit = self.concurrency_semaphore.clone().acquire_owned().await?;
 
         {
@@ -160,7 +160,7 @@ impl EvaluateOperation for WorkerThreadPool {
                 panic!("Node.js operation task id overflow")
             }
 
-            let (worker_id, permits) = self.acquire_worker(task_id).await?;
+            let (worker_id, permits) = self.acquire_worker().await?;
 
             let state = self.state.clone();
 
