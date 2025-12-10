@@ -54,7 +54,7 @@ export interface WorkerMessage {
   taskId: number
   message: string
 }
-export declare function recvMessageInWorker(
+export declare function recvTaskMessageInWorker(
   workerId: number
 ): Promise<WorkerMessage>
 export declare function sendTaskMessage(

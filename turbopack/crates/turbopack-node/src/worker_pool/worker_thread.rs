@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
 use napi_derive::napi;
@@ -32,7 +32,7 @@ pub fn register_worker_scheduler(
         .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
 }
 
-pub async fn create_worker(options: WorkerOptions, _task_id: u32) -> anyhow::Result<u32> {
+pub async fn create_worker(options: Arc<WorkerOptions>, _task_id: u32) -> anyhow::Result<u32> {
     let (tx, rx) = oneshot::channel();
 
     {
@@ -65,7 +65,7 @@ pub fn worker_created(worker_id: u32) {
     }
 }
 
-pub fn terminate_worker(options: WorkerOptions, worker_id: u32) {
+pub fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
     if let Some(terminator) = WORKER_TERMINATOR.get() {
         terminator.call(
             NapiWorkerTermination {
@@ -92,10 +92,16 @@ pub struct NapiWorkerOptions {
     pub cwd: RcStr,
 }
 
-impl From<WorkerOptions> for NapiWorkerOptions {
-    fn from(pool_options: WorkerOptions) -> Self {
-        let WorkerOptions { filename, cwd } = pool_options;
-        NapiWorkerOptions { filename, cwd }
+impl<T> From<T> for NapiWorkerOptions
+where
+    T: AsRef<WorkerOptions>,
+{
+    fn from(pool_options: T) -> Self {
+        let WorkerOptions { filename, cwd } = pool_options.as_ref();
+        NapiWorkerOptions {
+            filename: filename.clone(),
+            cwd: cwd.clone(),
+        }
     }
 }
 
@@ -116,9 +122,9 @@ pub struct WorkerMessage {
 #[napi]
 #[allow(unused)]
 // TODO: use zero-copy externaled type array
-pub async fn recv_message_in_worker(worker_id: u32) -> napi::Result<WorkerMessage> {
+pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<WorkerMessage> {
     let (task_id, message) = WORKER_POOL_OPERATION
-        .recv_message_in_worker(worker_id)
+        .recv_task_message_in_worker(worker_id)
         .await?;
     Ok(WorkerMessage { task_id, message })
 }

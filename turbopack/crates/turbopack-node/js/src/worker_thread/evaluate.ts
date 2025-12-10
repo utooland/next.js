@@ -61,7 +61,7 @@ export const run = async (
 
   while (true) {
     const { taskId, message: msg_str } =
-      await binding.recvMessageInWorker(workerId)
+      await binding.recvTaskMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
       | {

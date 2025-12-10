@@ -31,7 +31,7 @@ static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub(crate) struct WorkerThreadPool {
-    worker_options: WorkerOptions,
+    worker_options: Arc<WorkerOptions>,
     concurrency: usize,
     pub(crate) assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
     pub(crate) assets_root: FileSystemPath,
@@ -54,8 +54,8 @@ impl WorkerThreadPool {
     ) -> EvaluatePool {
         let cwd: RcStr = cwd.to_string_lossy().into();
         let filename: RcStr = entrypoint.to_string_lossy().into();
-        let worker_options = WorkerOptions { cwd, filename };
-        let state = get_pool_state(&worker_options).await;
+        let worker_options = Arc::new(WorkerOptions { cwd, filename });
+        let state = get_pool_state(worker_options.clone()).await;
         EvaluatePool::new(
             Box::new(Self {
                 worker_options,

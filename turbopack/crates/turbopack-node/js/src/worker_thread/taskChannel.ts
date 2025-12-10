@@ -1,7 +1,7 @@
 import { structuredError } from '../error'
 
 export interface Binding {
-  recvMessageInWorker(workerId: number): Promise<{
+  recvTaskMessageInWorker(workerId: number): Promise<{
     taskId: number
     message: string
   }>

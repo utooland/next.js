@@ -75,16 +75,15 @@ pub(crate) struct WorkerPoolOperation {
     worker_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<(u32, String)>>>>,
     #[allow(clippy::type_complexity)]
     task_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<String>>>>,
-    pools: Mutex<FxHashMap<WorkerOptions, Arc<PoolState>>>,
+    pools: Mutex<FxHashMap<Arc<WorkerOptions>, Arc<PoolState>>>,
 }
 
 impl WorkerPoolOperation {
-    pub(crate) async fn get_pool_state(&self, worker_options: &WorkerOptions) -> Arc<PoolState> {
-        self.pools
-            .lock()
-            .entry(worker_options.clone())
-            .or_default()
-            .clone()
+    pub(crate) async fn get_pool_state(
+        &self,
+        worker_options: Arc<WorkerOptions>,
+    ) -> Arc<PoolState> {
+        self.pools.lock().entry(worker_options).or_default().clone()
     }
 
     pub(crate) fn scale_down(&self) -> Result<()> {
@@ -159,7 +158,7 @@ impl WorkerPoolOperation {
 
     pub(crate) fn terminate_worker(
         &self,
-        worker_options: WorkerOptions,
+        worker_options: Arc<WorkerOptions>,
         worker_id: u32,
     ) -> Result<()> {
         self.worker_routed_channel.lock().remove(&worker_id);
@@ -185,7 +184,10 @@ impl WorkerPoolOperation {
         self.task_routed_channel.lock().remove(&task_id);
     }
 
-    pub(crate) async fn recv_message_in_worker(&self, worker_id: u32) -> Result<(u32, String)> {
+    pub(crate) async fn recv_task_message_in_worker(
+        &self,
+        worker_id: u32,
+    ) -> Result<(u32, String)> {
         let channel = {
             let mut map = self.worker_routed_channel.lock();
             map.entry(worker_id)
@@ -225,7 +227,7 @@ pub(crate) async fn send_message_to_worker(
         .await
 }
 
-pub(crate) fn terminate_worker(worker_options: WorkerOptions, worker_id: u32) -> Result<()> {
+pub(crate) fn terminate_worker(worker_options: Arc<WorkerOptions>, worker_id: u32) -> Result<()> {
     WORKER_POOL_OPERATION.terminate_worker(worker_options, worker_id)
 }
 
@@ -237,12 +239,12 @@ pub(crate) fn remove_task_channel(task_id: u32) {
     WORKER_POOL_OPERATION.remove_task_channel(task_id)
 }
 
-pub(crate) async fn get_pool_state(worker_options: &WorkerOptions) -> Arc<PoolState> {
+pub(crate) async fn get_pool_state(worker_options: Arc<WorkerOptions>) -> Arc<PoolState> {
     WORKER_POOL_OPERATION.get_pool_state(worker_options).await
 }
 
 pub(crate) struct WorkerOperation {
-    pub(crate) worker_options: WorkerOptions,
+    pub(crate) worker_options: Arc<WorkerOptions>,
     pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
     pub(crate) state: Arc<PoolState>,
