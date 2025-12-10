@@ -6,9 +6,13 @@ use std::{
     },
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
-use tokio::sync::oneshot;
+use tokio::{
+    select,
+    sync::{Semaphore, oneshot},
+    time::sleep,
+};
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ResolvedVc, duration_span};
 use turbo_tasks_fs::FileSystemPath;
@@ -16,6 +20,7 @@ use turbo_tasks_fs::FileSystemPath;
 use crate::{
     AssetsForSourceMapping,
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
+    pool_stats::AcquiredPermits,
     worker_pool::{
         operation::{
             PoolState, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions, get_pool_state,
@@ -38,6 +43,10 @@ pub(crate) struct WorkerThreadPool {
     pub(crate) project_dir: FileSystemPath,
     #[turbo_tasks(trace_ignore, debug_ignore)]
     state: Arc<PoolState>,
+    #[turbo_tasks(trace_ignore, debug_ignore)]
+    concurrency_semaphore: Arc<Semaphore>,
+    #[turbo_tasks(trace_ignore, debug_ignore)]
+    bootup_semaphore: Arc<Semaphore>,
 }
 
 impl WorkerThreadPool {
@@ -64,6 +73,12 @@ impl WorkerThreadPool {
                 assets_root: assets_root.clone(),
                 project_dir: project_dir.clone(),
                 state,
+                concurrency_semaphore: Arc::new(Semaphore::new(if debug {
+                    1
+                } else {
+                    concurrency
+                })),
+                bootup_semaphore: Arc::new(Semaphore::new(1)),
             }),
             assets_for_source_mapping,
             assets_root,
@@ -71,33 +86,14 @@ impl WorkerThreadPool {
         )
     }
 
-    async fn acquire_worker(&self, task_id: u32) -> Result<u32> {
+    async fn acquire_worker(&self, task_id: u32) -> Result<(u32, AcquiredPermits)> {
+        let concurrency_permit = self.concurrency_semaphore.clone().acquire_owned().await?;
+
         {
             let mut idle = self.state.idle_workers.lock();
             if let Some(worker_id) = idle.pop() {
-                return Ok(worker_id);
+                return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
             }
-        }
-
-        let can_create = {
-            let mut stats = self.state.stats.lock();
-            if (stats.workers as usize) < self.concurrency {
-                stats.add_booting_worker();
-                true
-            } else {
-                false
-            }
-        };
-
-        if can_create {
-            let worker_id = create_worker(self.worker_options.clone(), task_id).await?;
-
-            {
-                let mut stats = self.state.stats.lock();
-                stats.finished_booting_worker();
-            }
-
-            return Ok(worker_id);
         }
 
         let (tx, rx) = oneshot::channel();
@@ -105,12 +101,39 @@ impl WorkerThreadPool {
             let mut waiters = self.state.waiters.lock();
             let mut idle = self.state.idle_workers.lock();
             if let Some(worker_id) = idle.pop() {
-                return Ok(worker_id);
+                return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
             }
             waiters.push(tx);
         }
 
-        Ok(rx.await?)
+        let bootup = async {
+            let permit = self.bootup_semaphore.clone().acquire_owned().await;
+            let wait_time = self.state.stats.lock().wait_time_before_bootup();
+            sleep(wait_time).await;
+            permit
+        };
+
+        select! {
+            worker_id = rx => {
+                let worker_id = worker_id?;
+                Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }))
+            }
+            bootup_permit = bootup => {
+                let bootup_permit = bootup_permit.context("acquiring bootup permit")?;
+                {
+                    self.state.stats.lock().add_booting_worker();
+                }
+                let worker_id = create_worker(self.worker_options.clone(), task_id).await?;
+
+                {
+                    let mut stats = self.state.stats.lock();
+                    stats.finished_booting_worker();
+                }
+
+                self.bootup_semaphore.add_permits(1);
+                Ok((worker_id, AcquiredPermits::Fresh { concurrency_permit, bootup_permit }))
+            }
+        }
     }
 }
 
@@ -137,7 +160,7 @@ impl EvaluateOperation for WorkerThreadPool {
                 panic!("Node.js operation task id overflow")
             }
 
-            let worker_id = self.acquire_worker(task_id).await?;
+            let (worker_id, permits) = self.acquire_worker(task_id).await?;
 
             let state = self.state.clone();
 
@@ -148,12 +171,18 @@ impl EvaluateOperation for WorkerThreadPool {
                 state: state.clone(),
                 on_drop: Some(Box::new(move |worker_id| {
                     let mut waiters = state.waiters.lock();
-                    if let Some(tx) = waiters.pop() {
-                        let _ = tx.send(worker_id);
-                    } else {
-                        state.idle_workers.lock().push(worker_id);
+                    loop {
+                        if let Some(tx) = waiters.pop() {
+                            if tx.send(worker_id).is_ok() {
+                                break;
+                            }
+                        } else {
+                            state.idle_workers.lock().push(worker_id);
+                            break;
+                        }
                     }
                 })),
+                permits,
             }
         };
 

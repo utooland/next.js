@@ -21,7 +21,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
     process::{Child, ChildStderr, ChildStdout, Command},
     select,
-    sync::{OwnedSemaphorePermit, Semaphore},
+    sync::Semaphore,
     time::{sleep, timeout},
 };
 use turbo_rcstr::RcStr;
@@ -33,7 +33,7 @@ use crate::{
     AssetsForSourceMapping,
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
     format::FormattingMode,
-    pool_stats::NodeJsPoolStats,
+    pool_stats::{AcquiredPermits, NodeJsPoolStats},
     source_map::apply_source_mapping,
 };
 
@@ -480,22 +480,6 @@ impl NodeJsPoolProcess {
             .context("flushing packet data")?;
         Ok(())
     }
-}
-
-enum AcquiredPermits {
-    Idle {
-        // This is used for drop
-        #[allow(dead_code)]
-        concurrency_permit: OwnedSemaphorePermit,
-    },
-    Fresh {
-        // This is used for drop
-        #[allow(dead_code)]
-        concurrency_permit: OwnedSemaphorePermit,
-        // This is used for drop
-        #[allow(dead_code)]
-        bootup_permit: OwnedSemaphorePermit,
-    },
 }
 
 type IdleProcessQueues = Mutex<Vec<Arc<HeapQueue<NodeJsPoolProcess>>>>;

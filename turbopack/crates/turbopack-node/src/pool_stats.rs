@@ -1,5 +1,23 @@
 use std::{cmp::max, fmt::Debug, time::Duration};
 
+use tokio::sync::OwnedSemaphorePermit;
+
+pub enum AcquiredPermits {
+    Idle {
+        // This is used for drop
+        #[allow(dead_code)]
+        concurrency_permit: OwnedSemaphorePermit,
+    },
+    Fresh {
+        // This is used for drop
+        #[allow(dead_code)]
+        concurrency_permit: OwnedSemaphorePermit,
+        // This is used for drop
+        #[allow(dead_code)]
+        bootup_permit: OwnedSemaphorePermit,
+    },
+}
+
 #[derive(Default)]
 pub struct NodeJsPoolStats {
     pub total_bootup_time: Duration,

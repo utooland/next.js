@@ -13,7 +13,11 @@ use tokio::sync::{
 };
 use turbo_rcstr::RcStr;
 
-use crate::{evaluate::Operation, pool_stats::NodeJsPoolStats, worker_pool::worker_thread};
+use crate::{
+    evaluate::Operation,
+    pool_stats::{AcquiredPermits, NodeJsPoolStats},
+    worker_pool::worker_thread,
+};
 
 #[derive(Clone)]
 pub(crate) struct MessageChannel<T: Send + Sync + 'static> {
@@ -249,6 +253,8 @@ pub(crate) struct WorkerOperation {
     pub(crate) worker_id: u32,
     pub(crate) state: Arc<PoolState>,
     pub(crate) on_drop: Option<Box<dyn FnOnce(u32) + Send + Sync>>,
+    #[allow(dead_code)]
+    pub(crate) permits: AcquiredPermits,
 }
 
 impl Drop for WorkerOperation {
