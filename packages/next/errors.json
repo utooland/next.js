@@ -907,5 +907,8 @@
   "906": "Bindings not loaded yet, but they are being loaded, did you forget to await?",
   "907": "bindings not loaded yet.  Either call `loadBindings` to wait for them to be available or ensure that `installBindings` has already been called.",
   "908": "Invalid flags should be run as node detached-flush dev ./path-to/project [eventsFile]",
-  "909": "Failed to load SWC binary for %s/%s, see more info here: https://nextjs.org/docs/messages/failed-loading-swc"
+  "909": "Failed to load SWC binary for %s/%s, see more info here: https://nextjs.org/docs/messages/failed-loading-swc",
+  "910": "Server Actions are not enabled for this application. This request might be from an older or newer deployment.\nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action",
+  "911": "Failed to find Server Action. This request might be from an older or newer deployment.\\nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action",
+  "912": "Failed to find Server Action%s. This request might be from an older or newer deployment.\\nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action"
 }
