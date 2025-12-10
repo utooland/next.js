@@ -50,20 +50,11 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
     }
 }
 
+#[derive(Default)]
 pub(crate) struct PoolState {
     pub(crate) idle_workers: Mutex<Vec<u32>>,
     pub(crate) stats: Arc<Mutex<NodeJsPoolStats>>,
     pub(crate) waiters: Mutex<Vec<oneshot::Sender<u32>>>,
-}
-
-impl Default for PoolState {
-    fn default() -> Self {
-        Self {
-            idle_workers: Mutex::new(Vec::new()),
-            stats: Arc::new(Mutex::new(NodeJsPoolStats::default())),
-            waiters: Mutex::new(Vec::new()),
-        }
-    }
 }
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
@@ -71,6 +62,11 @@ impl Default for PoolState {
 pub(super) struct WorkerOptions {
     pub(super) filename: RcStr,
     pub(super) cwd: RcStr,
+}
+
+pub(super) struct TaskMessage {
+    pub task_id: u32,
+    pub data: String,
 }
 
 #[derive(Default)]
@@ -165,9 +161,13 @@ impl WorkerPoolOperation {
         worker_options: Arc<WorkerOptions>,
         worker_id: u32,
     ) -> Result<()> {
-        self.worker_routed_channel.lock().remove(&worker_id);
+        self.remove_worker_channel(worker_id);
         worker_thread::terminate_worker(worker_options, worker_id);
         Ok(())
+    }
+
+    fn remove_worker_channel(&self, worker_id: u32) {
+        self.worker_routed_channel.lock().remove(&worker_id);
     }
 
     pub async fn recv_task_message(&self, task_id: u32) -> Result<String> {
@@ -204,17 +204,17 @@ impl WorkerPoolOperation {
             .with_context(|| format!("failed to recv message in worker {worker_id}"))
     }
 
-    pub(crate) async fn send_task_message(&self, task_id: u32, message: String) -> Result<()> {
+    pub(crate) async fn send_task_message(&self, message: TaskMessage) -> Result<()> {
         let channel = {
             let mut map = self.task_routed_channel.lock();
-            map.entry(task_id)
+            map.entry(message.task_id)
                 .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
                 .clone()
         };
         channel
-            .send(message)
+            .send(message.data)
             .await
-            .with_context(|| format!("failed to send  response for task {task_id}"))
+            .with_context(|| format!("failed to send  response for task {}", message.task_id))
     }
 }
 

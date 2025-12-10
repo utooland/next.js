@@ -50,17 +50,14 @@ export interface NapiWorkerTermination {
   options: NapiWorkerOptions
   workerId: number
 }
-export interface WorkerMessage {
+export interface NapiTaskMessage {
   taskId: number
-  message: string
+  data: string
 }
 export declare function recvTaskMessageInWorker(
   workerId: number
-): Promise<WorkerMessage>
-export declare function sendTaskMessage(
-  taskId: number,
-  message: string
-): Promise<void>
+): Promise<NapiTaskMessage>
+export declare function sendTaskMessage(message: NapiTaskMessage): Promise<void>
 export declare function lockfileTryAcquireSync(
   path: string
 ): { __napiType: 'Lockfile' } | null

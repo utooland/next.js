@@ -1,11 +1,13 @@
 import { structuredError } from '../error'
 
+export interface TaskMessage {
+  taskId: number
+  data: string
+}
+
 export interface Binding {
-  recvTaskMessageInWorker(workerId: number): Promise<{
-    taskId: number
-    message: string
-  }>
-  sendTaskMessage(taskId: number, message: string): Promise<void>
+  recvTaskMessageInWorker(workerId: number): Promise<TaskMessage>
+  sendTaskMessage(msg: TaskMessage): Promise<void>
   workerCreated(workerId: number): void
 }
 
@@ -20,13 +22,13 @@ export class TaskChannel {
   ) {}
 
   async sendInfo(message: any) {
-    return await this.binding.sendTaskMessage(
-      this.taskId,
-      JSON.stringify({
+    return await this.binding.sendTaskMessage({
+      taskId: this.taskId,
+      data: JSON.stringify({
         type: 'info',
         data: message,
-      })
-    )
+      }),
+    })
   }
 
   async sendRequest(message: any) {
@@ -38,22 +40,22 @@ export class TaskChannel {
     })
     TaskChannel.requests.set(id, { resolve, reject })
     return await this.binding
-      .sendTaskMessage(
-        this.taskId,
-        JSON.stringify({ type: 'request', id, data: message })
-      )
+      .sendTaskMessage({
+        taskId: this.taskId,
+        data: JSON.stringify({ type: 'request', id, data: message }),
+      })
       .then(() => promise)
   }
 
   async sendError(error: Error) {
     try {
-      await this.binding.sendTaskMessage(
-        this.taskId,
-        JSON.stringify({
+      await this.binding.sendTaskMessage({
+        taskId: this.taskId,
+        data: JSON.stringify({
           type: 'error',
           ...structuredError(error),
-        })
-      )
+        }),
+      })
     } catch (err) {
       // There's nothing we can do about errors that happen after this point, we can't tell anyone
       // about them.

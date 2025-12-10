@@ -123,7 +123,7 @@ impl WorkerThreadPool {
                 {
                     self.state.stats.lock().add_booting_worker();
                 }
-                let worker_id = create_worker(self.worker_options.clone(), task_id).await?;
+                let worker_id = create_worker(self.worker_options.clone()).await?;
 
                 {
                     let mut stats = self.state.stats.lock();

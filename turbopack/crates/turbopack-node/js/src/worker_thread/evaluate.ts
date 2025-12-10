@@ -34,22 +34,22 @@ export const run = async (
         getValue = module.default
       }
       const value = await getValue(new TaskChannel(binding, taskId), ...args)
-      await binding.sendTaskMessage(
+      await binding.sendTaskMessage({
         taskId,
-        JSON.stringify({
+        data: JSON.stringify({
           type: 'end',
           data: value === undefined ? undefined : JSON.stringify(value),
           duration: 0,
-        })
-      )
+        }),
+      })
     } catch (err) {
-      await binding.sendTaskMessage(
+      await binding.sendTaskMessage({
         taskId,
-        JSON.stringify({
+        data: JSON.stringify({
           type: 'error',
           ...structuredError(err as Error),
-        })
-      )
+        }),
+      })
     }
     if (queue.length > 0) {
       const next = queue.shift()!
@@ -60,7 +60,7 @@ export const run = async (
   }
 
   while (true) {
-    const { taskId, message: msg_str } =
+    const { taskId, data: msg_str } =
       await binding.recvTaskMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as

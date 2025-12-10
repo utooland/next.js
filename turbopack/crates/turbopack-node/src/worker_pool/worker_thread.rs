@@ -7,7 +7,10 @@ use parking_lot::Mutex;
 use tokio::sync::oneshot;
 use turbo_rcstr::RcStr;
 
-use crate::worker_pool::{WorkerOptions, operation::WORKER_POOL_OPERATION};
+use crate::worker_pool::{
+    WorkerOptions,
+    operation::{TaskMessage, WORKER_POOL_OPERATION},
+};
 
 static WORKER_CREATOR: OnceCell<ThreadsafeFunction<NapiWorkerCreation, ErrorStrategy::Fatal>> =
     OnceCell::new();
@@ -32,7 +35,7 @@ pub fn register_worker_scheduler(
         .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
 }
 
-pub async fn create_worker(options: Arc<WorkerOptions>, _task_id: u32) -> anyhow::Result<u32> {
+pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
     let (tx, rx) = oneshot::channel();
 
     {
@@ -79,14 +82,12 @@ pub fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
 
 #[napi(object)]
 #[allow(unused)]
-#[derive(Clone)]
 pub struct NapiWorkerCreation {
     pub options: NapiWorkerOptions,
 }
 
 #[napi(object)]
 #[allow(unused)]
-#[derive(Clone)]
 pub struct NapiWorkerOptions {
     pub filename: RcStr,
     pub cwd: RcStr,
@@ -114,25 +115,35 @@ pub struct NapiWorkerTermination {
 
 #[napi(object)]
 #[allow(unused)]
-pub struct WorkerMessage {
+pub struct NapiTaskMessage {
     pub task_id: u32,
-    pub message: String,
+    pub data: String,
+}
+
+impl From<NapiTaskMessage> for TaskMessage {
+    fn from(message: NapiTaskMessage) -> Self {
+        let NapiTaskMessage { task_id, data } = message;
+        TaskMessage { task_id, data }
+    }
 }
 
 #[napi]
 #[allow(unused)]
 // TODO: use zero-copy externaled type array
-pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<WorkerMessage> {
+pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTaskMessage> {
     let (task_id, message) = WORKER_POOL_OPERATION
         .recv_task_message_in_worker(worker_id)
         .await?;
-    Ok(WorkerMessage { task_id, message })
+    Ok(NapiTaskMessage {
+        task_id,
+        data: message,
+    })
 }
 
 #[napi]
 #[allow(unused)]
-pub async fn send_task_message(task_id: u32, message: String) -> napi::Result<()> {
+pub async fn send_task_message(message: NapiTaskMessage) -> napi::Result<()> {
     Ok(WORKER_POOL_OPERATION
-        .send_task_message(task_id, message)
+        .send_task_message(message.into())
         .await?)
 }
