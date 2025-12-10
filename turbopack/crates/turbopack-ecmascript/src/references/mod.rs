@@ -1393,8 +1393,8 @@ async fn analyze_ecmascript_module_internal(
                     // need to add code generation via ConstantValueCodeGen)
                     if !linked_value.is_unknown() || {
                         let free_var_js = JsValue::FreeVar(var.clone());
-                        free_var_js.get_definable_name_len()
-                            .and_then(|_| free_var_js.iter_definable_name_rev().next())
+                        free_var_js.iter_definable_name_rev()
+                            .next()
                             .and_then(|first| analysis_state.free_var_references.get(&*first))
                             .is_some()
                     } {
