@@ -114,29 +114,17 @@ impl TurboMalloc {
 /// Get the allocator for this platform that we should wrap with TurboMalloc.
 #[inline]
 fn base_alloc() -> &'static impl GlobalAlloc {
-    #[cfg(all(
-        feature = "custom_allocator",
-        not(any(target_family = "wasm", target_env = "musl"))
-    ))]
-    return &mimalloc_rspack::MiMalloc;
-    #[cfg(any(
-        not(feature = "custom_allocator"),
-        any(target_family = "wasm", target_env = "musl")
-    ))]
+    #[cfg(all(feature = "custom_allocator", not(target_env = "musl")))]
+    return &mimalloc::MiMalloc;
+    #[cfg(any(not(feature = "custom_allocator"), target_env = "musl"))]
     return &std::alloc::System;
 }
 
 #[allow(unused_variables)]
 unsafe fn base_alloc_size(ptr: *const u8, layout: Layout) -> usize {
-    #[cfg(all(
-        feature = "custom_allocator",
-        not(any(target_family = "wasm", target_env = "musl"))
-    ))]
-    return unsafe { mimalloc_rspack::MiMalloc.usable_size(ptr) };
-    #[cfg(any(
-        not(feature = "custom_allocator"),
-        any(target_family = "wasm", target_env = "musl")
-    ))]
+    #[cfg(all(feature = "custom_allocator", not(target_env = "musl")))]
+    return unsafe { mimalloc::MiMalloc.usable_size(ptr) };
+    #[cfg(any(not(feature = "custom_allocator"), target_env = "musl"))]
     return layout.size();
 }
 
