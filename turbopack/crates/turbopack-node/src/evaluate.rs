@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow, iter, process::ExitStatus, sync::Arc, thread::available_parallelism,
-    time::Duration,
-};
+use std::{borrow::Cow, iter, process::ExitStatus, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use futures_retry::{FutureRetry, RetryPolicy};
@@ -13,7 +10,9 @@ use turbo_tasks::{
     TryJoinIterExt, Vc, duration_span, fxindexmap, get_effects, trace::TraceRawVcs,
 };
 use turbo_tasks_env::{EnvMap, ProcessEnv};
-use turbo_tasks_fs::{File, FileSystemPath, json::parse_json_with_source_context, to_sys_path};
+use turbo_tasks_fs::{
+    File, FileContent, FileSystemPath, json::parse_json_with_source_context, to_sys_path,
+};
 use turbopack_core::{
     asset::AssetContent,
     changed::content_changed,
@@ -39,8 +38,9 @@ use crate::process_pool::ChildProcessPool;
 #[cfg(feature = "worker_pool")]
 use crate::worker_pool::WorkerThreadPool;
 use crate::{
-    AssetsForSourceMapping, embed_js::embed_file_path, emit, emit_package_json,
-    format::FormattingMode, internal_assets_for_source_mapping, source_map::StructuredError,
+    AssetsForSourceMapping, available_parallelism::available_parallelism,
+    embed_js::embed_file_path, emit, emit_package_json, format::FormattingMode,
+    internal_assets_for_source_mapping, source_map::StructuredError,
 };
 
 #[derive(Serialize)]
@@ -66,7 +66,6 @@ enum EvalJavaScriptIncomingMessage {
 
 #[turbo_tasks::value(cell = "new", serialization = "none", eq = "manual", shared)]
 pub struct EvaluatePool {
-    pub id: RcStr,
     #[turbo_tasks(trace_ignore, debug_ignore)]
     pool: Box<dyn EvaluateOperation>,
     pub assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
@@ -82,14 +81,12 @@ impl EvaluatePool {
 
 impl EvaluatePool {
     pub(crate) fn new(
-        id: RcStr,
         pool: Box<dyn EvaluateOperation>,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
         assets_root: FileSystemPath,
         project_dir: FileSystemPath,
     ) -> Self {
         Self {
-            id,
             pool,
             assets_for_source_mapping,
             assets_root,
@@ -192,11 +189,11 @@ async fn emit_evaluate_pool_assets_with_effects_operation(
     Debug,
     PartialEq,
     Eq,
-    Serialize,
-    Deserialize,
     TaskInput,
     NonLocalValue,
     TraceRawVcs,
+    Serialize,
+    Deserialize,
 )]
 pub enum EnvVarTracking {
     WholeEnvTracked,
@@ -263,7 +260,7 @@ pub async fn get_evaluate_pool(
         assets_for_source_mapping,
         output_root.clone(),
         chunking_context.root_path().owned().await?,
-        available_parallelism().map_or(1, |v| v.get()),
+        available_parallelism(),
         debug,
     );
     #[cfg(feature = "worker_pool")]
@@ -274,9 +271,10 @@ pub async fn get_evaluate_pool(
         assets_for_source_mapping,
         output_root.clone(),
         chunking_context.root_path().owned().await?,
-        available_parallelism().map_or(1, |v| v.get()),
+        available_parallelism(),
         debug,
-    );
+    )
+    .await;
     additional_invalidation.await?;
     Ok(pool.cell())
 }
@@ -435,7 +433,7 @@ pub async fn get_evaluate_entries(
     #[allow(unused_variables)]
     let runtime_module_path = rcstr!("child_process/evaluate.ts");
     #[cfg(feature = "worker_pool")]
-    let runtime_module_path = rcstr!("worker_threads/evaluate.ts");
+    let runtime_module_path = rcstr!("worker_thread/evaluate.ts");
 
     let runtime_asset = asset_context
         .process(
@@ -453,7 +451,10 @@ pub async fn get_evaluate_entries(
             Vc::upcast(VirtualSource::new(
                 runtime_asset.ident().path().await?.join("evaluate.js")?,
                 AssetContent::file(
-                    File::from("import { run } from 'RUNTIME'; run(() => import('INNER'))").into(),
+                    FileContent::Content(File::from(
+                        "import { run } from 'RUNTIME'; run(() => import('INNER'))",
+                    ))
+                    .cell(),
                 ),
             )),
             ReferenceType::Internal(ResolvedVc::cell(fxindexmap! {
@@ -469,26 +470,27 @@ pub async fn get_evaluate_entries(
         let mut entries = vec![];
 
         #[cfg(feature = "process_pool")]
-        {
-            let globals_module = asset_context
-                .process(
-                    Vc::upcast(FileSource::new(
-                        embed_file_path(rcstr!("child_process/globals.ts"))
-                            .owned()
-                            .await?,
-                    )),
-                    ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
-                )
-                .module();
+        #[allow(unused_variables)]
+        let global_module_path = embed_file_path(rcstr!("child_process/globals.ts"));
 
-            let Some(globals_module) =
-                Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(globals_module).await?
-            else {
-                bail!("Internal module is not evaluatable");
-            };
+        #[cfg(feature = "worker_pool")]
+        let global_module_path = embed_file_path(rcstr!("worker_thread/globals.ts"));
 
-            entries.push(globals_module.to_resolved().await?);
-        }
+        let globals_module = asset_context
+            .process(
+                Vc::upcast(FileSource::new(global_module_path.owned().await?)),
+                ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
+            )
+            .module();
+
+        let Some(globals_module) =
+            Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(globals_module).await?
+        else {
+            bail!("Internal module is not evaluatable");
+        };
+
+        entries.push(globals_module.to_resolved().await?);
+
         if let Some(runtime_entries) = runtime_entries {
             for &entry in &*runtime_entries.await? {
                 entries.push(entry)
@@ -550,7 +552,7 @@ pub async fn evaluate(
     .await
 }
 
-/// Repeatedly pulls from the ChilProcessOperation until we receive a
+/// Repeatedly pulls from the Operation until we receive a
 /// value/error/end.
 async fn pull_operation<T: EvaluateContext>(
     operation: &mut Box<dyn Operation>,
@@ -610,7 +612,6 @@ async fn pull_operation<T: EvaluateContext>(
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, TaskInput, Debug, Serialize, Deserialize, TraceRawVcs)]
 struct BasicEvaluateContext {
     entries: ResolvedVc<EvaluateEntries>,
     cwd: FileSystemPath,
@@ -738,5 +739,27 @@ impl Issue for EvaluationIssue {
     #[turbo_tasks::function]
     fn source(&self) -> Vc<OptionIssueSource> {
         Vc::cell(Some(self.source))
+    }
+}
+
+pub fn scale_down() {
+    #[cfg(feature = "process_pool")]
+    {
+        ChildProcessPool::scale_down();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(feature = "process_pool")]
+    {
+        ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }

@@ -1,12 +1,17 @@
 import { structuredError } from '../error'
 
-export interface Binding {
-  recvWorkerRequest(poolId: string): Promise<number>
-  recvMessageInWorker(workerId: number): Promise<string>
-  notifyWorkerAck(taskId: number, workerId: number): Promise<void>
-  sendTaskMessage(taskId: number, message: string): Promise<void>
+export interface TaskMessage {
+  taskId: number
+  data: string
 }
 
+export interface Binding {
+  recvTaskMessageInWorker(workerId: number): Promise<TaskMessage>
+  sendTaskMessage(msg: TaskMessage): Promise<void>
+  workerCreated(workerId: number): void
+}
+
+// Export this, maybe in the future, we can add an implementation via web worker on browser
 export class TaskChannel {
   static nextId = 1
   static requests = new Map()
@@ -17,13 +22,13 @@ export class TaskChannel {
   ) {}
 
   async sendInfo(message: any) {
-    return await this.binding.sendTaskMessage(
-      this.taskId,
-      JSON.stringify({
+    return await this.binding.sendTaskMessage({
+      taskId: this.taskId,
+      data: JSON.stringify({
         type: 'info',
         data: message,
-      })
-    )
+      }),
+    })
   }
 
   async sendRequest(message: any) {
@@ -35,22 +40,22 @@ export class TaskChannel {
     })
     TaskChannel.requests.set(id, { resolve, reject })
     return await this.binding
-      .sendTaskMessage(
-        this.taskId,
-        JSON.stringify({ type: 'request', id, data: message })
-      )
+      .sendTaskMessage({
+        taskId: this.taskId,
+        data: JSON.stringify({ type: 'request', id, data: message }),
+      })
       .then(() => promise)
   }
 
   async sendError(error: Error) {
     try {
-      await this.binding.sendTaskMessage(
-        this.taskId,
-        JSON.stringify({
+      await this.binding.sendTaskMessage({
+        taskId: this.taskId,
+        data: JSON.stringify({
           type: 'error',
           ...structuredError(error),
-        })
-      )
+        }),
+      })
     } catch (err) {
       // There's nothing we can do about errors that happen after this point, we can't tell anyone
       // about them.

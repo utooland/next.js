@@ -3,9 +3,18 @@ import { structuredError } from '../error'
 import type { Channel } from '../types'
 import { Binding, TaskChannel } from './taskChannel'
 
-const binding: Binding = require(
+if (!workerData.hasOwnProperty('bindingPath')) {
+  throw new Error('bindingPath not set in loader worker thread')
+}
+
+// turbopackIgnore: true does not take effects, this may be a bug
+// use module.require to workaround
+const binding: Binding = module.require(
   /* turbopackIgnore: true */ workerData.bindingPath
 )
+
+binding.workerCreated(workerId)
+
 export const run = async (
   moduleFactory: () => Promise<{
     init?: () => Promise<void>
@@ -15,6 +24,7 @@ export const run = async (
   let getValue: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
 
   let isRunning = false
+  const queue: Array<{ taskId: number; args: string[] }> = []
 
   const run = async (taskId: number, args: string[]) => {
     try {
@@ -26,31 +36,34 @@ export const run = async (
         getValue = module.default
       }
       const value = await getValue(new TaskChannel(binding, taskId), ...args)
-      await binding.sendTaskMessage(
+      await binding.sendTaskMessage({
         taskId,
-        JSON.stringify({
+        data: JSON.stringify({
           type: 'end',
           data: value === undefined ? undefined : JSON.stringify(value),
           duration: 0,
-        })
-      )
+        }),
+      })
     } catch (err) {
-      await binding.sendTaskMessage(
+      await binding.sendTaskMessage({
         taskId,
-        JSON.stringify({
+        data: JSON.stringify({
           type: 'error',
           ...structuredError(err as Error),
-        })
-      )
+        }),
+      })
     }
-    isRunning = false
+    if (queue.length > 0) {
+      const next = queue.shift()!
+      run(next.taskId, next.args)
+    } else {
+      isRunning = false
+    }
   }
 
   while (true) {
-    const taskId = await binding.recvWorkerRequest(workerData.poolId)
-
-    await binding.notifyWorkerAck(taskId, workerId)
-    const msg_str = await binding.recvMessageInWorker(workerId)
+    const { taskId, data: msg_str } =
+      await binding.recvTaskMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
       | {
@@ -69,6 +82,8 @@ export const run = async (
         if (!isRunning) {
           isRunning = true
           run(taskId, msg.args)
+        } else {
+          queue.push({ taskId, args: msg.args })
         }
         break
       }
@@ -80,7 +95,7 @@ export const run = async (
             // Need to reject at next macro task queue, because some rejection callbacks is not registered when executing to here,
             // that will cause the error be propergated to schedule thread, then causing panic.
             // The situation always happen when using sass-loader, it will try to resolve many posible dependencies,
-            // some of then will got a failure.
+            // some of them may fail with error.
             setTimeout(() => request.reject(new Error(msg.error)), 0)
           } else {
             request.resolve(msg.data)

@@ -46,7 +46,11 @@ export const init = async (ipc: TransformIpc) => {
       let pluginFactory = arg
 
       if (typeof pluginFactory === 'string') {
-        pluginFactory = require(/* turbopackIgnore: true */ pluginFactory)
+        // turbopackIgnore: true does not take effects, this may be a bug
+        // use module.require to workaround
+        pluginFactory = module.require(
+          /* turbopackIgnore: true */ pluginFactory
+        )
       }
 
       if (pluginFactory.default) {

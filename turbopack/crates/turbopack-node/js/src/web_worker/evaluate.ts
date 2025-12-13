@@ -1,4 +1,4 @@
-import { Binding, TaskChannel } from '../worker_threads/taskChannel'
+import { Binding, TaskChannel } from '../worker_thread/taskChannel'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
 
@@ -15,9 +15,11 @@ export type Self = DedicatedWorkerGlobalScope & {
 
 export declare const self: Self
 // @ts-ignore
-const { workerId, poolId } = self.workerData
+const { workerId } = self.workerData
 
 let binding: Binding = self.workerData.binding
+
+binding.workerCreated(workerId)
 
 export const run = async (
   moduleFactory: () => Promise<{
@@ -28,6 +30,7 @@ export const run = async (
   let getValue: (channel: Channel<any, any>, ...deserializedArgs: any[]) => any
 
   let isRunning = false
+  const queue: Array<{ taskId: number; args: string[] }> = []
 
   const run = async (taskId: number, args: string[]) => {
     try {
@@ -39,32 +42,34 @@ export const run = async (
         getValue = module.default
       }
       const value = await getValue(new TaskChannel(binding, taskId), ...args)
-      await binding.sendTaskMessage(
+      await binding.sendTaskMessage({
         taskId,
-        JSON.stringify({
+        data: JSON.stringify({
           type: 'end',
           data: value === undefined ? undefined : JSON.stringify(value),
           duration: 0,
-        })
-      )
+        }),
+      })
     } catch (err) {
-      await binding.sendTaskMessage(
+      await binding.sendTaskMessage({
         taskId,
-        JSON.stringify({
+        data: JSON.stringify({
           type: 'error',
           ...structuredError(err as Error),
-        })
-      )
+        }),
+      })
     }
-    isRunning = false
+    if (queue.length > 0) {
+      const next = queue.shift()!
+      run(next.taskId, next.args)
+    } else {
+      isRunning = false
+    }
   }
 
   while (true) {
-    const taskId = await binding.recvWorkerRequest(poolId)
-
-    await binding.notifyWorkerAck(taskId, workerId)
-
-    const msg_str = await binding.recvMessageInWorker(workerId)
+    const { taskId, data: msg_str } =
+      await binding.recvTaskMessageInWorker(workerId)
 
     const msg = JSON.parse(msg_str) as
       | {
@@ -83,6 +88,8 @@ export const run = async (
         if (!isRunning) {
           isRunning = true
           run(taskId, msg.args)
+        } else {
+          queue.push({ taskId, args: msg.args })
         }
         break
       }

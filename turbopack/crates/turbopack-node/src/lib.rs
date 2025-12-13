@@ -5,7 +5,7 @@
 use anyhow::Result;
 use rustc_hash::FxHashMap;
 use turbo_tasks::{ResolvedVc, TryFlatJoinIterExt, Vc};
-use turbo_tasks_fs::{File, FileSystemPath};
+use turbo_tasks_fs::{File, FileContent, FileSystemPath};
 use turbopack_core::{
     asset::{Asset, AssetContent},
     output::{ExpandOutputAssetsInput, OutputAsset, OutputAssets, expand_output_assets},
@@ -13,11 +13,13 @@ use turbopack_core::{
     virtual_output::VirtualOutputAsset,
 };
 
+mod available_parallelism;
 pub mod debug;
 pub mod embed_js;
 pub mod evaluate;
 pub mod execution_context;
 mod format;
+mod pool_stats;
 #[cfg(feature = "process_pool")]
 mod process_pool;
 pub mod source_map;
@@ -100,7 +102,7 @@ fn emit_package_json(dir: FileSystemPath) -> Result<Vc<()>> {
     Ok(emit(
         Vc::upcast(VirtualOutputAsset::new(
             dir.join("package.json")?,
-            AssetContent::file(File::from("{\"type\": \"commonjs\"}").into()),
+            AssetContent::file(FileContent::Content(File::from("{\"type\": \"commonjs\"}")).cell()),
         )),
         dir,
     ))
