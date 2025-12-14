@@ -132,3 +132,18 @@ export default async function transform(
     assets,
   }
 }
+
+// @ts-ignore
+if (typeof self !== 'undefined' && self.workerData && self.workerData.binding) {
+  // @ts-ignore
+  const { run } = require('../web_worker/evaluate')
+  run(async () => {
+    return {
+      init: async () => {
+        // @ts-ignore
+        await init()
+      },
+      default: transform,
+    }
+  })
+}

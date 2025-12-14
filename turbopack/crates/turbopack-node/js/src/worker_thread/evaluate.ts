@@ -3,15 +3,19 @@ import { structuredError } from '../error'
 import type { Channel } from '../types'
 import { Binding, TaskChannel } from './taskChannel'
 
-if (!workerData.hasOwnProperty('bindingPath')) {
-  throw new Error('bindingPath not set in loader worker thread')
-}
+let binding: Binding
 
-// turbopackIgnore: true does not take effects, this may be a bug
-// use module.require to workaround
-const binding: Binding = module.require(
-  /* turbopackIgnore: true */ workerData.bindingPath
-)
+if (workerData.binding) {
+  binding = workerData.binding
+} else {
+  if (!workerData.hasOwnProperty('bindingPath')) {
+    throw new Error('bindingPath not set in loader worker thread')
+  }
+
+  // turbopackIgnore: true does not take effects, this may be a bug
+  // use module.require to workaround
+  binding = module.require(/* turbopackIgnore: true */ workerData.bindingPath)
+}
 
 binding.workerCreated(workerId)
 

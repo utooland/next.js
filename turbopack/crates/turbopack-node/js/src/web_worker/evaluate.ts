@@ -5,11 +5,8 @@ import type { Channel } from '../types'
 export type Self = DedicatedWorkerGlobalScope & {
   workerData: {
     workerId: number
-    poolId: string
     cwd: string
-    env?: Record<string, string>
     binding: Binding
-    readFile(path: string, encoding?: 'utf8'): Promise<string>
   }
 }
 
@@ -100,7 +97,7 @@ export const run = async (
           if (msg.error) {
             // Need to reject at next macro task queue, because some rejection callbacks is not registered when executing to here,
             // that will cause the error be propergated to schedule thread, then causing panic.
-            // The situation always happen when using sass-loader, it will try to resolve many posible dependencies,
+            // The situation always happen when using sass-loader, it will try to resolve many possible dependencies,
             // some of then will got a failure.
             setTimeout(() => request.reject(new Error(msg.error)), 0)
           } else {

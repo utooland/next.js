@@ -509,6 +509,17 @@ const transform = (
 
 export { transform as default }
 
+// @ts-ignore
+if (typeof self !== 'undefined' && self.workerData && self.workerData.binding) {
+  // @ts-ignore
+  const { run } = require('../web_worker/evaluate')
+  run(async () => {
+    return {
+      default: transform,
+    }
+  })
+}
+
 function makeErrorEmitter(
   severity: 'warning' | 'error',
   ipc: Ipc<IpcInfoMessage, IpcRequestMessage>

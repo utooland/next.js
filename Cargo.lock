@@ -1244,7 +1244,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2966,7 +2966,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.0",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -8694,9 +8694,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.6.4"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4833322f87a3e5bd44ccd9323860261fdd70952f435eb34840d424528df634ec"
+checksum = "e5bdfe02a8c6a29b4c836bca35f7e0ba71cee84171184a5a15797b7ba4430176"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",

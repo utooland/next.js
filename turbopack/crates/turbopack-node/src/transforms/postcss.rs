@@ -345,6 +345,7 @@ pub(crate) async fn config_loader_source(
 
     // We don't want to bundle the config file, so we load it with `import()`.
     // Bundling would break the ability to use `require.resolve` in the config file.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     let code = formatdoc! {
         r#"
             import {{ pathToFileURL }} from 'node:url';
@@ -356,6 +357,19 @@ pub(crate) async fn config_loader_source(
             // convert it to a file:// URL, which works on all platforms
             const configUrl = pathToFileURL(configPath).toString();
             const mod = await {TURBOPACK_EXTERNAL_IMPORT}(configUrl);
+
+            export default mod.default ?? mod;
+        "#,
+        config_path = serde_json::to_string(&config_path).expect("a string should be serializable"),
+    };
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    let code = formatdoc! {
+        r#"
+            import path from 'node:path';
+
+            const configPath = path.join(process.cwd(), {config_path});
+            const mod = module.require(configPath);
 
             export default mod.default ?? mod;
         "#,
@@ -383,12 +397,12 @@ async fn postcss_executor(
         .to_resolved()
         .await?;
 
+    let path = embed_file_path(rcstr!("transforms/postcss.ts"))
+        .owned()
+        .await?;
+
     Ok(asset_context.process(
-        Vc::upcast(FileSource::new(
-            embed_file_path(rcstr!("transforms/postcss.ts"))
-                .owned()
-                .await?,
-        )),
+        Vc::upcast(FileSource::new(path)),
         ReferenceType::Internal(ResolvedVc::cell(fxindexmap! {
             rcstr!("CONFIG") => config_asset
         })),
