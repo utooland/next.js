@@ -25,6 +25,8 @@ export async function runLoaderWorkerPool(
         },
       })
 
+      worker.unref()
+
       const workers =
         loaderWorkers[poolId] || (loaderWorkers[poolId] = new Map())
 

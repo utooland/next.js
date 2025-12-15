@@ -1,6 +1,9 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
+use napi::{
+    Env,
+    threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode},
+};
 use napi_derive::napi;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
@@ -19,19 +22,37 @@ static WORKER_TERMINATOR: OnceCell<
     ThreadsafeFunction<NapiWorkerTermination, ErrorStrategy::Fatal>,
 > = OnceCell::new();
 
-static PENDING_CREATIONS: OnceCell<Mutex<VecDeque<oneshot::Sender<u32>>>> = OnceCell::new();
+#[allow(clippy::type_complexity)]
+static PENDING_CREATIONS: OnceCell<Mutex<VecDeque<(Arc<WorkerOptions>, oneshot::Sender<u32>)>>> =
+    OnceCell::new();
 
 #[napi]
 #[allow(unused)]
 pub fn register_worker_scheduler(
+    env: Env,
     creator: ThreadsafeFunction<NapiWorkerCreation, ErrorStrategy::Fatal>,
     terminator: ThreadsafeFunction<NapiWorkerTermination, ErrorStrategy::Fatal>,
 ) -> napi::Result<()> {
+    // Unref ThreadsafeFunction so it doesn't keep the Node.js event loop alive.
+    // Call unref on the functions before storing them globally.
+    let creator_unrefed = {
+        let mut c = creator;
+        // Safe to call unref; if the napi crate provides this method it will drop the ref
+        // preventing the ThreadsafeFunction from keeping the loop alive.
+        let _ = c.unref(&env);
+        c
+    };
+    let terminator_unrefed = {
+        let mut t = terminator;
+        let _ = t.unref(&env);
+        t
+    };
+
     WORKER_CREATOR
-        .set(creator)
+        .set(creator_unrefed)
         .map_err(|_| napi::Error::from_reason("Worker creator already registered"))?;
     WORKER_TERMINATOR
-        .set(terminator)
+        .set(terminator_unrefed)
         .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
 }
 
@@ -40,7 +61,13 @@ pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
 
     {
         let pending = PENDING_CREATIONS.get_or_init(|| Mutex::new(VecDeque::new()));
-        pending.lock().push_back(tx);
+        // ensure pool entry exists for these options so scale ops can observe it
+        WORKER_POOL_OPERATION
+            .pools
+            .lock()
+            .entry(options.clone())
+            .or_default();
+        pending.lock().push_back((options.clone(), tx));
     }
 
     if let Some(creator) = WORKER_CREATOR.get() {
@@ -62,8 +89,17 @@ pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
 #[allow(unused)]
 pub fn worker_created(worker_id: u32) {
     if let Some(pending) = PENDING_CREATIONS.get()
-        && let Some(tx) = pending.lock().pop_front()
+        && let Some((options, tx)) = pending.lock().pop_front()
     {
+        // record into global pool
+        WORKER_POOL_OPERATION
+            .pools
+            .lock()
+            .entry(options.clone())
+            .or_default()
+            .idle_workers
+            .lock()
+            .push(worker_id);
         let _ = tx.send(worker_id);
     }
 }

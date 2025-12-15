@@ -75,7 +75,7 @@ pub(crate) struct WorkerPoolOperation {
     worker_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<(u32, String)>>>>,
     #[allow(clippy::type_complexity)]
     task_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<String>>>>,
-    pools: Mutex<FxHashMap<Arc<WorkerOptions>, Arc<PoolState>>>,
+    pub(crate) pools: Mutex<FxHashMap<Arc<WorkerOptions>, Arc<PoolState>>>,
 }
 
 impl WorkerPoolOperation {
