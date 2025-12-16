@@ -22,8 +22,7 @@ static WORKER_TERMINATOR: OnceCell<
     ThreadsafeFunction<NapiWorkerTermination, ErrorStrategy::Fatal>,
 > = OnceCell::new();
 
-static PENDING_CREATIONS: OnceCell<Mutex<VecDeque<(Arc<WorkerOptions>, oneshot::Sender<u32>)>>> =
-    OnceCell::new();
+static PENDING_CREATIONS: OnceCell<Mutex<VecDeque<oneshot::Sender<u32>>>> = OnceCell::new();
 
 #[napi]
 #[allow(unused)]
@@ -58,6 +57,8 @@ pub fn register_worker_scheduler(
 pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
     let (tx, rx) = oneshot::channel();
 
+    let napi_options = (&options).into();
+
     {
         let pending = PENDING_CREATIONS.get_or_init(|| Mutex::new(VecDeque::new()));
         // ensure pool entry exists for these options so scale ops can observe it
@@ -66,13 +67,13 @@ pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
             .lock()
             .entry(options.clone())
             .or_default();
-        pending.lock().push_back((options.clone(), tx));
+        pending.lock().push_back(tx);
     }
 
     if let Some(creator) = WORKER_CREATOR.get() {
         creator.call(
             NapiWorkerCreation {
-                options: options.into(),
+                options: napi_options,
             },
             ThreadsafeFunctionCallMode::NonBlocking,
         );
@@ -87,19 +88,10 @@ pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
 #[napi]
 #[allow(unused)]
 pub fn worker_created(worker_id: u32) {
-    if let Some(pending) = PENDING_CREATIONS.get() {
-        if let Some((options, tx)) = pending.lock().pop_front() {
-            // record into global pool
-            WORKER_POOL_OPERATION
-                .pools
-                .lock()
-                .entry(options.clone())
-                .or_default()
-                .idle_workers
-                .lock()
-                .push(worker_id);
-            let _ = tx.send(worker_id);
-        }
+    if let Some(pending) = PENDING_CREATIONS.get()
+        && let Some(tx) = pending.lock().pop_front()
+    {
+        let _ = tx.send(worker_id);
     }
 }
 
