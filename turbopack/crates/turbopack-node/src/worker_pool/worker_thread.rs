@@ -47,12 +47,10 @@ pub fn register_worker_scheduler(
         t
     };
 
-    WORKER_CREATOR
-        .set(creator_unrefed)
-        .map_err(|_| napi::Error::from_reason("Worker creator already registered"))?;
-    WORKER_TERMINATOR
-        .set(terminator_unrefed)
-        .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
+    WORKER_CREATOR.get_or_init(|| creator_unrefed);
+    WORKER_TERMINATOR.get_or_init(|| terminator_unrefed);
+
+    Ok(())
 }
 
 pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
