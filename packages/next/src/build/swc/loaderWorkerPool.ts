@@ -25,7 +25,8 @@ export async function runLoaderWorkerPool(
         },
       })
 
-      worker.unref()
+      // This will cause handing when run in jest worker, but not as a first level thread of nodejs thread
+      // worker.unref()
 
       const workers =
         loaderWorkers[poolId] || (loaderWorkers[poolId] = new Map())
