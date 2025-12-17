@@ -44,11 +44,11 @@ impl NodeJsPoolStats {
     }
 
     pub fn finished_booting_worker(&mut self) {
-        self.booting_workers -= 1;
+        self.booting_workers = self.booting_workers.saturating_sub(1);
     }
 
     pub fn remove_worker(&mut self) {
-        self.workers -= 1;
+        self.workers = self.workers.saturating_sub(1);
     }
 
     #[allow(unused)]
@@ -60,14 +60,14 @@ impl NodeJsPoolStats {
     pub fn add_cold_process_time(&mut self, time: Duration) {
         self.total_cold_process_time += time;
         self.cold_process_count += 1;
-        self.queued_tasks -= 1;
+        self.queued_tasks = self.queued_tasks.saturating_sub(1);
     }
 
     #[allow(unused)]
     pub fn add_warm_process_time(&mut self, time: Duration) {
         self.total_warm_process_time += time;
         self.warm_process_count += 1;
-        self.queued_tasks -= 1;
+        self.queued_tasks = self.queued_tasks.saturating_sub(1);
     }
 
     pub fn estimated_bootup_time(&self) -> Duration {
