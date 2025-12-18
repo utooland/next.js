@@ -1387,13 +1387,15 @@ async fn analyze_ecmascript_module_internal(
                             eval_context.imports.get_attributes(span),
                         )
                         .await?;
-                    
-                    // Call handle_free_var if the value is not unknown, or if it might be in free_var_references
-                    // (e.g., when Object is too large and gets converted to Unknown in link_value, but we still
+
+                    // Call handle_free_var if the value is not unknown, or if it might be in
+                    // free_var_references (e.g., when Object is too large and
+                    // gets converted to Unknown in link_value, but we still
                     // need to add code generation via ConstantValueCodeGen)
                     if !linked_value.is_unknown() || {
                         let free_var_js = JsValue::FreeVar(var.clone());
-                        free_var_js.iter_definable_name_rev()
+                        free_var_js
+                            .iter_definable_name_rev()
                             .next()
                             .and_then(|first| analysis_state.free_var_references.get(&*first))
                             .is_some()
@@ -4084,4 +4086,3 @@ fn is_invoking_node_process_eval(args: &[JsValue]) -> bool {
 
     false
 }
-
