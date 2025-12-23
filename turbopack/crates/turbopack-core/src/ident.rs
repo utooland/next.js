@@ -434,7 +434,7 @@ impl ValueToString for AssetIdent {
 }
 
 fn clean_separators(s: &str) -> String {
-    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?\[\]<>]").unwrap());
+    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?\[\]<>@]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "_").to_string()
 }
 

@@ -945,7 +945,7 @@ struct ChunkPathInfo {
 }
 
 pub fn clean_separators(s: &str) -> String {
-    static SEPARATOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r".*[/#?]").unwrap());
+    static SEPARATOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[/#?@]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "").to_string()
 }
 
