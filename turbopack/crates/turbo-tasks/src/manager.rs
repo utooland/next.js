@@ -5,7 +5,7 @@ use std::{
     mem::take,
     pin::Pin,
     sync::{
-        Arc, Mutex, RwLock, Weak,
+        Arc, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -16,6 +16,7 @@ use auto_hash_map::AutoMap;
 use bincode::{Decode, Encode};
 use rustc_hash::FxHasher;
 use serde::{Deserialize, Serialize};
+use spin::{Mutex, RwLock};
 use tokio::{select, sync::mpsc::Receiver, task_local};
 use tokio_util::task::TaskTracker;
 use tracing::{Instrument, instrument};
@@ -582,8 +583,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
                     let result = CaptureFuture::new(future).await;
 
                     // wait for all spawned local tasks using `local` to finish
-                    let ltt =
-                        CURRENT_TASK_STATE.with(|ts| ts.read().unwrap().local_task_tracker.clone());
+                    let ltt = CURRENT_TASK_STATE.with(|ts| ts.read().local_task_tracker.clone());
                     ltt.close();
                     ltt.wait().await;
 
@@ -721,8 +721,8 @@ impl<B: Backend + 'static> TurboTasks<B> {
                         let result = CaptureFuture::new(future).await;
 
                         // wait for all spawned local tasks using `local` to finish
-                        let ltt = CURRENT_TASK_STATE
-                            .with(|ts| ts.read().unwrap().local_task_tracker.clone());
+                        let ltt =
+                            CURRENT_TASK_STATE.with(|ts| ts.read().local_task_tracker.clone());
                         ltt.close();
                         ltt.wait().await;
 
@@ -736,8 +736,8 @@ impl<B: Backend + 'static> TurboTasks<B> {
                             stateful,
                             has_invalidator,
                         } = this.finish_current_task_state();
-                        let cell_counters = CURRENT_TASK_STATE
-                            .with(|ts| ts.write().unwrap().cell_counters.take().unwrap());
+                        let cell_counters =
+                            CURRENT_TASK_STATE.with(|ts| ts.write().cell_counters.take().unwrap());
                         this.backend.task_execution_completed(
                             task_id,
                             result,
@@ -781,7 +781,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
         let task_type = ty.task_type;
         let (global_task_state, parent_task_id, execution_id, local_task_id) = CURRENT_TASK_STATE
             .with(|gts| {
-                let mut gts_write = gts.write().unwrap();
+                let mut gts_write = gts.write();
                 let local_task_id = gts_write.create_local_task(LocalTask::Scheduled {
                     done_event: Event::new(move || {
                         move || format!("LocalTask({task_type})::done_event")
@@ -844,7 +844,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
                 let local_task = LocalTask::Done { output };
 
                 let done_event = CURRENT_TASK_STATE.with(move |gts| {
-                    let mut gts_write = gts.write().unwrap();
+                    let mut gts_write = gts.write();
                     let scheduled_task =
                         std::mem::replace(gts_write.get_mut_local_task(local_task_id), local_task);
                     let LocalTask::Scheduled { done_event } = scheduled_task else {
@@ -859,7 +859,6 @@ impl<B: Backend + 'static> TurboTasks<B> {
         };
         let future = global_task_state
             .read()
-            .unwrap()
             .local_task_tracker
             .track_future(future);
         let future = CURRENT_TASK_STATE.scope(global_task_state, future);
@@ -882,7 +881,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
             .fetch_add(1, Ordering::AcqRel)
             == 0
         {
-            *self.start.lock().unwrap() = Some(Instant::now());
+            *self.start.lock() = Some(Instant::now());
             self.event_foreground_start.notify(usize::MAX);
             self.backend.idle_end(self);
         }
@@ -899,8 +898,8 @@ impl<B: Backend + 'static> TurboTasks<B> {
             // statistical reasons
             let total = self.scheduled_tasks.load(Ordering::Acquire);
             self.scheduled_tasks.store(0, Ordering::Release);
-            if let Some(start) = *self.start.lock().unwrap() {
-                let (update, _) = &mut *self.aggregated_update.lock().unwrap();
+            if let Some(start) = *self.start.lock() {
+                let (update, _) = &mut *self.aggregated_update.lock();
                 if let Some(update) = update.as_mut() {
                     update.0 += start.elapsed();
                     update.1 += total;
@@ -981,7 +980,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
             .event_foreground_done
             .listen_with_note(|| || "wait for update info".to_string());
         let wait_for_finish = {
-            let (update, reason_set) = &mut *self.aggregated_update.lock().unwrap();
+            let (update, reason_set) = &mut *self.aggregated_update.lock();
             if aggregation.is_zero() {
                 if let Some((duration, tasks)) = update.take() {
                     return Some(UpdateInfo {
@@ -1033,7 +1032,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
                 }
             }
         }
-        let (update, reason_set) = &mut *self.aggregated_update.lock().unwrap();
+        let (update, reason_set) = &mut *self.aggregated_update.lock();
         if let Some((duration, tasks)) = update.take() {
             Some(UpdateInfo {
                 duration,
@@ -1134,7 +1133,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
                 stateful,
                 has_invalidator,
                 ..
-            } = &mut *cell.write().unwrap();
+            } = &mut *cell.write();
             (*stateful, *has_invalidator)
         });
 
@@ -1211,7 +1210,7 @@ impl<B: Backend + 'static> TurboTasksCallApi for TurboTasks<B> {
         future: Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> {
         {
-            let (_, reason_set) = &mut *self.aggregated_update.lock().unwrap();
+            let (_, reason_set) = &mut *self.aggregated_update.lock();
             reason_set.insert(reason);
         }
         let this = self.pin();
@@ -1233,7 +1232,7 @@ impl<B: Backend + 'static> TurboTasksApi for TurboTasks<B> {
     #[instrument(level = "info", skip_all, name = "invalidate", fields(name = display(&reason)))]
     fn invalidate_with_reason(&self, task: TaskId, reason: StaticOrArc<dyn InvalidationReason>) {
         {
-            let (_, reason_set) = &mut *self.aggregated_update.lock().unwrap();
+            let (_, reason_set) = &mut *self.aggregated_update.lock();
             reason_set.insert(reason);
         }
         self.backend.invalidate_task(task, self);
@@ -1287,7 +1286,7 @@ impl<B: Backend + 'static> TurboTasksApi for TurboTasks<B> {
         local_task_id: LocalTaskId,
     ) -> Result<Result<RawVc, EventListener>> {
         CURRENT_TASK_STATE.with(|gts| {
-            let gts_read = gts.read().unwrap();
+            let gts_read = gts.read();
 
             // Local Vcs are local to their parent task's current execution, and do not exist
             // outside of it. This is weakly enforced at compile time using the `NonLocalValue`
@@ -1399,7 +1398,7 @@ impl<B: Backend + 'static> TurboTasksApi for TurboTasks<B> {
         // state as well.
         let global_task_state = CURRENT_TASK_STATE.with(|ts| ts.clone());
         let tracked_fut = {
-            let ts = global_task_state.read().unwrap();
+            let ts = global_task_state.read();
             ts.local_task_tracker.track_future(fut)
         };
         Box::pin(TURBO_TASKS.scope(
@@ -1496,7 +1495,7 @@ impl<B: Backend + 'static> TurboTasksBackendApi<B> for TurboTasks<B> {
 }
 
 pub(crate) fn current_task_if_available(from: &str) -> Option<TaskId> {
-    match CURRENT_TASK_STATE.try_with(|ts| ts.read().unwrap().task_id) {
+    match CURRENT_TASK_STATE.try_with(|ts| ts.read().task_id) {
         Ok(id) => id,
         Err(_) => panic!(
             "{from} can only be used in the context of a turbo_tasks task execution or \
@@ -1506,7 +1505,7 @@ pub(crate) fn current_task_if_available(from: &str) -> Option<TaskId> {
 }
 
 pub(crate) fn current_task(from: &str) -> TaskId {
-    match CURRENT_TASK_STATE.try_with(|ts| ts.read().unwrap().task_id) {
+    match CURRENT_TASK_STATE.try_with(|ts| ts.read().task_id) {
         Ok(Some(id)) => id,
         Ok(None) | Err(_) => {
             panic!("{from} can only be used in the context of a turbo_tasks task execution")
@@ -1639,7 +1638,7 @@ pub fn spawn_detached_for_testing(f: impl Future<Output = Result<()>> + Send + '
 }
 
 pub fn current_task_for_testing() -> Option<TaskId> {
-    CURRENT_TASK_STATE.with(|ts| ts.read().unwrap().task_id)
+    CURRENT_TASK_STATE.with(|ts| ts.read().task_id)
 }
 
 /// Marks the current task as dirty when restored from filesystem cache.
@@ -1674,7 +1673,7 @@ pub fn mark_stateful() -> SerializationInvalidator {
     CURRENT_TASK_STATE.with(|cell| {
         let CurrentTaskState {
             stateful, task_id, ..
-        } = &mut *cell.write().unwrap();
+        } = &mut *cell.write();
         *stateful = true;
         let Some(task_id) = *task_id else {
             panic!(
@@ -1689,7 +1688,7 @@ pub fn mark_invalidator() {
     CURRENT_TASK_STATE.with(|cell| {
         let CurrentTaskState {
             has_invalidator, ..
-        } = &mut *cell.write().unwrap();
+        } = &mut *cell.write();
         *has_invalidator = true;
     })
 }
@@ -1949,7 +1948,7 @@ pub fn find_cell_by_type<T: VcValueType>() -> CurrentCellRef {
 pub fn find_cell_by_id(ty: ValueTypeId, is_serializable_cell_content: bool) -> CurrentCellRef {
     CURRENT_TASK_STATE.with(|ts| {
         let current_task = current_task("celling turbo_tasks values");
-        let mut ts = ts.write().unwrap();
+        let mut ts = ts.write();
         let map = ts.cell_counters.as_mut().unwrap();
         let current_index = map.entry(ty).or_default();
         let index = *current_index;
