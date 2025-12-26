@@ -944,11 +944,6 @@ struct ChunkPathInfo {
     content_hashing: Option<ContentHashing>,
 }
 
-pub fn clean_separators(s: &str) -> String {
-    static SEPARATOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[/#?@]").unwrap());
-    SEPARATOR_REGEX.replace_all(s, "").to_string()
-}
-
 static NAME_PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[name\]").unwrap());
 
 pub fn match_name_placeholder(s: &str) -> bool {
