@@ -22,9 +22,9 @@ pub mod invalidation;
 mod invalidator_map;
 pub mod json;
 mod mutex_map;
+mod offload_blocking;
 mod path_map;
 mod read_glob;
-mod retry;
 pub mod rope;
 pub mod source_context;
 pub mod util;
@@ -75,8 +75,8 @@ use crate::{
     invalidator_map::{InvalidatorMap, WriteContent},
     json::UnparsableJson,
     mutex_map::MutexMap,
+    offload_blocking::offload_blocking,
     read_glob::{read_glob, track_glob},
-    retry::retry_blocking,
     rope::{Rope, RopeReader},
     util::extract_disk_access,
     watcher::DiskWatcher,
@@ -443,7 +443,7 @@ impl DiskFileSystemInner {
         let root_path = self.root_path().to_path_buf();
 
         // create the directory for the filesystem on disk, if it doesn't exist
-        retry_blocking(root_path.clone(), move |path| {
+        offload_blocking(root_path.clone(), move |path: &PathBuf| {
             let _tracing =
                 tracing::info_span!("create root directory", name = display(path.display()))
                     .entered();
@@ -465,8 +465,8 @@ impl DiskFileSystemInner {
             |fs_context| fs_context.created_directories.contains(directory),
         );
         if !already_created {
-            let func = |p: &Path| std::fs::create_dir_all(p);
-            retry_blocking(directory.to_path_buf(), func)
+            let func = |p: &PathBuf| std::fs::create_dir_all(p);
+            offload_blocking(directory.to_path_buf(), func)
                 .concurrency_limited(&self.write_semaphore)
                 .instrument(tracing::info_span!(
                     "create directory",
@@ -679,22 +679,26 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
-        let content = match retry_blocking(full_path.clone(), |path: &Path| File::from_path(path))
-            .concurrency_limited(&self.inner.read_semaphore)
-            .instrument(tracing::info_span!(
-                "read file",
-                name = display(full_path.display())
-            ))
-            .await
-        {
-            Ok(file) => FileContent::new(file),
-            Err(e) if e.kind() == ErrorKind::NotFound || e.kind() == ErrorKind::InvalidFilename => {
-                FileContent::NotFound
-            }
-            Err(e) => {
-                bail!(anyhow!(e).context(format!("reading file {}", full_path.display())))
-            }
-        };
+        let content =
+            match offload_blocking(full_path.clone(), |path: &PathBuf| File::from_path(path))
+                .concurrency_limited(&self.inner.read_semaphore)
+                .instrument(tracing::info_span!(
+                    "read file",
+                    name = display(full_path.display())
+                ))
+                .await
+            {
+                Ok(file) => FileContent::new(file),
+                Err(e)
+                    if e.kind() == ErrorKind::NotFound
+                        || e.kind() == ErrorKind::InvalidFilename =>
+                {
+                    FileContent::NotFound
+                }
+                Err(e) => {
+                    bail!(anyhow!(e).context(format!("reading file {}", full_path.display())))
+                }
+            };
         Ok(content.cell())
     }
 
@@ -712,7 +716,7 @@ impl FileSystem for DiskFileSystem {
 
         // we use the sync std function here as it's a lot faster (600%) in
         // node-file-trace
-        let read_dir = match retry_blocking(full_path.clone(), |path| {
+        let read_dir = match offload_blocking(full_path.clone(), |path: &PathBuf| {
             let _span =
                 tracing::info_span!("read directory", name = display(path.display())).entered();
             std::fs::read_dir(path)
@@ -805,7 +809,7 @@ impl FileSystem for DiskFileSystem {
 
         let _lock = self.inner.lock_path(&full_path).await;
         let link_path =
-            match retry_blocking(full_path.clone(), |path: &Path| std::fs::read_link(path))
+            match offload_blocking(full_path.clone(), |path: &PathBuf| std::fs::read_link(path))
                 .concurrency_limited(&self.inner.read_semaphore)
                 .instrument(tracing::info_span!(
                     "read symlink",
@@ -962,40 +966,43 @@ impl FileSystem for DiskFileSystem {
 
                     let full_path_to_write = full_path.clone();
                     let content = content.clone();
-                    retry_blocking(full_path_to_write.into_owned(), move |full_path| {
-                        use std::io::Write;
+                    offload_blocking(
+                        full_path_to_write.into_owned(),
+                        move |full_path: &PathBuf| {
+                            use std::io::Write;
 
-                        let mut f = std::fs::File::create(full_path)?;
-                        let FileContent::Content(file) = &*content else {
-                            unreachable!()
-                        };
-                        std::io::copy(&mut file.read(), &mut f)?;
-                        #[cfg(unix)]
-                        f.set_permissions(file.meta.permissions.into())?;
-                        f.flush()?;
-
-                        static WRITE_VERSION: LazyLock<bool> = LazyLock::new(|| {
-                            std::env::var_os("TURBO_ENGINE_WRITE_VERSION")
-                                .is_some_and(|v| v == "1" || v == "true")
-                        });
-                        if *WRITE_VERSION {
-                            let mut full_path = full_path.to_owned();
-                            let hash = hash_xxh3_hash64(file);
-                            let ext = full_path.extension();
-                            let ext = if let Some(ext) = ext {
-                                format!("{:016x}.{}", hash, ext.to_string_lossy())
-                            } else {
-                                format!("{hash:016x}")
+                            let mut f = std::fs::File::create(full_path)?;
+                            let FileContent::Content(file) = &*content else {
+                                unreachable!()
                             };
-                            full_path.set_extension(ext);
-                            let mut f = std::fs::File::create(&full_path)?;
                             std::io::copy(&mut file.read(), &mut f)?;
                             #[cfg(unix)]
                             f.set_permissions(file.meta.permissions.into())?;
                             f.flush()?;
-                        }
-                        Ok::<(), io::Error>(())
-                    })
+
+                            static WRITE_VERSION: LazyLock<bool> = LazyLock::new(|| {
+                                std::env::var_os("TURBO_ENGINE_WRITE_VERSION")
+                                    .is_some_and(|v| v == "1" || v == "true")
+                            });
+                            if *WRITE_VERSION {
+                                let mut full_path = full_path.to_owned();
+                                let hash = hash_xxh3_hash64(file);
+                                let ext = full_path.extension();
+                                let ext = if let Some(ext) = ext {
+                                    format!("{:016x}.{}", hash, ext.to_string_lossy())
+                                } else {
+                                    format!("{hash:016x}")
+                                };
+                                full_path.set_extension(ext);
+                                let mut f = std::fs::File::create(&full_path)?;
+                                std::io::copy(&mut file.read(), &mut f)?;
+                                #[cfg(unix)]
+                                f.set_permissions(file.meta.permissions.into())?;
+                                f.flush()?;
+                            }
+                            Ok::<(), io::Error>(())
+                        },
+                    )
                     .concurrency_limited(&inner.write_semaphore)
                     .instrument(tracing::info_span!(
                         "write file",
@@ -1005,7 +1012,7 @@ impl FileSystem for DiskFileSystem {
                     .with_context(|| format!("failed to write to {}", full_path.display()))?;
                 }
                 FileContent::NotFound => {
-                    retry_blocking(full_path.clone().into_owned(), |path| {
+                    offload_blocking(full_path.clone().into_owned(), |path: &PathBuf| {
                         std::fs::remove_file(path)
                     })
                     .concurrency_limited(&inner.write_semaphore)
@@ -1108,19 +1115,20 @@ impl FileSystem for DiskFileSystem {
 
             // TODO(sokra) perform a untracked read here, register an invalidator and get
             // all existing invalidators
-            let old_content = match retry_blocking(full_path.clone().into_owned(), |path| {
-                std::fs::read_link(path)
-            })
-            .concurrency_limited(&inner.read_semaphore)
-            .instrument(tracing::info_span!(
-                "read symlink before write",
-                name = display(full_path.display())
-            ))
-            .await
-            {
-                Ok(res) => Some((res.is_absolute(), res)),
-                Err(_) => None,
-            };
+            let old_content =
+                match offload_blocking(full_path.clone().into_owned(), |path: &PathBuf| {
+                    std::fs::read_link(path)
+                })
+                .concurrency_limited(&inner.read_semaphore)
+                .instrument(tracing::info_span!(
+                    "read symlink before write",
+                    name = display(full_path.display())
+                ))
+                .await
+                {
+                    Ok(res) => Some((res.is_absolute(), res)),
+                    Err(_) => None,
+                };
             let is_equal = match (&os_specific_link_content, &old_content) {
                 (
                     OsSpecificLinkContent::Link { target, .. },
@@ -1174,7 +1182,7 @@ impl FileSystem for DiskFileSystem {
                             })?;
                     }
 
-                    retry_blocking(target.clone(), move |target_path| {
+                    offload_blocking(target.clone(), move |target_path:&PathBuf| {
                         let _span = tracing::info_span!(
                             "write symlink",
                             name = display(target_path.display())
@@ -1242,7 +1250,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path)?;
 
         let _lock = self.inner.lock_path(&full_path).await;
-        let meta = retry_blocking(full_path.clone(), |path| std::fs::metadata(path))
+        let meta = offload_blocking(full_path.clone(), |path: &PathBuf| std::fs::metadata(path))
             .concurrency_limited(&self.inner.read_semaphore)
             .instrument(tracing::info_span!(
                 "read metadata",
@@ -1257,7 +1265,7 @@ impl FileSystem for DiskFileSystem {
 
 async fn remove_symbolic_link_dir_helper(path: impl AsRef<Path>) -> Result<()> {
     let path = path.as_ref();
-    retry_blocking(path.to_owned(), move |path| {
+    offload_blocking(path.to_owned(), move |path: &PathBuf| {
         if cfg!(windows) {
             // Junction points on Windows are treated as directories, and therefore need
             // `remove_dir`:
@@ -1886,7 +1894,10 @@ impl FileContent {
     /// read.
     async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
         let old_file = extract_disk_access(
-            retry_blocking(path.to_path_buf(), |path| std::fs::File::open(path)).await,
+            offload_blocking(path.to_path_buf(), |path: &PathBuf| {
+                std::fs::File::open(path)
+            })
+            .await,
             path,
         )?;
         let Some(old_file) = old_file else {
@@ -1901,9 +1912,9 @@ impl FileContent {
         };
 
         let old_meta = extract_disk_access(
-            retry_blocking(path.to_path_buf(), {
+            offload_blocking(path.to_path_buf(), {
                 let file_for_metadata = old_file.try_clone()?;
-                move |_| file_for_metadata.metadata()
+                move |_: &PathBuf| file_for_metadata.metadata()
             })
             .await,
             path,
