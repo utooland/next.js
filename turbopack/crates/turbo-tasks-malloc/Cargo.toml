@@ -10,13 +10,13 @@ autobenches = false
 bench = false
 
 [target.'cfg(not(any(target_os = "linux",  target_env = "musl")))'.dependencies]
-mimalloc = {  git = "https://github.com/utooland/mimalloc_rust.git", features = [
+mimalloc = {  version = "0.1.48", features = [
   "v3",
   "extended"
 ], optional = true }
 
 [target.'cfg(all(target_os = "linux", not(target_env = "musl")))'.dependencies]
-mimalloc = { git = "https://github.com/utooland/mimalloc_rust.git", features = [
+mimalloc = { version ="0.1.48", features = [
   "v3",
   "extended",
   "local_dynamic_tls",
