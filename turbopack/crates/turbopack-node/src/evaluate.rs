@@ -10,9 +10,7 @@ use turbo_tasks::{
     TryJoinIterExt, Vc, duration_span, fxindexmap, get_effects, trace::TraceRawVcs,
 };
 use turbo_tasks_env::{EnvMap, ProcessEnv};
-use turbo_tasks_fs::{
-    File, FileContent, FileSystemPath, json::parse_json_with_source_context, to_sys_path,
-};
+use turbo_tasks_fs::{File, FileContent, FileSystemPath, to_sys_path};
 use turbopack_core::{
     asset::AssetContent,
     changed::content_changed,
@@ -102,9 +100,9 @@ pub trait EvaluateOperation: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait Operation: Send {
-    async fn recv(&mut self) -> Result<String>;
+    async fn recv(&mut self) -> Result<Vec<u8>>;
 
-    async fn send(&mut self, data: String) -> Result<()>;
+    async fn send(&mut self, data: Vec<u8>) -> Result<()>;
 
     async fn wait_or_kill(&mut self) -> Result<ExitStatus>;
 
@@ -374,7 +372,7 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
         || async {
             let mut operation = pool.operation().await?;
             operation
-                .send(serde_json::to_string(
+                .send(serde_json::to_vec(
                     &EvalJavaScriptOutgoingMessage::Evaluate {
                         args: args.iter().map(|v| &**v).collect(),
                     },
@@ -548,7 +546,7 @@ async fn pull_operation<T: EvaluateContext>(
     let _guard = duration_span!("Node.js evaluation");
 
     loop {
-        let message = parse_json_with_source_context(&operation.recv().await?)?;
+        let message = serde_json::from_slice(&operation.recv().await?)?;
 
         match message {
             EvalJavaScriptIncomingMessage::Error(error) => {
@@ -571,7 +569,7 @@ async fn pull_operation<T: EvaluateContext>(
                 {
                     Ok(response) => {
                         operation
-                            .send(serde_json::to_string(
+                            .send(serde_json::to_vec(
                                 &EvalJavaScriptOutgoingMessage::Result {
                                     id,
                                     error: None,
@@ -582,7 +580,7 @@ async fn pull_operation<T: EvaluateContext>(
                     }
                     Err(e) => {
                         operation
-                            .send(serde_json::to_string(
+                            .send(serde_json::to_vec(
                                 &EvalJavaScriptOutgoingMessage::Result {
                                     id,
                                     error: Some(PrettyPrintError(&e).to_string()),
