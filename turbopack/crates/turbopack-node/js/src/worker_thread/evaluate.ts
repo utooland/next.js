@@ -1,7 +1,7 @@
 import { threadId as workerId, workerData } from 'worker_threads'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
-import { Binding, TaskChannel } from './taskChannel'
+import { Binding, TaskChannel, TEXT_DECODER, TEXT_ENCODER } from './taskChannel'
 
 let binding: Binding
 
@@ -18,9 +18,6 @@ if (workerData.binding) {
 }
 
 binding.workerCreated(workerId)
-
-const TEXT_ENCODER = new TextEncoder()
-const TEXT_DECODER = new TextDecoder()
 
 export const run = async (
   moduleFactory: () => Promise<{

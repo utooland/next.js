@@ -1,4 +1,9 @@
-import { Binding, TaskChannel } from '../worker_thread/taskChannel'
+import {
+  Binding,
+  TaskChannel,
+  TEXT_DECODER,
+  TEXT_ENCODER,
+} from '../worker_thread/taskChannel'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
 
@@ -17,9 +22,6 @@ const { workerId } = self.workerData
 let binding: Binding = self.workerData.binding
 
 binding.workerCreated(workerId)
-
-const TEXT_ENCODER = new TextEncoder()
-const TEXT_DECODER = new TextDecoder()
 
 export const run = async (
   moduleFactory: () => Promise<{

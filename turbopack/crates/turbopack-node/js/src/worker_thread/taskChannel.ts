@@ -1,5 +1,8 @@
 import { structuredError } from '../error'
 
+export const TEXT_ENCODER = new TextEncoder()
+export const TEXT_DECODER = new TextDecoder()
+
 export interface TaskMessage {
   taskId: number
   data: Uint8Array
