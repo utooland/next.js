@@ -52,7 +52,7 @@ export interface NapiWorkerTermination {
 }
 export interface NapiTaskMessage {
   taskId: number
-  data: string
+  data: Buffer
 }
 export declare function recvTaskMessageInWorker(
   workerId: number

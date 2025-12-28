@@ -1,7 +1,7 @@
 import { threadId as workerId, workerData } from 'worker_threads'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
-import { Binding, TaskChannel } from './taskChannel'
+import { Binding, TaskChannel, TEXT_ENCODER, TEXT_DECODER } from './taskChannel'
 
 if (!workerData.hasOwnProperty('bindingPath')) {
   throw new Error('bindingPath not set in loader worker thread')
@@ -36,19 +36,23 @@ export const run = async (
       const value = await getValue(new TaskChannel(binding, taskId), ...args)
       await binding.sendTaskMessage({
         taskId,
-        data: JSON.stringify({
-          type: 'end',
-          data: value === undefined ? undefined : JSON.stringify(value),
-          duration: 0,
-        }),
+        data: TEXT_ENCODER.encode(
+          JSON.stringify({
+            type: 'end',
+            data: value === undefined ? undefined : JSON.stringify(value),
+            duration: 0,
+          })
+        ),
       })
     } catch (err) {
       await binding.sendTaskMessage({
         taskId,
-        data: JSON.stringify({
-          type: 'error',
-          ...structuredError(err as Error),
-        }),
+        data: TEXT_ENCODER.encode(
+          JSON.stringify({
+            type: 'error',
+            ...structuredError(err as Error),
+          })
+        ),
       })
     }
     if (queue.length > 0) {
@@ -60,9 +64,10 @@ export const run = async (
   }
 
   while (true) {
-    const { taskId, data: msg_str } =
+    const { taskId, data: msg_data } =
       await binding.recvTaskMessageInWorker(workerId)
 
+    const msg_str = TEXT_DECODER.decode(msg_data)
     const msg = JSON.parse(msg_str) as
       | {
           type: 'evaluate'

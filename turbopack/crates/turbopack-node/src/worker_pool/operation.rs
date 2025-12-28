@@ -66,15 +66,15 @@ pub(super) struct WorkerOptions {
 
 pub(super) struct TaskMessage {
     pub task_id: u32,
-    pub data: String,
+    pub data: Vec<u8>,
 }
 
 #[derive(Default)]
 pub(crate) struct WorkerPoolOperation {
     #[allow(clippy::type_complexity)]
-    worker_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<(u32, String)>>>>,
+    worker_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<(u32, Vec<u8>)>>>>,
     #[allow(clippy::type_complexity)]
-    task_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<String>>>>,
+    task_routed_channel: Mutex<FxHashMap<u32, Arc<MessageChannel<Vec<u8>>>>>,
     pub(crate) pools: Mutex<FxHashMap<Arc<WorkerOptions>, Arc<PoolState>>>,
 }
 
@@ -140,7 +140,7 @@ impl WorkerPoolOperation {
         &self,
         worker_id: u32,
         task_id: u32,
-        message: String,
+        message: Vec<u8>,
     ) -> Result<()> {
         let channel = {
             let mut map = self.worker_routed_channel.lock();
@@ -170,7 +170,7 @@ impl WorkerPoolOperation {
         self.worker_routed_channel.lock().remove(&worker_id);
     }
 
-    pub async fn recv_task_message(&self, task_id: u32) -> Result<String> {
+    pub async fn recv_task_message(&self, task_id: u32) -> Result<Vec<u8>> {
         let channel = {
             let mut map = self.task_routed_channel.lock();
             map.entry(task_id)
@@ -191,7 +191,7 @@ impl WorkerPoolOperation {
     pub(crate) async fn recv_task_message_in_worker(
         &self,
         worker_id: u32,
-    ) -> Result<(u32, String)> {
+    ) -> Result<(u32, Vec<u8>)> {
         let channel = {
             let mut map = self.worker_routed_channel.lock();
             map.entry(worker_id)
@@ -224,7 +224,7 @@ pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
 pub(crate) async fn send_message_to_worker(
     worker_id: u32,
     task_id: u32,
-    message: String,
+    message: Vec<u8>,
 ) -> Result<()> {
     WORKER_POOL_OPERATION
         .send_message_to_worker(worker_id, task_id, message)
@@ -235,7 +235,7 @@ pub(crate) fn terminate_worker(worker_options: Arc<WorkerOptions>, worker_id: u3
     WORKER_POOL_OPERATION.terminate_worker(worker_options, worker_id)
 }
 
-pub(crate) async fn recv_task_message(task_id: u32) -> Result<String> {
+pub(crate) async fn recv_task_message(task_id: u32) -> Result<Vec<u8>> {
     WORKER_POOL_OPERATION.recv_task_message(task_id).await
 }
 
@@ -268,11 +268,11 @@ impl Drop for WorkerOperation {
 
 #[async_trait::async_trait]
 impl Operation for WorkerOperation {
-    async fn recv(&mut self) -> Result<String> {
+    async fn recv(&mut self) -> Result<Vec<u8>> {
         recv_task_message(self.task_id).await
     }
 
-    async fn send(&mut self, message: String) -> Result<()> {
+    async fn send(&mut self, message: Vec<u8>) -> Result<()> {
         send_message_to_worker(self.worker_id, self.task_id, message).await
     }
 
