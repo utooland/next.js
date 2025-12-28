@@ -121,15 +121,22 @@ pub fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
 pub struct WasmTaskMessage {
     #[wasm_bindgen(js_name = "taskId")]
     pub task_id: u32,
-    #[wasm_bindgen(getter_with_clone)]
-    pub data: String,
+    data: js_sys::Uint8Array,
+}
+
+#[wasm_bindgen]
+impl WasmTaskMessage {
+    #[wasm_bindgen(getter)]
+    pub fn data(&self) -> js_sys::Uint8Array {
+        self.data.clone()
+    }
 }
 
 impl From<TaskMessage> for WasmTaskMessage {
     fn from(msg: TaskMessage) -> Self {
         Self {
             task_id: msg.task_id,
-            data: msg.data,
+            data: js_sys::Uint8Array::from(&msg.data[..]),
         }
     }
 }
@@ -150,10 +157,10 @@ pub async fn send_task_message(message: JsValue) -> Result<(), JsError> {
         .as_f64()
         .ok_or_else(|| JsError::new("taskId must be a number"))? as u32;
 
-    let data = js_sys::Reflect::get(&message, &"data".into())
-        .map_err(|_| JsError::new("Failed to get data"))?
-        .as_string()
-        .ok_or_else(|| JsError::new("data must be a string"))?;
+    let data_js = js_sys::Reflect::get(&message, &"data".into())
+        .map_err(|_| JsError::new("Failed to get data"))?;
+
+    let data = js_sys::Uint8Array::new(&data_js).to_vec();
 
     WORKER_POOL_OPERATION
         .send_task_message(TaskMessage { task_id, data })

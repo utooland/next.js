@@ -144,13 +144,16 @@ pub struct NapiWorkerTermination {
 #[allow(unused)]
 pub struct NapiTaskMessage {
     pub task_id: u32,
-    pub data: String,
+    pub data: napi::bindgen_prelude::Buffer,
 }
 
 impl From<NapiTaskMessage> for TaskMessage {
     fn from(message: NapiTaskMessage) -> Self {
         let NapiTaskMessage { task_id, data } = message;
-        TaskMessage { task_id, data }
+        TaskMessage {
+            task_id,
+            data: data.into(),
+        }
     }
 }
 
@@ -163,7 +166,7 @@ pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTas
         .await?;
     Ok(NapiTaskMessage {
         task_id,
-        data: message,
+        data: message.into(),
     })
 }
 

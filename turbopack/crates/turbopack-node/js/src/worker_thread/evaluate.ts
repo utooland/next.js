@@ -19,6 +19,9 @@ if (workerData.binding) {
 
 binding.workerCreated(workerId)
 
+const TEXT_ENCODER = new TextEncoder()
+const TEXT_DECODER = new TextDecoder()
+
 export const run = async (
   moduleFactory: () => Promise<{
     init?: () => Promise<void>
@@ -42,19 +45,23 @@ export const run = async (
       const value = await getValue(new TaskChannel(binding, taskId), ...args)
       await binding.sendTaskMessage({
         taskId,
-        data: JSON.stringify({
-          type: 'end',
-          data: value === undefined ? undefined : JSON.stringify(value),
-          duration: 0,
-        }),
+        data: TEXT_ENCODER.encode(
+          JSON.stringify({
+            type: 'end',
+            data: value === undefined ? undefined : JSON.stringify(value),
+            duration: 0,
+          })
+        ),
       })
     } catch (err) {
       await binding.sendTaskMessage({
         taskId,
-        data: JSON.stringify({
-          type: 'error',
-          ...structuredError(err as Error),
-        }),
+        data: TEXT_ENCODER.encode(
+          JSON.stringify({
+            type: 'error',
+            ...structuredError(err as Error),
+          })
+        ),
       })
     }
     if (queue.length > 0) {
@@ -66,10 +73,10 @@ export const run = async (
   }
 
   while (true) {
-    const { taskId, data: msg_str } =
+    const { taskId, data: msg_buf } =
       await binding.recvTaskMessageInWorker(workerId)
 
-    const msg = JSON.parse(msg_str) as
+    const msg = JSON.parse(TEXT_DECODER.decode(msg_buf)) as
       | {
           type: 'evaluate'
           args: string[]

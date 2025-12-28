@@ -2,7 +2,7 @@ import { structuredError } from '../error'
 
 export interface TaskMessage {
   taskId: number
-  data: string
+  data: Uint8Array
 }
 
 export interface Binding {
@@ -24,10 +24,12 @@ export class TaskChannel {
   async sendInfo(message: any) {
     return await this.binding.sendTaskMessage({
       taskId: this.taskId,
-      data: JSON.stringify({
-        type: 'info',
-        data: message,
-      }),
+      data: Buffer.from(
+        JSON.stringify({
+          type: 'info',
+          data: message,
+        })
+      ),
     })
   }
 
@@ -42,7 +44,9 @@ export class TaskChannel {
     return await this.binding
       .sendTaskMessage({
         taskId: this.taskId,
-        data: JSON.stringify({ type: 'request', id, data: message }),
+        data: Buffer.from(
+          JSON.stringify({ type: 'request', id, data: message })
+        ),
       })
       .then(() => promise)
   }
@@ -51,10 +55,12 @@ export class TaskChannel {
     try {
       await this.binding.sendTaskMessage({
         taskId: this.taskId,
-        data: JSON.stringify({
-          type: 'error',
-          ...structuredError(error),
-        }),
+        data: Buffer.from(
+          JSON.stringify({
+            type: 'error',
+            ...structuredError(error),
+          })
+        ),
       })
     } catch (err) {
       // There's nothing we can do about errors that happen after this point, we can't tell anyone
