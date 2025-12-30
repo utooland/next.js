@@ -28,7 +28,7 @@ struct DebugFnNameTransformer {}
 
 #[async_trait]
 impl CustomTransformer for DebugFnNameTransformer {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "debug_fn_name", skip_all)]
+    #[tracing::instrument(level = "trace", name = "debug_fn_name", skip_all)]
     async fn transform(&self, program: &mut Program, _ctx: &TransformContext<'_>) -> Result<()> {
         program.visit_mut_with(&mut debug_fn_name());
         Ok(())

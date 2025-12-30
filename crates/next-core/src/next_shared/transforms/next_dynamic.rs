@@ -44,7 +44,7 @@ struct NextJsDynamic {
 
 #[async_trait]
 impl CustomTransformer for NextJsDynamic {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "next_dynamic", skip_all)]
+    #[tracing::instrument(level = "trace", name = "next_dynamic", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         program.mutate(next_dynamic(
             self.mode.is_development(),

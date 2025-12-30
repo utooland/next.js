@@ -302,7 +302,7 @@ async fn build_internal(
             .try_join()
             .await
     }
-    .instrument(tracing::info_span!("resolve entries"))
+    .instrument(tracing::trace_span!("resolve entries"))
     .await?;
 
     let module_graph = ModuleGraph::from_modules(
@@ -494,7 +494,7 @@ async fn build_internal(
         }
         anyhow::Ok(all_assets)
     }
-    .instrument(tracing::info_span!("list chunks"))
+    .instrument(tracing::trace_span!("list chunks"))
     .await?;
 
     all_assets

@@ -912,7 +912,7 @@ impl EcmascriptChunkItem for ModuleChunkItem {
         async_module_info: Option<Vc<AsyncModuleInfo>>,
         _estimated: bool,
     ) -> Result<Vc<EcmascriptChunkItemContent>> {
-        let span = tracing::info_span!(
+        let span = tracing::trace_span!(
             "code generation",
             name = display(self.asset_ident().to_string().await?)
         );
@@ -1053,7 +1053,7 @@ impl EcmascriptModuleContentOptions {
                     .collect(),
             )
         }
-        .instrument(tracing::info_span!("precompute code generation"))
+        .instrument(tracing::trace_span!("precompute code generation"))
         .await
     }
 }
@@ -1230,10 +1230,10 @@ impl EcmascriptModuleContent {
                 .into();
 
             emit_content(content, additional_ids)
-                .instrument(tracing::info_span!("emit code"))
+                .instrument(tracing::trace_span!("emit code"))
                 .await
         }
-        .instrument(tracing::info_span!(
+        .instrument(tracing::trace_span!(
             "generate merged code",
             modules = module_options.len()
         ))

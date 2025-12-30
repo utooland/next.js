@@ -19,7 +19,7 @@ impl StyledJsxTransformer {
 
 #[async_trait]
 impl CustomTransformer for StyledJsxTransformer {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "styled_jsx", skip_all)]
+    #[tracing::instrument(level = "trace", name = "styled_jsx", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         program.mutate(styled_jsx::visitor::styled_jsx(
             ctx.source_map.clone(),

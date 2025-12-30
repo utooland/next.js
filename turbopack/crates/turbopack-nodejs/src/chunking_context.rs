@@ -449,7 +449,7 @@ impl ChunkingContext for NodeJsChunkingContext {
         module_graph: Vc<ModuleGraph>,
         availability_info: AvailabilityInfo,
     ) -> Result<Vc<ChunkGroupResult>> {
-        let span = tracing::info_span!("chunking", name = display(ident.to_string().await?));
+        let span = tracing::trace_span!("chunking", name = display(ident.to_string().await?));
         async move {
             let modules = chunk_group.entries();
             let MakeChunkGroupResult {
@@ -493,7 +493,7 @@ impl ChunkingContext for NodeJsChunkingContext {
         extra_referenced_assets: Vc<OutputAssets>,
         availability_info: AvailabilityInfo,
     ) -> Result<Vc<EntryChunkGroupResult>> {
-        let span = tracing::info_span!(
+        let span = tracing::trace_span!(
             "chunking",
             name = display(path.value_to_string().await?),
             chunking_type = "entry",

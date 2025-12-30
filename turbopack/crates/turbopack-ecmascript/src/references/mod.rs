@@ -529,7 +529,7 @@ pub async fn analyze_ecmascript_module(
     module: ResolvedVc<EcmascriptModuleAsset>,
     part: Option<ModulePart>,
 ) -> Result<Vc<AnalyzeEcmascriptModuleResult>> {
-    let span = tracing::info_span!(
+    let span = tracing::trace_span!(
         "analyze ecmascript module",
         name = display(module.ident().to_string().await?)
     );

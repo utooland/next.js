@@ -377,7 +377,7 @@ impl DiskFileSystemInner {
     }
 
     fn invalidate(&self) {
-        let _span = tracing::info_span!("invalidate filesystem", name = &*self.root).entered();
+        let _span = tracing::trace_span!("invalidate filesystem", name = &*self.root).entered();
         let invalidator_map = take(&mut *self.invalidator_map.lock().unwrap());
         let dir_invalidator_map = take(&mut *self.dir_invalidator_map.lock().unwrap());
         let invalidators = invalidator_map
@@ -395,7 +395,7 @@ impl DiskFileSystemInner {
         &self,
         reason: impl Fn(&Path) -> R + Sync,
     ) {
-        let _span = tracing::info_span!("invalidate filesystem", name = &*self.root).entered();
+        let _span = tracing::trace_span!("invalidate filesystem", name = &*self.root).entered();
         let invalidator_map = take(&mut *self.invalidator_map.lock().unwrap());
         let dir_invalidator_map = take(&mut *self.dir_invalidator_map.lock().unwrap());
         let invalidators = invalidator_map
@@ -436,7 +436,7 @@ impl DiskFileSystemInner {
         }
     }
 
-    #[tracing::instrument(level = "info", name = "start filesystem watching", skip_all, fields(path = %self.root))]
+    #[tracing::instrument(level = "trace", name = "start filesystem watching", skip_all, fields(path = %self.root))]
     async fn start_watching_internal(
         self: &Arc<Self>,
         report_invalidation_reason: bool,
@@ -448,7 +448,7 @@ impl DiskFileSystemInner {
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         retry_blocking(root_path.clone(), move |path| {
             let _tracing =
-                tracing::info_span!("create root directory", name = display(path.display()))
+                tracing::trace_span!("create root directory", name = display(path.display()))
                     .entered();
 
             std::fs::create_dir_all(path)
@@ -484,7 +484,7 @@ impl DiskFileSystemInner {
                 std::fs::create_dir_all(p)
             })
             .concurrency_limited(&self.write_semaphore)
-            .instrument(tracing::info_span!(
+            .instrument(tracing::trace_span!(
                 "create directory",
                 name = display(directory.display())
             ))
@@ -705,7 +705,7 @@ impl FileSystem for DiskFileSystem {
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let content = match retry_blocking(full_path.clone(), |path: &Path| File::from_path(path))
             .concurrency_limited(&self.inner.read_semaphore)
-            .instrument(tracing::info_span!(
+            .instrument(tracing::trace_span!(
                 "read file",
                 name = display(full_path.display())
             ))
@@ -748,7 +748,7 @@ impl FileSystem for DiskFileSystem {
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let read_dir = match retry_blocking(full_path.clone(), |path| {
             let _span =
-                tracing::info_span!("read directory", name = display(path.display())).entered();
+                tracing::trace_span!("read directory", name = display(path.display())).entered();
             std::fs::read_dir(path)
         })
         .concurrency_limited(&self.inner.read_semaphore)
@@ -857,7 +857,7 @@ impl FileSystem for DiskFileSystem {
         let link_path =
             match retry_blocking(full_path.clone(), |path: &Path| std::fs::read_link(path))
                 .concurrency_limited(&self.inner.read_semaphore)
-                .instrument(tracing::info_span!(
+                .instrument(tracing::trace_span!(
                     "read symlink",
                     name = display(full_path.display())
                 ))
@@ -986,7 +986,7 @@ impl FileSystem for DiskFileSystem {
             let compare = content
                 .streaming_compare(&full_path)
                 .concurrency_limited(&inner.read_semaphore)
-                .instrument(tracing::info_span!(
+                .instrument(tracing::trace_span!(
                     "read file before write",
                     name = display(full_path.display())
                 ))
@@ -1072,7 +1072,7 @@ impl FileSystem for DiskFileSystem {
                             }
                         }
                     }
-                    .instrument(tracing::info_span!(
+                    .instrument(tracing::trace_span!(
                         "write file",
                         name = display(full_path.display())
                     ))
@@ -1093,7 +1093,7 @@ impl FileSystem for DiskFileSystem {
                             wasm_fs_offload::CLIENT.remove_file(full_path.clone())
                         }
                     }
-                    .instrument(tracing::info_span!(
+                    .instrument(tracing::trace_span!(
                         "remove file",
                         name = display(full_path.display())
                     ))
@@ -1163,7 +1163,7 @@ impl FileSystem for DiskFileSystem {
                 std::fs::read_link(path)
             })
             .concurrency_limited(&inner.read_semaphore)
-            .instrument(tracing::info_span!(
+            .instrument(tracing::trace_span!(
                 "read symlink before write",
                 name = display(full_path.display())
             ))
@@ -1218,7 +1218,7 @@ impl FileSystem for DiskFileSystem {
                     let full_path = full_path.into_owned();
                     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                     retry_blocking(target_path, move |target_path| {
-                        let _span = tracing::info_span!(
+                        let _span = tracing::trace_span!(
                             "write symlink",
                             name = display(target_path.display())
                         )
@@ -1294,7 +1294,7 @@ impl FileSystem for DiskFileSystem {
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let meta = retry_blocking(full_path.clone(), |path| std::fs::metadata(path))
             .concurrency_limited(&self.inner.read_semaphore)
-            .instrument(tracing::info_span!(
+            .instrument(tracing::trace_span!(
                 "read metadata",
                 name = display(full_path.display())
             ))
