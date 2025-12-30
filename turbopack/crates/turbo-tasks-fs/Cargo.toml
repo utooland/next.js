@@ -55,7 +55,7 @@ notify-types = { workspace = true }
 notify = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
-tokio-fs-ext = { version = "0.6.5", features = ["opfs_offload", "opfs_watch"] }
+tokio-fs-ext = { version = "0.6.9", features = ["opfs_offload", "opfs_watch"] }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
