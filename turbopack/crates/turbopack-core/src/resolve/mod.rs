@@ -1518,7 +1518,7 @@ pub async fn resolve_inline(
     request: Vc<Request>,
     options: Vc<ResolveOptions>,
 ) -> Result<Vc<ResolveResult>> {
-    let span = tracing::info_span!(
+    let span = tracing::trace_span!(
         "resolving",
         lookup_path = display(lookup_path.value_to_string().await?),
         name = tracing::field::Empty,
@@ -1728,7 +1728,7 @@ async fn resolve_internal_inline(
     request: Vc<Request>,
     options: Vc<ResolveOptions>,
 ) -> Result<Vc<ResolveResult>> {
-    let span = tracing::info_span!(
+    let span = tracing::trace_span!(
         "internal resolving",
         lookup_path = display(lookup_path.value_to_string().await?),
         name = tracing::field::Empty

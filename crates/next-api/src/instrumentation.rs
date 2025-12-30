@@ -203,7 +203,7 @@ impl InstrumentationEndpoint {
 impl Endpoint for InstrumentationEndpoint {
     #[turbo_tasks::function]
     async fn output(self: ResolvedVc<Self>) -> Result<Vc<EndpointOutput>> {
-        let span = tracing::info_span!("instrumentation endpoint");
+        let span = tracing::trace_span!("instrumentation endpoint");
         async move {
             let this = self.await?;
             let output_assets = self.output_assets();

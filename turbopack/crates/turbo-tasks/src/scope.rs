@@ -16,7 +16,7 @@ use std::{
 use once_cell::sync::Lazy;
 use parking_lot::{Condvar, Mutex};
 use tokio::{runtime::Handle, task::block_in_place};
-use tracing::{Span, info_span};
+use tracing::{Span, trace_span};
 
 use crate::{TurboTasksApi, manager::try_turbo_tasks, turbo_tasks_scope};
 
@@ -59,7 +59,7 @@ impl ScopeInner {
             return;
         }
 
-        let _span = info_span!("blocking").entered();
+        let _span = trace_span!("blocking").entered();
 
         // Park up to 1ms without block_in_place to avoid the overhead.
         const TIMEOUT: Duration = Duration::from_millis(1);

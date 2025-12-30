@@ -59,7 +59,7 @@ impl RelayTransformer {
 
 #[async_trait]
 impl CustomTransformer for RelayTransformer {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "relay", skip_all)]
+    #[tracing::instrument(level = "trace", name = "relay", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         // If user supplied artifact_directory, it should be resolvable already.
         // Otherwise, supply default relative path (./__generated__)

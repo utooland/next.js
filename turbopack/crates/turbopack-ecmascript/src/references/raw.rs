@@ -49,7 +49,7 @@ impl FileSourceReference {
 impl ModuleReference for FileSourceReference {
     #[turbo_tasks::function]
     async fn resolve_reference(&self) -> Result<Vc<ModuleResolveResult>> {
-        let span = tracing::info_span!(
+        let span = tracing::trace_span!(
             "trace file",
             pattern = display(self.path.to_string().await?)
         );
@@ -198,7 +198,7 @@ async fn resolve_reference_from_dir(
 impl ModuleReference for DirAssetReference {
     #[turbo_tasks::function]
     async fn resolve_reference(&self) -> Result<Vc<ModuleResolveResult>> {
-        let span = tracing::info_span!(
+        let span = tracing::trace_span!(
             "trace directory",
             pattern = display(self.path.to_string().await?)
         );

@@ -210,7 +210,7 @@ pub async fn get_app_client_references_chunks(
                     && let Some(ssr_chunking_context) = ssr_chunking_context
                 {
                     let availability_info = current_ssr_chunk_group.await?.availability_info;
-                    let _span = tracing::info_span!(
+                    let _span = tracing::trace_span!(
                         "server side rendering",
                         layout_segment = display(&server_component_path),
                     )
@@ -248,7 +248,7 @@ pub async fn get_app_client_references_chunks(
                     .await?;
                 let client_chunk_group = if !client_modules.is_empty() {
                     let availability_info = current_client_chunk_group.await?.availability_info;
-                    let _span = tracing::info_span!(
+                    let _span = tracing::trace_span!(
                         "client side rendering",
                         layout_segment = display(&server_component_path),
                     )
@@ -326,6 +326,6 @@ pub async fn get_app_client_references_chunks(
             .cell())
         }
     }
-    .instrument(tracing::info_span!("process client references"))
+    .instrument(tracing::trace_span!("process client references"))
     .await
 }

@@ -51,7 +51,7 @@ struct ReactRemovePropertiesTransformer {
 
 #[async_trait]
 impl CustomTransformer for ReactRemovePropertiesTransformer {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "react_remove_properties", skip_all)]
+    #[tracing::instrument(level = "trace", name = "react_remove_properties", skip_all)]
     async fn transform(&self, program: &mut Program, _ctx: &TransformContext<'_>) -> Result<()> {
         program.mutate(react_remove_properties::react_remove_properties(
             self.config.clone(),

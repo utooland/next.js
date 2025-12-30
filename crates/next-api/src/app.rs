@@ -956,7 +956,7 @@ impl AppProject {
                 }
                 .cell())
             }
-            .instrument(tracing::info_span!("module graph for endpoint"))
+            .instrument(tracing::trace_span!("module graph for endpoint"))
             .await
         } else {
             Ok(self.project.whole_app_module_graphs())
@@ -1905,19 +1905,19 @@ impl Endpoint for AppEndpoint {
                 ty: AppPageEndpointType::Html,
                 ..
             } => {
-                tracing::info_span!("app endpoint HTML", name = page_name)
+                tracing::trace_span!("app endpoint HTML", name = page_name)
             }
             AppEndpointType::Page {
                 ty: AppPageEndpointType::Rsc,
                 ..
             } => {
-                tracing::info_span!("app endpoint RSC", name = page_name)
+                tracing::trace_span!("app endpoint RSC", name = page_name)
             }
             AppEndpointType::Route { .. } => {
-                tracing::info_span!("app endpoint route", name = page_name)
+                tracing::trace_span!("app endpoint route", name = page_name)
             }
             AppEndpointType::Metadata { .. } => {
-                tracing::info_span!("app endpoint metadata", name = page_name)
+                tracing::trace_span!("app endpoint metadata", name = page_name)
             }
         };
 

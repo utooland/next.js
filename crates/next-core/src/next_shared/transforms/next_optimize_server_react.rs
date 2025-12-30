@@ -34,7 +34,7 @@ struct NextOptimizeServerReact {
 
 #[async_trait]
 impl CustomTransformer for NextOptimizeServerReact {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "next_optimize_server_react", skip_all)]
+    #[tracing::instrument(level = "trace", name = "next_optimize_server_react", skip_all)]
     async fn transform(&self, program: &mut Program, _ctx: &TransformContext<'_>) -> Result<()> {
         program.mutate(optimize_server_react(Config {
             optimize_use_state: self.optimize_use_state,

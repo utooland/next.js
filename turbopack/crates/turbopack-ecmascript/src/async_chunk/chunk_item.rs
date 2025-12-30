@@ -67,7 +67,7 @@ impl AsyncLoaderChunkItem {
     #[turbo_tasks::function]
     async fn chunks_data(self: Vc<Self>) -> Result<Vc<ChunksData>> {
         let this = self.await?;
-        let span = tracing::info_span!(
+        let span = tracing::trace_span!(
             "compute async chunks",
             name = this.module.ident().to_string().await?.as_str()
         );

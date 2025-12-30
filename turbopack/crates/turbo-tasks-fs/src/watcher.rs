@@ -411,7 +411,7 @@ impl DiskWatcher {
         //
         // Best is to start_watching before starting to read
         {
-            let _span = tracing::info_span!("invalidate filesystem").entered();
+            let _span = tracing::trace_span!("invalidate filesystem").entered();
             let invalidator_map = take(&mut *fs_inner.invalidator_map.lock().unwrap());
             let dir_invalidator_map = take(&mut *fs_inner.dir_invalidator_map.lock().unwrap());
             let iter = invalidator_map.into_iter().chain(dir_invalidator_map);
@@ -876,7 +876,7 @@ impl DiskWatcher {
 
 #[instrument(
     parent = None,
-    level = "info",
+    level = "trace",
     name = "file change",
     skip_all,
     fields(name = %path.display())
