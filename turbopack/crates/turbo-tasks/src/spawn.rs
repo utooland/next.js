@@ -8,7 +8,7 @@ use std::{
 use anyhow::Result;
 use futures::{FutureExt, ready};
 use tokio::runtime::Handle;
-use tracing::{Instrument, Span, info_span};
+use tracing::{Instrument, Span, trace_span};
 
 use crate::{
     TurboTasksPanic, capture_future::CaptureFuture, manager::turbo_tasks_future_scope, turbo_tasks,
