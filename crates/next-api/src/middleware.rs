@@ -334,7 +334,7 @@ impl MiddlewareEndpoint {
 impl Endpoint for MiddlewareEndpoint {
     #[turbo_tasks::function]
     async fn output(self: ResolvedVc<Self>) -> Result<Vc<EndpointOutput>> {
-        let span = tracing::info_span!("middleware endpoint");
+        let span = tracing::trace_span!("middleware endpoint");
         async move {
             let this = self.await?;
             let output_assets = self.output_assets();
@@ -348,7 +348,7 @@ impl Endpoint for MiddlewareEndpoint {
                 let client_paths = all_paths_in_root(output_assets, client_relative_root)
                     .into_future()
                     .owned()
-                    .instrument(tracing::info_span!("client_paths"))
+                    .instrument(tracing::trace_span!("client_paths"))
                     .await?;
                 (server_paths, client_paths)
             } else {

@@ -72,7 +72,7 @@ pub fn spawn_blocking<T: Send + 'static>(
 /// is not accounted towards the current turbo-tasks function.
 pub fn spawn_thread(func: impl FnOnce() + Send + 'static) {
     let handle = Handle::current();
-    let span = info_span!("thread").or_current();
+    let span = trace_span!("thread").or_current();
     let turbo_tasks = turbo_tasks();
     thread::spawn(move || {
         let _span = span.entered();
@@ -98,7 +98,7 @@ where
 pub fn block_for_future<T: Send>(future: impl Future<Output = T> + Send + 'static) -> T {
     let handle = Handle::current();
     block_in_place(|| {
-        let _span = info_span!("blocking").entered();
+        let _span = trace_span!("blocking").entered();
         handle.block_on(future)
     })
 }

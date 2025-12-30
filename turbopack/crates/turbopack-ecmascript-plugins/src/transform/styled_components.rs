@@ -85,7 +85,7 @@ impl StyledComponentsTransformer {
 
 #[async_trait]
 impl CustomTransformer for StyledComponentsTransformer {
-    #[tracing::instrument(level = tracing::Level::TRACE, name = "styled_components", skip_all)]
+    #[tracing::instrument(level = "trace", name = "styled_components", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         program.mutate(styled_components::styled_components(
             Some(ctx.file_path_str),

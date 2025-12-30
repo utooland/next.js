@@ -352,7 +352,7 @@ pub async fn parse_css(
     ty: CssModuleAssetType,
     environment: Option<ResolvedVc<Environment>>,
 ) -> Result<Vc<ParseCssResult>> {
-    let span = tracing::info_span!(
+    let span = tracing::trace_span!(
         "parse css",
         name = display(source.ident().to_string().await?)
     );

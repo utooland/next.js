@@ -59,7 +59,7 @@ impl ScopeInner {
             return;
         }
 
-        let _span = info_span!("blocking").entered();
+        let _span = trace_span!("blocking").entered();
 
         // Park up to 1ms without block_in_place to avoid the overhead.
         const TIMEOUT: Duration = Duration::from_millis(1);

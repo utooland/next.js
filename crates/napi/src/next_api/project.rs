@@ -554,7 +554,7 @@ pub fn project_new(
                             println!("Failed to benchmark file I/O: {err}");
                         }
                     }
-                    .instrument(tracing::info_span!("benchmark file I/O"))
+                    .instrument(tracing::trace_span!("benchmark file I/O"))
                 });
             }
 
@@ -564,7 +564,7 @@ pub fn project_new(
                 exit_receiver: tokio::sync::Mutex::new(Some(exit_receiver)),
             }))
         }
-        .instrument(tracing::info_span!("create project")),
+        .instrument(tracing::trace_span!("create project")),
     )
 }
 
@@ -638,7 +638,9 @@ async fn benchmark_file_io(turbo_tasks: NextTurboTasks, directory: FileSystemPat
         }
         anyhow::Ok(())
     }
-    .instrument(tracing::info_span!("benchmark file IO (measurement)", path = %temp_path.display()))
+    .instrument(
+        tracing::trace_span!("benchmark file IO (measurement)", path = %temp_path.display()),
+    )
     .await?;
 
     let duration = Instant::now().duration_since(start);
@@ -652,7 +654,7 @@ async fn benchmark_file_io(turbo_tasks: NextTurboTasks, directory: FileSystemPat
     Ok(())
 }
 
-#[tracing::instrument(level = "info", name = "update project", skip_all)]
+#[tracing::instrument(level = "trace", name = "update project", skip_all)]
 #[napi]
 pub async fn project_update(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -715,7 +717,7 @@ async fn project_on_exit_internal(project: &ProjectInstance) {
 /// This is used in builds where it's important that we completely persist turbo-tasks to disk, but
 /// it's skipped in the development server (`project_on_exit` is used instead with a short timeout),
 /// where we prioritize fast exit and user responsiveness over all else.
-#[tracing::instrument(level = "info", name = "shutdown project", skip_all)]
+#[tracing::instrument(level = "trace", name = "shutdown project", skip_all)]
 #[napi]
 pub async fn project_shutdown(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -964,7 +966,7 @@ struct AllWrittenEntrypointsWithIssues {
     effects: Arc<Effects>,
 }
 
-#[tracing::instrument(level = "info", name = "write all entrypoints to disk", skip_all)]
+#[tracing::instrument(level = "trace", name = "write all entrypoints to disk", skip_all)]
 #[napi]
 pub async fn project_write_all_entrypoints_to_disk(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1081,7 +1083,7 @@ async fn output_assets_operation(
     ))
 }
 
-#[tracing::instrument(level = "info", name = "get entrypoints", skip_all)]
+#[tracing::instrument(level = "trace", name = "get entrypoints", skip_all)]
 #[napi]
 pub async fn project_entrypoints(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1124,7 +1126,7 @@ pub async fn project_entrypoints(
     })
 }
 
-#[tracing::instrument(level = "info", name = "subscribe to entrypoints", skip_all)]
+#[tracing::instrument(level = "trace", name = "subscribe to entrypoints", skip_all)]
 #[napi(ts_return_type = "{ __napiType: \"RootTask\" }")]
 pub fn project_entrypoints_subscribe(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1150,7 +1152,7 @@ pub fn project_entrypoints_subscribe(
                 effects.apply().await?;
                 Ok((entrypoints.clone(), issues.clone(), diagnostics.clone()))
             }
-            .instrument(tracing::info_span!("entrypoints subscription"))
+            .instrument(tracing::trace_span!("entrypoints subscription"))
         },
         move |ctx| {
             let (entrypoints, issues, diags) = ctx.value;
@@ -1211,7 +1213,7 @@ fn project_hmr_update_operation(
     project.hmr_update(identifier, *state)
 }
 
-#[tracing::instrument(level = "info", name = "get HMR events", skip(project, func))]
+#[tracing::instrument(level = "trace", name = "get HMR events", skip(project, func))]
 #[napi(ts_return_type = "{ __napiType: \"RootTask\" }")]
 pub fn project_hmr_events(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1334,7 +1336,7 @@ fn project_container_hmr_identifiers_operation(
     container.hmr_identifiers()
 }
 
-#[tracing::instrument(level = "info", name = "get HMR identifiers", skip_all)]
+#[tracing::instrument(level = "trace", name = "get HMR identifiers", skip_all)]
 #[napi(ts_return_type = "{ __napiType: \"RootTask\" }")]
 pub fn project_hmr_identifiers_subscribe(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1711,7 +1713,7 @@ pub async fn project_trace_source_operation(
     })))
 }
 
-#[tracing::instrument(level = "info", name = "apply SourceMap to stack frame", skip_all)]
+#[tracing::instrument(level = "trace", name = "apply SourceMap to stack frame", skip_all)]
 #[napi]
 pub async fn project_trace_source(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1738,7 +1740,7 @@ pub async fn project_trace_source(
         .map_err(|e| napi::Error::from_reason(PrettyPrintError(&e.into()).to_string()))
 }
 
-#[tracing::instrument(level = "info", name = "get source content for asset", skip_all)]
+#[tracing::instrument(level = "trace", name = "get source content for asset", skip_all)]
 #[napi]
 pub async fn project_get_source_for_asset(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,
@@ -1772,7 +1774,7 @@ pub async fn project_get_source_for_asset(
         .map_err(|e| napi::Error::from_reason(PrettyPrintError(&e.into()).to_string()))
 }
 
-#[tracing::instrument(level = "info", name = "get SourceMap for asset", skip_all)]
+#[tracing::instrument(level = "trace", name = "get SourceMap for asset", skip_all)]
 #[napi]
 pub async fn project_get_source_map(
     #[napi(ts_arg_type = "{ __napiType: \"Project\" }")] project: External<ProjectInstance>,

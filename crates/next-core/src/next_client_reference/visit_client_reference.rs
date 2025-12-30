@@ -125,7 +125,7 @@ pub async fn find_server_entries(
         }
         .cell())
     }
-    .instrument(tracing::info_span!("find server entries"))
+    .instrument(tracing::trace_span!("find server entries"))
     .await
 }
 
@@ -265,16 +265,16 @@ impl Visit<FindServerEntriesNode> for FindServerEntries {
         }
         match node {
             FindServerEntriesNode::ClientReference => {
-                tracing::info_span!("client reference")
+                tracing::trace_span!("client reference")
             }
             FindServerEntriesNode::Internal(_, name) => {
-                tracing::info_span!("module", name = display(name.as_ref().unwrap()))
+                tracing::trace_span!("module", name = display(name.as_ref().unwrap()))
             }
             FindServerEntriesNode::ServerUtilEntry(_, name) => {
-                tracing::info_span!("server util", name = display(name.as_ref().unwrap()))
+                tracing::trace_span!("server util", name = display(name.as_ref().unwrap()))
             }
             FindServerEntriesNode::ServerComponentEntry(_, name) => {
-                tracing::info_span!("layout segment", name = display(name.as_ref().unwrap()))
+                tracing::trace_span!("layout segment", name = display(name.as_ref().unwrap()))
             }
         }
     }

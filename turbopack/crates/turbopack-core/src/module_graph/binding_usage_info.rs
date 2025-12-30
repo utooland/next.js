@@ -86,7 +86,7 @@ pub async fn compute_binding_usage_info(
     graph: ResolvedVc<ModuleGraph>,
     remove_unused_imports: bool,
 ) -> Result<Vc<BindingUsageInfo>> {
-    let span_outer = tracing::info_span!(
+    let span_outer = tracing::trace_span!(
         "compute bindung usage info",
         visit_count = tracing::field::Empty,
         unused_reference_count = tracing::field::Empty

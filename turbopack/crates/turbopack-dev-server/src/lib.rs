@@ -30,7 +30,7 @@ use hyper::{
 use parking_lot::Mutex;
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::task::JoinHandle;
-use tracing::{Instrument, Level, Span, event, info_span};
+use tracing::{Instrument, Level, Span, event, trace_span};
 use turbo_tasks::{
     NonLocalValue, OperationVc, TurboTasksApi, Vc, apply_effects, run_once_with_reason,
     trace::TraceRawVcs, util::FormatDuration,
@@ -128,7 +128,7 @@ impl DevServerBuilder {
             let ongoing_side_effects = ongoing_side_effects.clone();
             async move {
                 let handler = move |request: Request<hyper::Body>| {
-                    let request_span = info_span!(parent: None, "request", name = ?request.uri());
+                    let request_span = trace_span!(parent: None, "request", name = ?request.uri());
                     let start = Instant::now();
                     let tt = tt.clone();
                     let get_issue_reporter = get_issue_reporter.clone();

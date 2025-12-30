@@ -158,7 +158,7 @@ pub async fn apply_effects(source: impl CollectiblesSource) -> Result<()> {
     if effects.is_empty() {
         return Ok(());
     }
-    let span = tracing::info_span!("apply effects", count = effects.len());
+    let span = tracing::trace_span!("apply effects", count = effects.len());
     APPLY_EFFECTS_CONTEXT
         .scope(Default::default(), async move {
             // Limit the concurrency of effects
@@ -242,7 +242,7 @@ impl Eq for Effects {}
 impl Effects {
     /// Applies all effects that have been captured by this struct.
     pub async fn apply(&self) -> Result<()> {
-        let span = tracing::info_span!("apply effects", count = self.effects.len());
+        let span = tracing::trace_span!("apply effects", count = self.effects.len());
         APPLY_EFFECTS_CONTEXT
             .scope(Default::default(), async move {
                 // Limit the concurrency of effects

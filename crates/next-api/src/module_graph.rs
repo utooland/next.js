@@ -62,7 +62,7 @@ impl NextDynamicGraphs {
                 .try_join()
                 .await
         }
-        .instrument(tracing::info_span!("generating next/dynamic graphs"))
+        .instrument(tracing::trace_span!("generating next/dynamic graphs"))
         .await?;
         Ok(Self(next_dynamic).cell())
     }
@@ -89,7 +89,7 @@ impl NextDynamicGraphs {
         &self,
         entry: Vc<Box<dyn Module>>,
     ) -> Result<Vc<DynamicImportEntriesWithImporter>> {
-        let span = tracing::info_span!("collect all next/dynamic imports for endpoint");
+        let span = tracing::trace_span!("collect all next/dynamic imports for endpoint");
         async move {
             if let [graph] = &self.0[..] {
                 // Just a single graph, no need to merge results
@@ -148,7 +148,7 @@ impl NextDynamicGraph {
         &self,
         entry: ResolvedVc<Box<dyn Module>>,
     ) -> Result<Vc<DynamicImportEntriesWithImporter>> {
-        let span = tracing::info_span!("collect next/dynamic imports for endpoint");
+        let span = tracing::trace_span!("collect next/dynamic imports for endpoint");
         async move {
             let data = &*self.data.await?;
             let graph = self.graph.read().await?;
@@ -259,7 +259,7 @@ impl ServerActionsGraphs {
                 .try_join()
                 .await
         }
-        .instrument(tracing::info_span!("generating server actions graphs"))
+        .instrument(tracing::trace_span!("generating server actions graphs"))
         .await?;
         Ok(Self(server_actions).cell())
     }
@@ -286,7 +286,7 @@ impl ServerActionsGraphs {
         entry: Vc<Box<dyn Module>>,
         rsc_asset_context: Vc<Box<dyn AssetContext>>,
     ) -> Result<Vc<AllActions>> {
-        let span = tracing::info_span!("collect all server actions for endpoint");
+        let span = tracing::trace_span!("collect all server actions for endpoint");
         async move {
             if let [graph] = &self.0[..] {
                 // Just a single graph, no need to merge results
@@ -335,7 +335,7 @@ impl ServerActionsGraph {
         entry: ResolvedVc<Box<dyn Module>>,
         rsc_asset_context: Vc<Box<dyn AssetContext>>,
     ) -> Result<Vc<AllActions>> {
-        let span = tracing::info_span!("collect server actions for endpoint");
+        let span = tracing::trace_span!("collect server actions for endpoint");
         async move {
             let data = &*self.data.await?;
             let data = if self.is_single_page {
@@ -433,7 +433,7 @@ impl ClientReferencesGraphs {
                 .try_join()
                 .await
         }
-        .instrument(tracing::info_span!("generating client references graphs"))
+        .instrument(tracing::trace_span!("generating client references graphs"))
         .await?;
         Ok(Self(client_references).cell())
     }
@@ -462,7 +462,7 @@ impl ClientReferencesGraphs {
         include_traced: bool,
         include_binding_usage: bool,
     ) -> Result<Vc<ClientReferenceGraphResult>> {
-        let span = tracing::info_span!("collect all client references for endpoint");
+        let span = tracing::trace_span!("collect all client references for endpoint");
         async move {
             let result = if let [graph] = &self.0[..] {
                 // Just a single graph, no need to merge results  This also naturally aggregates
@@ -536,7 +536,7 @@ impl ClientReferencesGraph {
         &self,
         entry: ResolvedVc<Box<dyn Module>>,
     ) -> Result<Vc<ClientReferenceGraphResult>> {
-        let span = tracing::info_span!("collect client references for endpoint");
+        let span = tracing::trace_span!("collect client references for endpoint");
         async move {
             let data = &*self.data.await?;
             let graph = self.graph.read().await?;
@@ -763,7 +763,7 @@ type FxModuleNameMap = FxIndexMap<ResolvedVc<Box<dyn Module>>, RcStr>;
 #[turbo_tasks::value(transparent)]
 struct ModuleNameMap(#[bincode(with = "turbo_bincode::indexmap")] pub FxModuleNameMap);
 
-#[tracing::instrument(level = "info", name = "validate pages css imports", skip_all)]
+#[tracing::instrument(level = "trace", name = "validate pages css imports", skip_all)]
 #[turbo_tasks::function]
 async fn validate_pages_css_imports_individual(
     graph: SingleModuleGraphWithBindingUsage,

@@ -270,7 +270,7 @@ impl<T: KeyValueDatabase + Send + Sync + 'static> BackingStorageSealed
             > + Send
             + Sync,
     {
-        let _span = tracing::info_span!("save snapshot", operations = operations.len()).entered();
+        let _span = tracing::trace_span!("save snapshot", operations = operations.len()).entered();
         let mut batch = self.inner.database.write_batch()?;
 
         // these buffers should be large, because they're temporary and re-used.

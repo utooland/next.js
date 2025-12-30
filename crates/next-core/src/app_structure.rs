@@ -245,7 +245,7 @@ async fn get_directory_tree(
     dir: FileSystemPath,
     page_extensions: Vc<Vec<RcStr>>,
 ) -> Result<Vc<DirectoryTree>> {
-    let span = tracing::info_span!(
+    let span = tracing::trace_span!(
         "read app directory tree",
         name = display(dir.value_to_string().await?)
     );
@@ -1435,7 +1435,7 @@ async fn directory_tree_to_entrypoints_internal(
     root_layouts: ResolvedVc<FileSystemPathVec>,
     root_params: ResolvedVc<RootParamVecOption>,
 ) -> Result<Vc<Entrypoints>> {
-    let span = tracing::info_span!("build layout trees", name = display(&app_page));
+    let span = tracing::trace_span!("build layout trees", name = display(&app_page));
     directory_tree_to_entrypoints_internal_untraced(
         app_dir,
         global_metadata,

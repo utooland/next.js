@@ -62,7 +62,7 @@ impl MergedModuleInfo {
 /// - if a merged module has an incoming edge not contained in the group, it has to expose its
 ///   exports into the module cache.
 pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<MergedModuleInfo>> {
-    let span_outer = tracing::info_span!(
+    let span_outer = tracing::trace_span!(
         "compute merged modules",
         module_count = tracing::field::Empty,
         visit_count = tracing::field::Empty,
@@ -89,7 +89,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
 
         // First, compute the depth for each module in the graph
         let module_depth = {
-            let _inner_span = tracing::info_span!("compute depth").entered();
+            let _inner_span = tracing::trace_span!("compute depth").entered();
 
             let mut module_depth =
                 FxHashMap::with_capacity_and_hasher(module_count, Default::default());
@@ -117,7 +117,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
         let mut entry_modules =
             FxHashSet::with_capacity_and_hasher(module_count, Default::default());
 
-        let inner_span = tracing::info_span!("collect mergeable modules");
+        let inner_span = tracing::trace_span!("collect mergeable modules");
         let mergeable = graphs
             .iter()
             .flat_map(|g| g.iter_nodes())
@@ -136,7 +136,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
             .into_iter()
             .collect::<FxHashSet<_>>();
 
-        let inner_span = tracing::info_span!("fixed point traversal").entered();
+        let inner_span = tracing::trace_span!("fixed point traversal").entered();
 
         let mut next_index = 0u32;
         let visit_count = module_graph.traverse_edges_fixed_point_with_priority(
@@ -229,7 +229,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
         )?;
 
         drop(inner_span);
-        let inner_span = tracing::info_span!("chunk group collection").entered();
+        let inner_span = tracing::trace_span!("chunk group collection").entered();
 
         span.record("visit_count", visit_count);
 
@@ -286,7 +286,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
                     FxIndexSet<ResolvedVc<Box<dyn Module>>>,
                 >,
             }
-            let span = tracing::info_span!("map chunk groups").entered();
+            let span = tracing::trace_span!("map chunk groups").entered();
 
             let result = turbo_tasks::parallel::map_collect_chunked_owned::<_, _, Result<Vec<_>>>(
                 // TODO without collect
@@ -411,7 +411,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
             )?;
 
             drop(span);
-            let _span = tracing::info_span!("merging chunk group lists").entered();
+            let _span = tracing::trace_span!("merging chunk group lists").entered();
 
             lists_reverse_indices
                 .reserve_exact(result.iter().map(|r| r.lists_reverse_indices.len()).sum());
@@ -451,7 +451,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
         }
 
         drop(inner_span);
-        let inner_span = tracing::info_span!("exposed computation").entered();
+        let inner_span = tracing::trace_span!("exposed computation").entered();
 
         // We use list.pop() below, so reverse order using negation
         lists_reverse_indices
@@ -517,7 +517,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
         )?;
 
         drop(inner_span);
-        let inner_span = tracing::info_span!("reconciliation").entered();
+        let inner_span = tracing::trace_span!("reconciliation").entered();
         while let Some((_, common_occurrences)) = lists_reverse_indices.pop() {
             if common_occurrences.len() < 2 {
                 // Module exists only in one list, no need to split
@@ -671,7 +671,7 @@ pub async fn compute_merged_modules(module_graph: Vc<ModuleGraph>) -> Result<Vc<
         let lists = lists.into_iter().flatten().collect::<FxHashSet<_>>();
 
         drop(inner_span);
-        let inner_span = tracing::info_span!("merging");
+        let inner_span = tracing::trace_span!("merging");
         // Call MergeableModule impl to merge the modules.
         let result = lists
             .into_iter()

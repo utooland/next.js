@@ -1225,12 +1225,12 @@ impl<B: Backend + 'static> TurboTasksCallApi for TurboTasks<B> {
 }
 
 impl<B: Backend + 'static> TurboTasksApi for TurboTasks<B> {
-    #[instrument(level = "info", skip_all, name = "invalidate")]
+    #[instrument(level = "trace", skip_all, name = "invalidate")]
     fn invalidate(&self, task: TaskId) {
         self.backend.invalidate_task(task, self);
     }
 
-    #[instrument(level = "info", skip_all, name = "invalidate", fields(name = display(&reason)))]
+    #[instrument(level = "trace", skip_all, name = "invalidate", fields(name = display(&reason)))]
     fn invalidate_with_reason(&self, task: TaskId, reason: StaticOrArc<dyn InvalidationReason>) {
         {
             let (_, reason_set) = &mut *self.aggregated_update.lock().unwrap();

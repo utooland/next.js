@@ -302,7 +302,7 @@ impl SingleModuleGraph {
         let mut modules: FxHashMap<ResolvedVc<Box<dyn Module>>, NodeIndex> =
             FxHashMap::with_capacity_and_hasher(node_count, Default::default());
         {
-            let _span = tracing::info_span!("build module graph").entered();
+            let _span = tracing::trace_span!("build module graph").entered();
             for (parent, current) in children_nodes_iter.into_breadth_first_edges() {
                 let (module, graph_node, count) = match current {
                     SingleModuleGraphBuilderNode::Module { module, ident: _ } => {
@@ -815,7 +815,7 @@ impl ModuleGraph {
             result_op.drop_collectibles::<Box<dyn Issue>>();
             anyhow::Ok(*result_vc)
         }
-        .instrument(tracing::info_span!("compute async module info"))
+        .instrument(tracing::trace_span!("compute async module info"))
         .await
     }
 
@@ -1702,10 +1702,10 @@ impl Visit<SingleModuleGraphBuilderNode, RefData> for SingleModuleGraphBuilder<'
             SingleModuleGraphBuilderNode::Module {
                 ident: Some(ident), ..
             } => {
-                tracing::info_span!("module", name = display(ident))
+                tracing::trace_span!("module", name = display(ident))
             }
             SingleModuleGraphBuilderNode::VisitedModule { .. } => {
-                tracing::info_span!("visited module")
+                tracing::trace_span!("visited module")
             }
             _ => unreachable!(),
         };
@@ -1718,15 +1718,15 @@ impl Visit<SingleModuleGraphBuilderNode, RefData> for SingleModuleGraphBuilder<'
                 } => {}
                 ChunkingType::Traced => {
                     let _span = span.entered();
-                    span = tracing::info_span!("traced reference");
+                    span = tracing::trace_span!("traced reference");
                 }
                 ChunkingType::Async => {
                     let _span = span.entered();
-                    span = tracing::info_span!("async reference");
+                    span = tracing::trace_span!("async reference");
                 }
                 ChunkingType::Isolated { _ty: ty, merge_tag } => {
                     let _span = span.entered();
-                    span = tracing::info_span!(
+                    span = tracing::trace_span!(
                         "isolated reference",
                         ty = debug(&ty),
                         merge_tag = debug(&merge_tag)
@@ -1737,7 +1737,7 @@ impl Visit<SingleModuleGraphBuilderNode, RefData> for SingleModuleGraphBuilder<'
                     merge_tag,
                 } => {
                     let _span = span.entered();
-                    span = tracing::info_span!("shared reference", merge_tag = debug(&merge_tag));
+                    span = tracing::trace_span!("shared reference", merge_tag = debug(&merge_tag));
                 }
             };
         }

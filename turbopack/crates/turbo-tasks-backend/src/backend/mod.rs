@@ -1001,7 +1001,7 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
 
         let suspended_operations;
         {
-            let _span = tracing::info_span!("blocking").entered();
+            let _span = tracing::trace_span!("blocking").entered();
             let mut snapshot_request = self.snapshot_request.lock();
             snapshot_request.snapshot_requested = true;
             let active_operations = self
@@ -1200,7 +1200,7 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
             return Some((snapshot_time, false));
         }
 
-        let _span = tracing::info_span!(parent: parent_span, "persist", reason = reason).entered();
+        let _span = tracing::trace_span!(parent: parent_span, "persist", reason = reason).entered();
         {
             if let Err(err) = self.backing_storage.save_snapshot(
                 suspended_operations,
@@ -1276,7 +1276,7 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
         if matches!(self.options.storage_mode, Some(StorageMode::ReadWrite)) {
             // Schedule the snapshot job
             let _span = trace_span!("persisting background job").entered();
-            let _span = tracing::info_span!("thread").entered();
+            let _span = tracing::trace_span!("thread").entered();
             turbo_tasks.schedule_backend_background_job(TurboTasksBackendJob::InitialSnapshot);
         }
     }
