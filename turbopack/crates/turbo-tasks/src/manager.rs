@@ -857,6 +857,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
             .instrument(span)
             .await
         };
+        let future = Box::pin(future);
         let future = global_task_state
             .read()
             .unwrap()
