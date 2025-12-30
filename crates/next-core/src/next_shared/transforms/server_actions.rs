@@ -58,7 +58,7 @@ struct NextServerActions {
 
 #[async_trait]
 impl CustomTransformer for NextServerActions {
-    #[tracing::instrument(level = "trace", name = "server_actions", skip_all)]
+    #[tracing::instrument(level = tracing::Level::TRACE, name = "server_actions", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         let actions = server_actions(
             &FileName::Real(ctx.file_path_str.into()),

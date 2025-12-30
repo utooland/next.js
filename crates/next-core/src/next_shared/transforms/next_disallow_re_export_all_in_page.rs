@@ -31,7 +31,7 @@ struct NextDisallowReExportAllInPage;
 
 #[async_trait]
 impl CustomTransformer for NextDisallowReExportAllInPage {
-    #[tracing::instrument(level = "trace", name = "next_disallow_reexport_all", skip_all)]
+    #[tracing::instrument(level = tracing::Level::TRACE, name = "next_disallow_reexport_all", skip_all)]
     async fn transform(&self, program: &mut Program, _ctx: &TransformContext<'_>) -> Result<()> {
         program.mutate(disallow_re_export_all_in_page(true));
         Ok(())

@@ -32,7 +32,7 @@ use turbopack_core::{
 
 use crate::parse::generate_js_source_map;
 
-#[instrument(level = "trace", name = "minify ecmascript code", skip_all)]
+#[instrument(level = "info", name = "minify ecmascript code", skip_all)]
 pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Result<Code> {
     // Pass None for the debug ID so we don't needlessly compute it for the pre-minified content, it
     // will be added by the Code object returned from this function

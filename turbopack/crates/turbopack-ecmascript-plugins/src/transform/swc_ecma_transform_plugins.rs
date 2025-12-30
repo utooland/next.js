@@ -116,7 +116,7 @@ impl SwcEcmaTransformPluginsTransformer {
 #[async_trait]
 impl CustomTransformer for SwcEcmaTransformPluginsTransformer {
     #[cfg_attr(not(feature = "swc_ecma_transform_plugin"), allow(unused))]
-    #[tracing::instrument(level = "trace", name = "swc_ecma_transform_plugin", skip_all)]
+    #[tracing::instrument(level = tracing::Level::TRACE, name = "swc_ecma_transform_plugin", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         #[cfg(feature = "swc_ecma_transform_plugin")]
         {

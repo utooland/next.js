@@ -369,7 +369,7 @@ impl Ord for TraversalPriority {
 }
 
 pub async fn compute_chunk_group_info(graph: &ModuleGraphRef) -> Result<Vc<ChunkGroupInfo>> {
-    let span_outer = tracing::trace_span!(
+    let span_outer = tracing::info_span!(
         "compute chunk group info",
         module_count = tracing::field::Empty,
         visit_count = tracing::field::Empty,

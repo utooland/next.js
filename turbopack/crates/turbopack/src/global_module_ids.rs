@@ -17,7 +17,7 @@ use turbopack_ecmascript::async_chunk::module::AsyncLoaderModule;
 pub async fn get_global_module_id_strategy(
     module_graph: ResolvedVc<ModuleGraph>,
 ) -> Result<Vc<GlobalModuleIdStrategy>> {
-    let span = tracing::trace_span!("compute module id map");
+    let span = tracing::info_span!("compute module id map");
     async move {
         let module_graph = module_graph.read_graphs().await?;
         let graphs = &module_graph.graphs;

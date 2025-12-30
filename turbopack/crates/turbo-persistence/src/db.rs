@@ -378,7 +378,7 @@ impl<S: ParallelScheduler> TurboPersistence<S> {
     }
 
     /// Reads and decompresses a blob file. This is not backed by any cache.
-    #[tracing::instrument(level = "trace", name = "reading database blob", skip_all)]
+    #[tracing::instrument(level = "info", name = "reading database blob", skip_all)]
     fn read_blob(&self, seq: u32) -> Result<ArcSlice<u8>> {
         let path = self.path.join(format!("{seq:08}.blob"));
         let mmap = unsafe { Mmap::map(&File::open(&path)?)? };
@@ -724,7 +724,7 @@ impl<S: ParallelScheduler> TurboPersistence<S> {
         if self.read_only {
             bail!("Compaction is not allowed on a read only database");
         }
-        let _span = tracing::trace_span!("compact database").entered();
+        let _span = tracing::info_span!("compact database").entered();
         if self
             .active_write_operation
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)

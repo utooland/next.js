@@ -332,7 +332,7 @@ pub async fn compute_module_batches(
     module_graph: Vc<ModuleGraph>,
     _config: &BatchingConfig,
 ) -> Result<Vc<ModuleBatchesGraph>> {
-    let outer_span = tracing::trace_span!(
+    let outer_span = tracing::info_span!(
         "compute module batches",
         initial_pre_batch_items = tracing::field::Empty,
         initial_pre_batches = tracing::field::Empty,

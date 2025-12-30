@@ -122,7 +122,7 @@ async fn get_written_endpoint_with_issues_operation(
     .cell())
 }
 
-#[tracing::instrument(level = "trace", name = "write endpoint to disk", skip_all)]
+#[tracing::instrument(level = "info", name = "write endpoint to disk", skip_all)]
 #[napi]
 pub async fn endpoint_write_to_disk(
     #[napi(ts_arg_type = "{ __napiType: \"Endpoint\" }")] endpoint: External<ExternalEndpoint>,
@@ -156,7 +156,7 @@ pub async fn endpoint_write_to_disk(
     })
 }
 
-#[tracing::instrument(level = "trace", name = "get server-side endpoint changes", skip_all)]
+#[tracing::instrument(level = "info", name = "get server-side endpoint changes", skip_all)]
 #[napi(ts_return_type = "{ __napiType: \"RootTask\" }")]
 pub fn endpoint_server_changed_subscribe(
     #[napi(ts_arg_type = "{ __napiType: \"Endpoint\" }")] endpoint: External<ExternalEndpoint>,
@@ -175,7 +175,7 @@ pub fn endpoint_server_changed_subscribe(
                 result.effects.apply().await?;
                 Ok(result)
             }
-            .instrument(tracing::trace_span!("server changes subscription"))
+            .instrument(tracing::info_span!("server changes subscription"))
         },
         |ctx| {
             let EndpointIssuesAndDiags {
@@ -247,7 +247,7 @@ async fn subscribe_issues_and_diags_operation(
     }
 }
 
-#[tracing::instrument(level = "trace", name = "get client-side endpoint changes", skip_all)]
+#[tracing::instrument(level = "info", name = "get client-side endpoint changes", skip_all)]
 #[napi(ts_return_type = "{ __napiType: \"RootTask\" }")]
 pub fn endpoint_client_changed_subscribe(
     #[napi(ts_arg_type = "{ __napiType: \"Endpoint\" }")] endpoint: External<ExternalEndpoint>,
@@ -270,7 +270,7 @@ pub fn endpoint_client_changed_subscribe(
                 let _ = changed_op.read_strongly_consistent().await?;
                 Ok(())
             }
-            .instrument(tracing::trace_span!("client changes subscription"))
+            .instrument(tracing::info_span!("client changes subscription"))
         },
         |_| {
             Ok(vec![TurbopackResult {

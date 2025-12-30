@@ -40,7 +40,7 @@ use socket2::{Domain, Protocol, Socket, Type};
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use tokio::task::JoinHandle;
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-use tracing::{Instrument, Level, Span, event, trace_span};
+use tracing::{Instrument, Level, Span, event, info_span};
 use turbo_tasks::OperationVc;
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_tasks::{
@@ -147,7 +147,7 @@ impl DevServerBuilder {
             let ongoing_side_effects = ongoing_side_effects.clone();
             async move {
                 let handler = move |request: Request<hyper::Body>| {
-                    let request_span = trace_span!(parent: None, "request", name = ?request.uri());
+                    let request_span = info_span!(parent: None, "request", name = ?request.uri());
                     let start = Instant::now();
                     let tt = tt.clone();
                     let get_issue_reporter = get_issue_reporter.clone();

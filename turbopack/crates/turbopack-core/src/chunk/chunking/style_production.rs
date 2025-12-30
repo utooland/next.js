@@ -20,7 +20,7 @@ pub async fn make_style_production_chunks(
     chunking_config: &ChunkingConfig,
     mut split_context: SplitContext<'_>,
 ) -> Result<()> {
-    let span_outer = tracing::trace_span!(
+    let span_outer = tracing::info_span!(
         "make style production chunks",
         chunk_items = chunk_items.len(),
     );

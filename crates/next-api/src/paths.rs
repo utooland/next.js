@@ -53,7 +53,7 @@ pub async fn all_server_paths(
     assets: Vc<OutputAssets>,
     node_root: FileSystemPath,
 ) -> Result<Vc<ServerPaths>> {
-    let span = tracing::trace_span!(
+    let span = tracing::info_span!(
         "collect all server paths",
         assets_count = tracing::field::Empty,
         server_assets_count = tracing::field::Empty

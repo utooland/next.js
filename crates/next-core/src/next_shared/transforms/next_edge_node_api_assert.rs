@@ -39,7 +39,7 @@ struct NextEdgeNodeApiAssert {
 
 #[async_trait]
 impl CustomTransformer for NextEdgeNodeApiAssert {
-    #[tracing::instrument(level = "trace", name = "next_edge_node_api_assert", skip_all)]
+    #[tracing::instrument(level = tracing::Level::TRACE, name = "next_edge_node_api_assert", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         let mut visitor = warn_for_edge_runtime(
             ctx.source_map.clone(),

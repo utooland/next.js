@@ -145,7 +145,7 @@ impl Asset for NftJsonAsset {
     #[turbo_tasks::function]
     async fn content(self: Vc<Self>) -> Result<Vc<AssetContent>> {
         let this = &*self.await?;
-        let span = tracing::trace_span!(
+        let span = tracing::info_span!(
             "output file tracing",
             path = display(self.path().to_string().await?)
         );

@@ -256,7 +256,7 @@ impl SingleModuleGraph {
         let mut modules: FxHashMap<ResolvedVc<Box<dyn Module>>, NodeIndex> =
             FxHashMap::with_capacity_and_hasher(node_count, Default::default());
         {
-            let _span = tracing::trace_span!("build module graph").entered();
+            let _span = tracing::info_span!("build module graph").entered();
             for (parent, (current, export)) in children_nodes_iter.into_breadth_first_edges() {
                 let parent_edge = match parent.map(|v| v.0) {
                     Some(SingleModuleGraphBuilderNode::Module { module, .. }) => Some((
@@ -794,7 +794,7 @@ impl ModuleGraph {
             result_op.drop_collectibles::<Box<dyn Issue>>();
             anyhow::Ok(*result_vc)
         }
-        .instrument(tracing::trace_span!("compute async module info"))
+        .instrument(tracing::info_span!("compute async module info"))
         .await
     }
 
@@ -1597,7 +1597,7 @@ impl Visit<(SingleModuleGraphBuilderNode, ExportUsage)> for SingleModuleGraphBui
             SingleModuleGraphBuilderNode::Module {
                 ident: Some(ident), ..
             } => {
-                tracing::trace_span!("module", name = display(ident))
+                tracing::info_span!("module", name = display(ident))
             }
             SingleModuleGraphBuilderNode::ChunkableReference {
                 ref_data,
@@ -1610,7 +1610,7 @@ impl Visit<(SingleModuleGraphBuilderNode, ExportUsage)> for SingleModuleGraphBui
                     ..
                 } => Span::current(),
                 _ => {
-                    tracing::trace_span!(
+                    tracing::info_span!(
                         "chunkable reference",
                         ty = debug(&ref_data.chunking_type),
                         source = display(source_ident),
@@ -1619,7 +1619,7 @@ impl Visit<(SingleModuleGraphBuilderNode, ExportUsage)> for SingleModuleGraphBui
                 }
             },
             SingleModuleGraphBuilderNode::VisitedModule { .. } => {
-                tracing::trace_span!("visited module")
+                tracing::info_span!("visited module")
             }
             _ => Span::current(),
         }

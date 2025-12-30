@@ -786,7 +786,7 @@ impl PageEndpoint {
 
             Ok(client_chunk_group)
         }
-        .instrument(tracing::trace_span!("page client side rendering"))
+        .instrument(tracing::info_span!("page client side rendering"))
         .await
     }
 
@@ -1112,9 +1112,9 @@ impl PageEndpoint {
             }
         }
         .instrument(match ty {
-            SsrChunkType::Page => tracing::trace_span!("page server side rendering"),
-            SsrChunkType::Data => tracing::trace_span!("server side data"),
-            SsrChunkType::Api => tracing::trace_span!("server side api"),
+            SsrChunkType::Page => tracing::info_span!("page server side rendering"),
+            SsrChunkType::Data => tracing::info_span!("server side data"),
+            SsrChunkType::Api => tracing::info_span!("server side api"),
         })
         .await
     }
@@ -1572,16 +1572,16 @@ impl Endpoint for PageEndpoint {
         let span = {
             match &this.ty {
                 PageEndpointType::Html => {
-                    tracing::trace_span!("page endpoint HTML", name = display(original_name))
+                    tracing::info_span!("page endpoint HTML", name = display(original_name))
                 }
                 PageEndpointType::Data => {
-                    tracing::trace_span!("page endpoint data", name = display(original_name))
+                    tracing::info_span!("page endpoint data", name = display(original_name))
                 }
                 PageEndpointType::Api => {
-                    tracing::trace_span!("page endpoint API", name = display(original_name))
+                    tracing::info_span!("page endpoint API", name = display(original_name))
                 }
                 PageEndpointType::SsrOnly => {
-                    tracing::trace_span!("page endpoint SSR", name = display(original_name))
+                    tracing::info_span!("page endpoint SSR", name = display(original_name))
                 }
             }
         };

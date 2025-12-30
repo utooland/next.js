@@ -24,7 +24,7 @@ use parking_lot::{Condvar, Mutex};
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use smallvec::{SmallVec, smallvec};
 use tokio::time::{Duration, Instant};
-use tracing::{Span, trace_span};
+use tracing::{Span, info_span, trace_span};
 use turbo_tasks::{
     CellId, FxDashMap, FxIndexMap, KeyValuePair, RawVc, ReadCellOptions, ReadConsistency,
     ReadOutputOptions, ReadTracking, SessionId, TRANSIENT_TASK_BIT, TaskExecutionReason, TaskId,
@@ -1281,7 +1281,7 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
             self.verify_aggregation_graph(turbo_tasks, false);
         }
         if self.should_persist() {
-            let _span = tracing::trace_span!("persist on stop").entered();
+            let _span = tracing::info_span!("persist on stop").entered();
             self.snapshot();
         }
         self.task_cache.drop_contents();
@@ -2518,7 +2518,7 @@ impl<B: BackingStorage> TurboTasksBackendInner<B> {
                             }
                         }
 
-                        let _span = trace_span!("persist", reason = reason).entered();
+                        let _span = info_span!("persist", reason = reason).entered();
                         let this = self.clone();
                         let snapshot = this.snapshot();
                         if let Some((snapshot_start, new_data)) = snapshot {

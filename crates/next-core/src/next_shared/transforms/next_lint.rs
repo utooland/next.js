@@ -21,7 +21,7 @@ struct LintTransformer {}
 
 #[async_trait]
 impl CustomTransformer for LintTransformer {
-    #[tracing::instrument(level = "trace", name = "next_custom_lint", skip_all)]
+    #[tracing::instrument(level = tracing::Level::TRACE, name = "next_custom_lint", skip_all)]
     async fn transform(&self, program: &mut Program, ctx: &TransformContext<'_>) -> Result<()> {
         program.visit_with(&mut lint_codemod_comments(ctx.comments));
 

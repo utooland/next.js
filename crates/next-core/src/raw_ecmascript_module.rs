@@ -174,7 +174,7 @@ impl ChunkItem for RawEcmascriptChunkItem {
 impl EcmascriptChunkItem for RawEcmascriptChunkItem {
     #[turbo_tasks::function]
     async fn content(&self) -> Result<Vc<EcmascriptChunkItemContent>> {
-        let span = tracing::trace_span!(
+        let span = tracing::info_span!(
             "code generation raw module",
             name = display(self.module.ident().to_string().await?)
         );
