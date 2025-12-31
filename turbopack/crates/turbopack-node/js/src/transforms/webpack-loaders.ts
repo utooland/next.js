@@ -17,6 +17,7 @@ import {
 } from './transforms'
 import fs from 'fs'
 import path from 'path'
+import { workerData } from 'worker_threads'
 
 export type IpcInfoMessage =
   | {
@@ -509,8 +510,7 @@ const transform = (
 
 export { transform as default }
 
-// @ts-ignore
-if (typeof self !== 'undefined' && self.workerData && self.workerData.binding) {
+if (workerData && workerData.binding) {
   // @ts-ignore
   const { run } = require('../web_worker/evaluate')
   run(async () => {
