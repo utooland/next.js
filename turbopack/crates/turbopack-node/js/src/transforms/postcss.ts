@@ -5,6 +5,7 @@ declare const __turbopack_external_require__: (
 ) => any
 
 import type { Processor } from 'postcss'
+import { workerData } from 'worker_threads'
 
 // @ts-ignore
 import postcss from '@vercel/turbopack/postcss'
@@ -133,8 +134,7 @@ export default async function transform(
   }
 }
 
-// @ts-ignore
-if (typeof self !== 'undefined' && self.workerData && self.workerData.binding) {
+if (workerData && workerData.binding) {
   // @ts-ignore
   const { run } = require('../web_worker/evaluate')
   run(async () => {

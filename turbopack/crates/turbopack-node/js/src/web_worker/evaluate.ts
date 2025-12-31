@@ -6,20 +6,13 @@ import {
 } from '../worker_thread/taskChannel'
 import { structuredError } from '../error'
 import type { Channel } from '../types'
+import { workerData, threadId as workerId } from 'worker_threads'
 
-export type Self = DedicatedWorkerGlobalScope & {
-  workerData: {
-    workerId: number
-    cwd: string
-    binding: Binding
-  }
-}
+export type Self = DedicatedWorkerGlobalScope
 
 export declare const self: Self
-// @ts-ignore
-const { workerId } = self.workerData
 
-let binding: Binding = self.workerData.binding
+let binding: Binding = workerData.binding
 
 binding.workerCreated(workerId)
 
