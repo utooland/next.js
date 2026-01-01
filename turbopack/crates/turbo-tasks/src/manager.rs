@@ -857,6 +857,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
             .instrument(span)
             .await
         };
+        // move the future to the heap to reduce the cost of memmoves below.
         let future = Box::pin(future);
         let future = global_task_state
             .read()
