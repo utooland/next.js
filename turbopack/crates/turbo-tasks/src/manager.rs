@@ -758,6 +758,9 @@ impl<B: Backend + 'static> TurboTasks<B> {
             anyhow::Ok(())
         };
 
+        // move the future to the heap to reduce the cost of memmoves below.
+        let future = Box::pin(future);
+
         let future = TURBO_TASKS.scope(self.pin(), future).in_current_span();
 
         #[cfg(feature = "tokio_tracing")]
