@@ -17,10 +17,14 @@ pub mod debug;
 pub mod embed_js;
 pub mod evaluate;
 pub mod execution_context;
-mod heap_queue;
-mod pool;
+mod format;
+mod pool_stats;
+#[cfg(feature = "process_pool")]
+mod process_pool;
 pub mod source_map;
 pub mod transforms;
+#[cfg(feature = "worker_pool")]
+pub mod worker_pool;
 
 #[turbo_tasks::function]
 async fn emit(
