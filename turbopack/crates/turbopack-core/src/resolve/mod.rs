@@ -1686,7 +1686,7 @@ async fn handle_before_resolve_plugins(
 ) -> Result<Option<Vc<ResolveResult>>> {
     for plugin in &options.await?.before_resolve_plugins {
         let condition = plugin.before_resolve_condition().resolve().await?;
-        if !*condition.matches(request).await? {
+        if !condition.await?.is_match(request).await? {
             continue;
         }
 
@@ -1717,7 +1717,7 @@ async fn handle_after_resolve_plugins(
     ) -> Result<Option<Vc<ResolveResult>>> {
         for plugin in &options.await?.after_resolve_plugins {
             let after_resolve_condition = plugin.after_resolve_condition().resolve().await?;
-            if *after_resolve_condition.matches(path.clone()).await?
+            if after_resolve_condition.await?.is_match(&path).await?
                 && let Some(result) = *plugin
                     .after_resolve(
                         path.clone(),
