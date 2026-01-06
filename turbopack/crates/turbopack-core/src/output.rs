@@ -2,7 +2,7 @@ use anyhow::Result;
 use either::Either;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{
-    FxIndexSet, ResolvedVc, ValueToString, Vc,
+    FxIndexSet, ResolvedVc, TryJoinIterExt, ValueToString, Vc,
     graph::{AdjacencyMap, GraphTraversal},
 };
 use turbo_tasks_fs::FileSystemPath;
@@ -85,8 +85,9 @@ impl OutputAssets {
     #[turbo_tasks::function]
     pub async fn concat(other: Vec<Vc<Self>>) -> Result<Vc<Self>> {
         let mut assets: FxIndexSet<_> = FxIndexSet::default();
-        for other in other {
-            assets.extend(other.await?.iter().copied());
+        let results = other.into_iter().try_join().await?;
+        for other in results {
+            assets.extend(other.iter().copied());
         }
         Ok(Vc::cell(assets.into_iter().collect()))
     }
