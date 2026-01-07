@@ -19,7 +19,8 @@ use turbopack_core::{
         pattern::Pattern,
         plugin::{
             AfterResolvePlugin, AfterResolvePluginCondition, BeforeResolvePlugin,
-            BeforeResolvePluginCondition,
+            BeforeResolvePluginCondition, OptionAfterResolvePluginCondition,
+            OptionBeforeResolvePluginCondition,
         },
     },
 };
@@ -128,8 +129,11 @@ impl InvalidImportResolvePlugin {
 #[turbo_tasks::value_impl]
 impl BeforeResolvePlugin for InvalidImportResolvePlugin {
     #[turbo_tasks::function]
-    fn before_resolve_condition(&self) -> Vc<BeforeResolvePluginCondition> {
-        BeforeResolvePluginCondition::from_modules(Vc::cell(vec![self.invalid_import.clone()]))
+    fn before_resolve_condition(&self) -> Vc<OptionBeforeResolvePluginCondition> {
+        OptionBeforeResolvePluginCondition::some(
+            BeforeResolvePluginCondition::from_modules(Vc::cell(vec![self.invalid_import.clone()]))
+                .to_resolved(),
+        )
     }
 
     #[turbo_tasks::function]
@@ -223,13 +227,16 @@ impl NextExternalResolvePlugin {
 #[turbo_tasks::value_impl]
 impl AfterResolvePlugin for NextExternalResolvePlugin {
     #[turbo_tasks::function]
-    async fn after_resolve_condition(&self) -> Result<Vc<AfterResolvePluginCondition>> {
-        Ok(AfterResolvePluginCondition::new(
-            self.project_path.root().owned().await?,
-            Glob::new(
-                rcstr!("**/next/dist/**/*.{external,runtime.dev,runtime.prod}.js"),
-                GlobOptions::default(),
-            ),
+    async fn after_resolve_condition(&self) -> Result<Vc<OptionAfterResolvePluginCondition>> {
+        Ok(OptionAfterResolvePluginCondition::some(
+            AfterResolvePluginCondition::new(
+                self.project_path.root().owned().await?,
+                Glob::new(
+                    rcstr!("**/next/dist/**/*.{external,runtime.dev,runtime.prod}.js"),
+                    GlobOptions::default(),
+                ),
+            )
+            .to_resolved(),
         ))
     }
 
@@ -281,13 +288,16 @@ impl NextNodeSharedRuntimeResolvePlugin {
 #[turbo_tasks::value_impl]
 impl AfterResolvePlugin for NextNodeSharedRuntimeResolvePlugin {
     #[turbo_tasks::function]
-    async fn after_resolve_condition(&self) -> Result<Vc<AfterResolvePluginCondition>> {
-        Ok(AfterResolvePluginCondition::new(
-            self.root.root().owned().await?,
-            Glob::new(
-                rcstr!("**/next/dist/**/*.shared-runtime.js"),
-                GlobOptions::default(),
-            ),
+    async fn after_resolve_condition(&self) -> Result<Vc<OptionAfterResolvePluginCondition>> {
+        Ok(OptionAfterResolvePluginCondition::some(
+            AfterResolvePluginCondition::new(
+                self.root.root().owned().await?,
+                Glob::new(
+                    rcstr!("**/next/dist/**/*.shared-runtime.js"),
+                    GlobOptions::default(),
+                ),
+            )
+            .to_resolved(),
         ))
     }
 
@@ -352,13 +362,16 @@ impl ModuleFeatureReportResolvePlugin {
 #[turbo_tasks::value_impl]
 impl BeforeResolvePlugin for ModuleFeatureReportResolvePlugin {
     #[turbo_tasks::function]
-    fn before_resolve_condition(&self) -> Vc<BeforeResolvePluginCondition> {
-        BeforeResolvePluginCondition::from_modules(Vc::cell(
-            FEATURE_MODULES
-                .keys()
-                .map(|k| (*k).into())
-                .collect::<Vec<RcStr>>(),
-        ))
+    fn before_resolve_condition(&self) -> Vc<OptionBeforeResolvePluginCondition> {
+        OptionBeforeResolvePluginCondition::some(
+            BeforeResolvePluginCondition::from_modules(Vc::cell(
+                FEATURE_MODULES
+                    .keys()
+                    .map(|k| (*k).into())
+                    .collect::<Vec<RcStr>>(),
+            ))
+            .to_resolved(),
+        )
     }
 
     #[turbo_tasks::function]
@@ -409,13 +422,16 @@ impl NextSharedRuntimeResolvePlugin {
 #[turbo_tasks::value_impl]
 impl AfterResolvePlugin for NextSharedRuntimeResolvePlugin {
     #[turbo_tasks::function]
-    async fn after_resolve_condition(&self) -> Result<Vc<AfterResolvePluginCondition>> {
-        Ok(AfterResolvePluginCondition::new(
-            self.root.root().owned().await?,
-            Glob::new(
-                rcstr!("**/next/dist/esm/**/*.shared-runtime.js"),
-                GlobOptions::default(),
-            ),
+    async fn after_resolve_condition(&self) -> Result<Vc<OptionAfterResolvePluginCondition>> {
+        Ok(OptionAfterResolvePluginCondition::some(
+            AfterResolvePluginCondition::new(
+                self.root.root().owned().await?,
+                Glob::new(
+                    rcstr!("**/next/dist/esm/**/*.shared-runtime.js"),
+                    GlobOptions::default(),
+                ),
+            )
+            .to_resolved(),
         ))
     }
 
