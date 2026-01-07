@@ -17,7 +17,9 @@ use turbopack_core::{
         package_json,
         parse::Request,
         pattern::Pattern,
-        plugin::{AfterResolvePlugin, AfterResolvePluginCondition},
+        plugin::{
+            AfterResolvePlugin, AfterResolvePluginCondition, OptionAfterResolvePluginCondition,
+        },
         resolve,
     },
     source::Source,
@@ -64,17 +66,20 @@ impl ExternalCjsModulesResolvePlugin {
 }
 
 #[turbo_tasks::function]
-fn condition(root: FileSystemPath) -> Vc<AfterResolvePluginCondition> {
-    AfterResolvePluginCondition::new(
-        root,
-        Glob::new(rcstr!("**/node_modules/**"), GlobOptions::default()),
+fn condition(root: FileSystemPath) -> Vc<OptionAfterResolvePluginCondition> {
+    OptionAfterResolvePluginCondition::some(
+        AfterResolvePluginCondition::new(
+            root,
+            Glob::new(rcstr!("**/node_modules/**"), GlobOptions::default()),
+        )
+        .to_resolved(),
     )
 }
 
 #[turbo_tasks::value_impl]
 impl AfterResolvePlugin for ExternalCjsModulesResolvePlugin {
     #[turbo_tasks::function]
-    fn after_resolve_condition(&self) -> Vc<AfterResolvePluginCondition> {
+    fn after_resolve_condition(&self) -> Vc<OptionAfterResolvePluginCondition> {
         condition(self.root.clone())
     }
 
