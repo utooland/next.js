@@ -1683,9 +1683,12 @@ async fn handle_before_resolve_plugins(
     options: Vc<ResolveOptions>,
 ) -> Result<Option<Vc<ResolveResult>>> {
     for plugin in &options.await?.before_resolve_plugins {
-        let condition = plugin.before_resolve_condition().resolve().await?;
-        if !*condition.matches(request).await? {
-            continue;
+        let condition_option = plugin.before_resolve_condition().await?;
+        if let Some(condition) = *condition_option {
+            let condition = condition.resolve().await?;
+            if !*condition.matches(request).await? {
+                continue;
+            }
         }
 
         if let Some(result) = *plugin
@@ -1714,17 +1717,31 @@ async fn handle_after_resolve_plugins(
         options: Vc<ResolveOptions>,
     ) -> Result<Option<Vc<ResolveResult>>> {
         for plugin in &options.await?.after_resolve_plugins {
-            let after_resolve_condition = plugin.after_resolve_condition().resolve().await?;
-            if *after_resolve_condition.matches(path.clone()).await?
-                && let Some(result) = *plugin
-                    .after_resolve(
-                        path.clone(),
-                        lookup_path.clone(),
-                        reference_type.clone(),
-                        request,
-                    )
-                    .await?
+            let after_resolve_condition_option = plugin.after_resolve_condition().await?;
+            if let Some(after_resolve_condition) = *after_resolve_condition_option {
+                let after_resolve_condition = after_resolve_condition.resolve().await?;
+                if *after_resolve_condition.matches(path.clone()).await?
+                    && let Some(result) = *plugin
+                        .after_resolve(
+                            path.clone(),
+                            lookup_path.clone(),
+                            reference_type.clone(),
+                            request,
+                        )
+                        .await?
+                {
+                    return Ok(Some(*result));
+                }
+            } else if let Some(result) = *plugin
+                .after_resolve(
+                    path.clone(),
+                    lookup_path.clone(),
+                    reference_type.clone(),
+                    request,
+                )
+                .await?
             {
+                // If there is no condition, the plugin applies to all paths.
                 return Ok(Some(*result));
             }
         }

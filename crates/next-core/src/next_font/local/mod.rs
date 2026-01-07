@@ -15,7 +15,9 @@ use turbopack_core::{
     resolve::{
         ResolveResult, ResolveResultItem, ResolveResultOption,
         parse::Request,
-        plugin::{BeforeResolvePlugin, BeforeResolvePluginCondition},
+        plugin::{
+            BeforeResolvePlugin, BeforeResolvePluginCondition, OptionBeforeResolvePluginCondition,
+        },
     },
     virtual_source::VirtualSource,
 };
@@ -64,11 +66,14 @@ impl NextFontLocalResolvePlugin {
 #[turbo_tasks::value_impl]
 impl BeforeResolvePlugin for NextFontLocalResolvePlugin {
     #[turbo_tasks::function]
-    fn before_resolve_condition(&self) -> Vc<BeforeResolvePluginCondition> {
-        BeforeResolvePluginCondition::from_request_glob(Glob::new(
-            rcstr!("{next,@vercel/turbopack-next/internal}/font/local/*"),
-            GlobOptions::default(),
-        ))
+    fn before_resolve_condition(&self) -> Vc<OptionBeforeResolvePluginCondition> {
+        OptionBeforeResolvePluginCondition::some(
+            BeforeResolvePluginCondition::from_request_glob(Glob::new(
+                rcstr!("{next,@vercel/turbopack-next/internal}/font/local/*"),
+                GlobOptions::default(),
+            ))
+            .to_resolved(),
+        )
     }
 
     #[turbo_tasks::function]
