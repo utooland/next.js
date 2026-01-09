@@ -11,7 +11,27 @@ use crate::{
 
 /// A condition which determines if the hooks of a resolve plugin gets called.
 #[turbo_tasks::value]
-pub struct AfterResolvePluginCondition {
+pub enum AfterResolvePluginCondition {
+    Glob(ResolvedVc<AfterResolvePluginGlobCondition>),
+    Always,
+    Never,
+}
+
+#[turbo_tasks::value_impl]
+impl AfterResolvePluginCondition {
+    #[turbo_tasks::function]
+    pub async fn new_with_glob(root: FileSystemPath, glob: Vc<Glob>) -> Result<Vc<Self>> {
+        let glob_condition = AfterResolvePluginGlobCondition::new(root, glob)
+            .to_resolved()
+            .await?;
+        Ok(AfterResolvePluginCondition::Glob(glob_condition).cell())
+    }
+}
+
+/// A condition variant of AfterResolvePluginCondition  which determines if the hooks of a resolve
+/// plugin gets called.
+#[turbo_tasks::value(shared)]
+pub struct AfterResolvePluginGlobCondition {
     root: FileSystemPath,
     glob: ResolvedVc<Glob>,
 }
@@ -19,8 +39,22 @@ pub struct AfterResolvePluginCondition {
 #[turbo_tasks::value_impl]
 impl AfterResolvePluginCondition {
     #[turbo_tasks::function]
+    pub async fn matches(&self, fs_path: FileSystemPath) -> Result<Vc<bool>> {
+        match self {
+            AfterResolvePluginCondition::Glob(glob_condition) => {
+                Ok(Vc::cell(*glob_condition.matches(fs_path).await?))
+            }
+            AfterResolvePluginCondition::Always => Ok(Vc::cell(true)),
+            AfterResolvePluginCondition::Never => Ok(Vc::cell(false)),
+        }
+    }
+}
+
+#[turbo_tasks::value_impl]
+impl AfterResolvePluginGlobCondition {
+    #[turbo_tasks::function]
     pub fn new(root: FileSystemPath, glob: ResolvedVc<Glob>) -> Vc<Self> {
-        AfterResolvePluginCondition { root, glob }.cell()
+        AfterResolvePluginGlobCondition { root, glob }.cell()
     }
 
     #[turbo_tasks::function]
@@ -45,6 +79,8 @@ impl AfterResolvePluginCondition {
 pub enum BeforeResolvePluginCondition {
     Request(ResolvedVc<Glob>),
     Modules(FxHashSet<RcStr>),
+    Always,
+    Never,
 }
 
 #[turbo_tasks::value_impl]
@@ -76,6 +112,8 @@ impl BeforeResolvePluginCondition {
                     false
                 }
             }
+            BeforeResolvePluginCondition::Always => true,
+            BeforeResolvePluginCondition::Never => false,
         }))
     }
 }
