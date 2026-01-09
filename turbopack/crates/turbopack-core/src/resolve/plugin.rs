@@ -10,9 +10,12 @@ use crate::{
 };
 
 /// A condition which determines if the hooks of a resolve plugin gets called.
-#[turbo_tasks::value]
+#[turbo_tasks::value(shared)]
 pub enum AfterResolvePluginCondition {
-    Glob(ResolvedVc<AfterResolvePluginGlobCondition>),
+    Glob {
+        root: FileSystemPath,
+        glob: ResolvedVc<Glob>,
+    },
     Always,
     Never,
 }
@@ -20,20 +23,9 @@ pub enum AfterResolvePluginCondition {
 #[turbo_tasks::value_impl]
 impl AfterResolvePluginCondition {
     #[turbo_tasks::function]
-    pub async fn new_with_glob(root: FileSystemPath, glob: Vc<Glob>) -> Result<Vc<Self>> {
-        let glob_condition = AfterResolvePluginGlobCondition::new(root, glob)
-            .to_resolved()
-            .await?;
-        Ok(AfterResolvePluginCondition::Glob(glob_condition).cell())
+    pub fn new_with_glob(root: FileSystemPath, glob: ResolvedVc<Glob>) -> Vc<Self> {
+        AfterResolvePluginCondition::Glob { root, glob }.cell()
     }
-}
-
-/// A condition variant of AfterResolvePluginCondition  which determines if the hooks of a resolve
-/// plugin gets called.
-#[turbo_tasks::value(shared)]
-pub struct AfterResolvePluginGlobCondition {
-    root: FileSystemPath,
-    glob: ResolvedVc<Glob>,
 }
 
 #[turbo_tasks::value_impl]
@@ -41,8 +33,16 @@ impl AfterResolvePluginCondition {
     #[turbo_tasks::function]
     pub async fn matches(&self, fs_path: FileSystemPath) -> Result<Vc<bool>> {
         match self {
-            AfterResolvePluginCondition::Glob(glob_condition) => {
-                Ok(Vc::cell(*glob_condition.matches(fs_path).await?))
+            AfterResolvePluginCondition::Glob { root, glob } => {
+                let path = fs_path;
+
+                if let Some(path) = root.get_path_to(&path)
+                    && glob.await?.matches(path)
+                {
+                    return Ok(Vc::cell(true));
+                }
+
+                Ok(Vc::cell(false))
             }
             AfterResolvePluginCondition::Always => Ok(Vc::cell(true)),
             AfterResolvePluginCondition::Never => Ok(Vc::cell(false)),
@@ -50,32 +50,8 @@ impl AfterResolvePluginCondition {
     }
 }
 
-#[turbo_tasks::value_impl]
-impl AfterResolvePluginGlobCondition {
-    #[turbo_tasks::function]
-    pub fn new(root: FileSystemPath, glob: ResolvedVc<Glob>) -> Vc<Self> {
-        AfterResolvePluginGlobCondition { root, glob }.cell()
-    }
-
-    #[turbo_tasks::function]
-    pub async fn matches(&self, fs_path: FileSystemPath) -> Result<Vc<bool>> {
-        let root = self.root.clone();
-        let glob = self.glob.await?;
-
-        let path = fs_path;
-
-        if let Some(path) = root.get_path_to(&path)
-            && glob.matches(path)
-        {
-            return Ok(Vc::cell(true));
-        }
-
-        Ok(Vc::cell(false))
-    }
-}
-
 /// A condition which determines if the hooks of a resolve plugin gets called.
-#[turbo_tasks::value]
+#[turbo_tasks::value(shared)]
 pub enum BeforeResolvePluginCondition {
     Request(ResolvedVc<Glob>),
     Modules(FxHashSet<RcStr>),
