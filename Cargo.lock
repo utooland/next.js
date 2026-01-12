@@ -2979,7 +2979,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.1",
  "tokio",
  "tower-service",
  "tracing",
@@ -8702,9 +8702,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-fs-ext"
-version = "0.6.10"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d40184a3ebace868985529617fa92e871096ca74cdb41fb870341d0266fde87"
+checksum = "b3a15b2ea3a517a0d27eeea0c5e43605490ea5722983351973a67756d68a5900"
 dependencies = [
  "bitflags 2.9.1",
  "cfg-if",
