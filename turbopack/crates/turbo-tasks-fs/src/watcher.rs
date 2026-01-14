@@ -3,7 +3,7 @@ use std::{
     collections::BTreeSet,
     env, fmt,
     mem::take,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{
         Arc, LazyLock, RwLock, RwLockWriteGuard,
         mpsc::{Receiver, TryRecvError, channel},
@@ -362,13 +362,13 @@ impl DiskWatcher {
 
     /// Check if a path should be ignored based on configured ignore patterns
     fn should_ignore_path(&self, path: &Path) -> bool {
+        if self.ignored_paths.is_empty() {
+            return false;
+        }
         path.components().any(|component| {
-            if let std::path::Component::Normal(name) = component {
+            if let Component::Normal(name) = component {
                 if let Some(name_str) = name.to_str() {
-                    return self.ignored_paths.iter().any(|ignored| {
-                        // Exact match or pattern match
-                        name_str == ignored.as_str()
-                    });
+                    return self.ignored_paths.contains(name_str);
                 }
             }
             false
