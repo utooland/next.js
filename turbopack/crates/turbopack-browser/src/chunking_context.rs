@@ -1,9 +1,9 @@
 use std::{cmp::min, sync::LazyLock};
 
 use anyhow::{Context, Result, bail};
+use bincode::{Decode, Encode};
 use qstring::QString;
 use regex::Regex;
-use bincode::{Decode, Encode};
 use tracing::Instrument;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{

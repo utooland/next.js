@@ -28,12 +28,15 @@ use turbopack_core::{
 };
 
 use crate::{
-    chunk::EcmascriptChunkPlaceable, references::util::{
+    chunk::EcmascriptChunkPlaceable,
+    references::util::{
         request_to_string, throw_module_not_found_error_expr, throw_module_not_found_expr,
-    }, runtime_functions::{
+    },
+    runtime_functions::{
         TURBOPACK_ASYNC_LOADER, TURBOPACK_EXTERNAL_IMPORT, TURBOPACK_EXTERNAL_REQUIRE,
         TURBOPACK_IMPORT, TURBOPACK_MODULE_CONTEXT, TURBOPACK_REQUIRE,
-    }, utils::module_id_to_lit
+    },
+    utils::module_id_to_lit,
 };
 
 #[derive(PartialEq, Eq, ValueDebugFormat, TraceRawVcs, NonLocalValue, Encode, Decode)]

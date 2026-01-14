@@ -180,39 +180,39 @@ impl MdxTransformedAsset {
 
             let result = compile(&file.content().to_str()?, &options);
 
-        match result {
-            Ok(mdx_jsx_component) => Ok(MdxTransformResult {
-                content: AssetContent::file(
-                    FileContent::Content(File::from(Rope::from(mdx_jsx_component))).cell(),
-                )
-                .to_resolved()
-                .await?,
-            }
-            .cell()),
-            Err(err) => {
-                let source = match err.place {
-                    Some(p) => {
-                        let (start, end) = match *p {
-                            // markdown's positions are 1-indexed, SourcePos is 0-indexed.
-                            // Both end positions point to the first character after the range
-                            markdown::message::Place::Position(p) => (
-                                SourcePos {
-                                    line: (p.start.line - 1) as u32,
-                                    column: (p.start.column - 1) as u32,
-                                },
-                                SourcePos {
-                                    line: (p.end.line - 1) as u32,
-                                    column: (p.end.column - 1) as u32,
-                                },
-                            ),
-                            markdown::message::Place::Point(p) => {
-                                let p = SourcePos {
-                                    line: (p.line - 1) as u32,
-                                    column: (p.column - 1) as u32,
-                                };
-                                (p, p)
-                            }
-                        };
+            match result {
+                Ok(mdx_jsx_component) => Ok(MdxTransformResult {
+                    content: AssetContent::file(
+                        FileContent::Content(File::from(Rope::from(mdx_jsx_component))).cell(),
+                    )
+                    .to_resolved()
+                    .await?,
+                }
+                .cell()),
+                Err(err) => {
+                    let source = match err.place {
+                        Some(p) => {
+                            let (start, end) = match *p {
+                                // markdown's positions are 1-indexed, SourcePos is 0-indexed.
+                                // Both end positions point to the first character after the range
+                                markdown::message::Place::Position(p) => (
+                                    SourcePos {
+                                        line: (p.start.line - 1) as u32,
+                                        column: (p.start.column - 1) as u32,
+                                    },
+                                    SourcePos {
+                                        line: (p.end.line - 1) as u32,
+                                        column: (p.end.column - 1) as u32,
+                                    },
+                                ),
+                                markdown::message::Place::Point(p) => {
+                                    let p = SourcePos {
+                                        line: (p.line - 1) as u32,
+                                        column: (p.column - 1) as u32,
+                                    };
+                                    (p, p)
+                                }
+                            };
 
                             IssueSource::from_line_col(self.source, start, end)
                         }

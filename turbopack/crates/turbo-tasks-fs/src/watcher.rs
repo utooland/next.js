@@ -66,6 +66,9 @@ static WATCH_RECURSIVE_MODE: LazyLock<RecursiveMode> = LazyLock::new(|| {
 pub(crate) struct DiskWatcher {
     #[bincode(skip)]
     state: State,
+    /// Paths to ignore when watching for file changes
+    #[bincode(skip)]
+    ignored_paths: Arc<Vec<RcStr>>,
 }
 
 enum State {
@@ -347,9 +350,29 @@ mod non_recursive_helpers {
 
 impl DiskWatcher {
     pub fn new() -> Self {
+        Self::new_with_ignored_paths(vec!["node_modules".into()])
+    }
+
+    pub fn new_with_ignored_paths(ignored_paths: Vec<RcStr>) -> Self {
         Self {
             state: State::new_stopped(),
+            ignored_paths: Arc::new(ignored_paths),
         }
+    }
+
+    /// Check if a path should be ignored based on configured ignore patterns
+    fn should_ignore_path(&self, path: &Path) -> bool {
+        path.components().any(|component| {
+            if let std::path::Component::Normal(name) = component {
+                if let Some(name_str) = name.to_str() {
+                    return self.ignored_paths.iter().any(|ignored| {
+                        // Exact match or pattern match
+                        name_str == ignored.as_str()
+                    });
+                }
+            }
+            false
+        })
     }
 
     /// Create a watcher and start watching by creating `debounced` watcher
@@ -674,7 +697,11 @@ impl DiskWatcher {
                             break;
                         }
 
-                        let paths: Vec<PathBuf> = event.paths;
+                        let paths: Vec<PathBuf> = event
+                            .paths
+                            .into_iter()
+                            .filter(|path| !self.should_ignore_path(path))
+                            .collect();
                         if paths.is_empty() {
                             // this event isn't useful, but keep trying to process the batch
                             event_result = rx.try_recv();
