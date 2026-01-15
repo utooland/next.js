@@ -135,16 +135,24 @@ impl Chunk for EcmascriptChunk {
             }
         }
 
-        let assets = chunk_items
+        // Sort chunk items by their content identifier for deterministic asset ordering
+        let mut assets_with_sort_key: Vec<_> = chunk_items
             .iter()
             .map(|&chunk_item| async move {
-                Ok((
-                    rcstr!("chunk item"),
-                    chunk_item.content_ident().to_resolved().await?,
-                ))
+                let ident = chunk_item.content_ident().to_resolved().await?;
+                let ident_str = ident.to_string().await?;
+                Ok((ident, ident_str))
             })
             .try_join()
             .await?;
+
+        // Sort by identifier string
+        assets_with_sort_key.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let assets: Vec<(RcStr, ResolvedVc<AssetIdent>)> = assets_with_sort_key
+            .into_iter()
+            .map(|(ident, _)| (rcstr!("chunk item"), ident))
+            .collect();
 
         let ident = AssetIdent {
             path: if let Some(common_path) = common_path {
