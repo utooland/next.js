@@ -368,7 +368,10 @@ impl DiskWatcher {
         path.components().any(|component| {
             if let Component::Normal(name) = component {
                 if let Some(name_str) = name.to_str() {
-                    return self.ignored_paths.contains(name_str);
+                    return self
+                        .ignored_paths
+                        .iter()
+                        .any(|ignored| ignored.as_str() == name_str);
                 }
             }
             false
@@ -504,9 +507,29 @@ impl DiskWatcher {
         use crate::wasm_fs_offload;
 
         let fs_inner_arc = fs_inner.clone();
+        let ignored_paths = self.ignored_paths.clone();
         let watch_dir = wasm_fs_offload::CLIENT
             .watch_dir(fs_inner.root_path(), true, move |event| {
-                let paths: Vec<PathBuf> = event.paths;
+                let paths: Vec<PathBuf> = if ignored_paths.is_empty() {
+                    event.paths
+                } else {
+                    event
+                        .paths
+                        .into_iter()
+                        .filter(|path| {
+                            !path.components().any(|component| {
+                                if let Component::Normal(name) = component {
+                                    if let Some(name_str) = name.to_str() {
+                                        return ignored_paths
+                                            .iter()
+                                            .any(|ignored| ignored.as_str() == name_str);
+                                    }
+                                }
+                                false
+                            })
+                        })
+                        .collect()
+                };
 
                 if paths.is_empty() {
                     return;
