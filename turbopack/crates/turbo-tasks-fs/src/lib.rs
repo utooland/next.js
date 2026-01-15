@@ -634,7 +634,7 @@ impl DiskFileSystem {
     /// * `root` - Path to the given filesystem's root. Should be
     ///   [canonicalized][std::fs::canonicalize].
     pub fn new(name: RcStr, root: RcStr) -> Vc<Self> {
-        Self::new_internal(name, root, Vec::new())
+        Self::new_internal(name, root, Vec::new(), Vec::new())
     }
 
     /// Create a new instance of `DiskFileSystem`.
@@ -651,7 +651,7 @@ impl DiskFileSystem {
             normalize_path(&denied_path).as_deref() == Some(&*denied_path),
             "denied_path must be normalized: {denied_path:?}"
         );
-        Self::new_internal(name, root, vec![denied_path])
+        Self::new_internal(name, root, vec![denied_path], Vec::new())
     }
 
     pub fn new_with_denied_paths(name: RcStr, root: RcStr, denied_paths: Vec<RcStr>) -> Vc<Self> {
@@ -662,15 +662,50 @@ impl DiskFileSystem {
                 "denied_path must be normalized: {denied_path:?}"
             );
         }
-        Self::new_internal(name, root, denied_paths)
+        Self::new_internal(name, root, denied_paths, Vec::new())
+    }
+
+    /// Create a new instance of `DiskFileSystem` with watch ignore patterns.
+    /// # Arguments
+    ///
+    /// * `name` - Name of the filesystem.
+    /// * `root` - Path to the given filesystem's root. Should be
+    ///   [canonicalized][std::fs::canonicalize].
+    /// * `denied_paths` - Paths within this filesystem that are not allowed to be accessed.
+    /// * `watched_ignored` - Paths that should be ignored when watching for file changes.
+    pub fn new_with_watched_ignored(
+        name: RcStr,
+        root: RcStr,
+        denied_paths: Vec<RcStr>,
+        watched_ignored: Vec<RcStr>,
+    ) -> Vc<Self> {
+        for denied_path in &denied_paths {
+            debug_assert!(!denied_path.is_empty(), "denied_path must not be empty");
+            debug_assert!(
+                normalize_path(denied_path).as_deref() == Some(&**denied_path),
+                "denied_path must be normalized: {denied_path:?}"
+            );
+        }
+        Self::new_internal(name, root, denied_paths, watched_ignored)
     }
 }
 
 #[turbo_tasks::value_impl]
 impl DiskFileSystem {
     #[turbo_tasks::function]
-    fn new_internal(name: RcStr, root: RcStr, denied_paths: Vec<RcStr>) -> Vc<Self> {
+    fn new_internal(
+        name: RcStr,
+        root: RcStr,
+        denied_paths: Vec<RcStr>,
+        watched_ignored: Vec<RcStr>,
+    ) -> Vc<Self> {
         mark_stateful();
+
+        let watcher = if watched_ignored.is_empty() {
+            DiskWatcher::new()
+        } else {
+            DiskWatcher::new_with_ignored_paths(watched_ignored)
+        };
 
         let instance = DiskFileSystem {
             inner: Arc::new(DiskFileSystemInner {
@@ -682,7 +717,7 @@ impl DiskFileSystem {
                 dir_invalidator_map: InvalidatorMap::new(),
                 read_semaphore: create_read_semaphore(),
                 write_semaphore: create_write_semaphore(),
-                watcher: DiskWatcher::new(),
+                watcher,
                 denied_paths,
             }),
         };

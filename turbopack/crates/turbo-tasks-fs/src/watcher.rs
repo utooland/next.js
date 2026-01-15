@@ -3,7 +3,7 @@ use std::{
     collections::BTreeSet,
     env, fmt,
     mem::take,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     sync::{
         Arc, LazyLock, RwLock, RwLockWriteGuard,
         mpsc::{Receiver, TryRecvError, channel},
@@ -66,6 +66,9 @@ static WATCH_RECURSIVE_MODE: LazyLock<RecursiveMode> = LazyLock::new(|| {
 pub(crate) struct DiskWatcher {
     #[bincode(skip)]
     state: State,
+    /// Paths to ignore when watching for file changes
+    #[bincode(skip)]
+    ignored_paths: Arc<Vec<RcStr>>,
 }
 
 enum State {
@@ -347,9 +350,32 @@ mod non_recursive_helpers {
 
 impl DiskWatcher {
     pub fn new() -> Self {
+        Self::new_with_ignored_paths(vec!["node_modules".into()])
+    }
+
+    pub fn new_with_ignored_paths(ignored_paths: Vec<RcStr>) -> Self {
         Self {
             state: State::new_stopped(),
+            ignored_paths: Arc::new(ignored_paths),
         }
+    }
+
+    /// Check if a path should be ignored based on configured ignore patterns
+    fn should_ignore_path(&self, path: &Path) -> bool {
+        if self.ignored_paths.is_empty() {
+            return false;
+        }
+        path.components().any(|component| {
+            if let Component::Normal(name) = component {
+                if let Some(name_str) = name.to_str() {
+                    return self
+                        .ignored_paths
+                        .iter()
+                        .any(|ignored| ignored.as_str() == name_str);
+                }
+            }
+            false
+        })
     }
 
     /// Create a watcher and start watching by creating `debounced` watcher
@@ -481,9 +507,29 @@ impl DiskWatcher {
         use crate::wasm_fs_offload;
 
         let fs_inner_arc = fs_inner.clone();
+        let ignored_paths = self.ignored_paths.clone();
         let watch_dir = wasm_fs_offload::CLIENT
             .watch_dir(fs_inner.root_path(), true, move |event| {
-                let paths: Vec<PathBuf> = event.paths;
+                let paths: Vec<PathBuf> = if ignored_paths.is_empty() {
+                    event.paths
+                } else {
+                    event
+                        .paths
+                        .into_iter()
+                        .filter(|path| {
+                            !path.components().any(|component| {
+                                if let Component::Normal(name) = component {
+                                    if let Some(name_str) = name.to_str() {
+                                        return ignored_paths
+                                            .iter()
+                                            .any(|ignored| ignored.as_str() == name_str);
+                                    }
+                                }
+                                false
+                            })
+                        })
+                        .collect()
+                };
 
                 if paths.is_empty() {
                     return;
@@ -674,7 +720,11 @@ impl DiskWatcher {
                             break;
                         }
 
-                        let paths: Vec<PathBuf> = event.paths;
+                        let paths: Vec<PathBuf> = event
+                            .paths
+                            .into_iter()
+                            .filter(|path| !self.should_ignore_path(path))
+                            .collect();
                         if paths.is_empty() {
                             // this event isn't useful, but keep trying to process the batch
                             event_result = rx.try_recv();
