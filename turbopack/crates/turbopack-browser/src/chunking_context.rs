@@ -546,8 +546,6 @@ impl ChunkingContext for BrowserChunkingContext {
             content_hashing: _,
         } = &*self.chunk_path_info().await?;
 
-        // Await ident once and reuse it
-        let ident_ref = ident.await?;
         let output_name = ident
             .output_name(root_path.clone(), prefix, extension.clone())
             .owned()
@@ -555,9 +553,11 @@ impl ChunkingContext for BrowserChunkingContext {
 
         let mut filename = match asset {
             Some(asset) => {
+                let ident = ident.await?;
+
                 let mut evaluate = false;
                 let mut dev_chunk_list = false;
-                ident_ref.modifiers.iter().for_each(|m| {
+                ident.modifiers.iter().for_each(|m| {
                     if m.contains("evaluate") {
                         evaluate = true;
                     }
@@ -565,7 +565,7 @@ impl ChunkingContext for BrowserChunkingContext {
                         dev_chunk_list = true;
                     }
                 });
-                let query = QString::from(ident_ref.query.as_str());
+                let query = QString::from(ident.query.as_str());
                 let name = if dev_chunk_list {
                     output_name.as_str()
                 } else {
@@ -579,8 +579,8 @@ impl ChunkingContext for BrowserChunkingContext {
                 };
 
                 match filename_template {
-                    Some(filename_template_str) => {
-                        let mut filename = filename_template_str.to_string();
+                    Some(filename) => {
+                        let mut filename = filename.to_string();
 
                         if match_name_placeholder(&filename) {
                             filename = replace_name_placeholder(&filename, name);
@@ -590,15 +590,17 @@ impl ChunkingContext for BrowserChunkingContext {
                             let content = asset.content().await?;
                             if let AssetContent::File(file) = &*content {
                                 let content_hash = hash_xxh3_hash64(&file.await?);
-                                let hash_str = format!("{content_hash:016x}");
-                                filename = replace_content_hash_placeholder(&filename, &hash_str);
+                                filename = replace_content_hash_placeholder(
+                                    &filename,
+                                    &format!("{content_hash:016x}"),
+                                );
                             } else {
                                 bail!(
                                     "chunk_path requires an asset with file content when content \
                                      hashing is enabled"
                                 );
                             }
-                        }
+                        };
 
                         filename
                     }
@@ -806,10 +808,9 @@ impl ChunkingContext for BrowserChunkingContext {
         module_graph: Vc<ModuleGraph>,
         input_availability_info: AvailabilityInfo,
     ) -> Result<Vc<ChunkGroupResult>> {
-        let ident_str = ident.to_string().await?;
         let span = tracing::info_span!(
             "chunking",
-            name = display(ident_str.clone()),
+            name = display(ident.to_string().await?),
             chunking_type = "evaluated",
         );
         async move {
