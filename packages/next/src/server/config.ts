@@ -753,10 +753,18 @@ function assignDefaultsAndValidate(
   if (
     typeof result.experimental?.serverActions?.bodySizeLimit !== 'undefined'
   ) {
-    const value = parseInt(
-      result.experimental.serverActions?.bodySizeLimit.toString()
-    )
-    if (isNaN(value) || value < 1) {
+    const bytes =
+      require('next/dist/compiled/bytes') as typeof import('next/dist/compiled/bytes')
+    const bodySizeLimit = result.experimental.serverActions.bodySizeLimit
+    let value: number | null
+
+    if (typeof bodySizeLimit === 'number') {
+      value = bodySizeLimit
+    } else {
+      value = bytes.parse(bodySizeLimit)
+    }
+
+    if (value === null || isNaN(value) || value < 1) {
       throw new Error(
         'Server Actions Size Limit must be a valid number or filesize format larger than 1MB: https://nextjs.org/docs/app/api-reference/next-config-js/serverActions#bodysizelimit'
       )
@@ -1596,8 +1604,7 @@ export default async function loadConfig(
       } else if (configFileName === 'next.config.ts') {
         userConfigModule = await transpileConfig({
           nextConfigPath: path,
-          configFileName,
-          cwd: dir,
+          dir,
         })
       } else {
         userConfigModule = await import(pathToFileURL(path).href)

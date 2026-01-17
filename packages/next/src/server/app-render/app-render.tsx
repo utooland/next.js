@@ -2108,22 +2108,19 @@ async function renderToHTMLOrFlightImpl(
       metadata,
       contentType: HTML_CONTENT_TYPE_HEADER,
     }
+
     // If we have pending revalidates, wait until they are all resolved.
-    if (
-      workStore.pendingRevalidates ||
-      workStore.pendingRevalidateWrites ||
-      workStore.pendingRevalidatedTags
-    ) {
-      const pendingPromise = executeRevalidates(workStore).finally(() => {
+    const maybeRevalidatesPromise = executeRevalidates(workStore)
+    if (maybeRevalidatesPromise !== false) {
+      const revalidatesPromise = maybeRevalidatesPromise.finally(() => {
         if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
-          console.log('pending revalidates promise finished for:', url)
+          console.log('pending revalidates promise finished for:', url.href)
         }
       })
-
       if (renderOpts.waitUntil) {
-        renderOpts.waitUntil(pendingPromise)
+        renderOpts.waitUntil(revalidatesPromise)
       } else {
-        options.waitUntil = pendingPromise
+        options.waitUntil = revalidatesPromise
       }
     }
 
@@ -2204,9 +2201,6 @@ async function renderToHTMLOrFlightImpl(
     let didExecuteServerAction = false
     let formState: null | any = null
     if (isPossibleActionRequest) {
-      // For action requests, we don't want to use the resume data cache.
-      requestStore.renderResumeDataCache = null
-
       // For action requests, we handle them differently with a special render result.
       const actionRequestResult = await handleAction({
         req,
@@ -2253,8 +2247,6 @@ async function renderToHTMLOrFlightImpl(
       }
 
       didExecuteServerAction = true
-      // Restore the resume data cache
-      requestStore.renderResumeDataCache = renderResumeDataCache
     }
 
     const options: RenderResultOptions = {
@@ -2290,21 +2282,17 @@ async function renderToHTMLOrFlightImpl(
     }
 
     // If we have pending revalidates, wait until they are all resolved.
-    if (
-      workStore.pendingRevalidates ||
-      workStore.pendingRevalidateWrites ||
-      workStore.pendingRevalidatedTags
-    ) {
-      const pendingPromise = executeRevalidates(workStore).finally(() => {
+    const maybeRevalidatesPromise = executeRevalidates(workStore)
+    if (maybeRevalidatesPromise !== false) {
+      const revalidatesPromise = maybeRevalidatesPromise.finally(() => {
         if (process.env.NEXT_PRIVATE_DEBUG_CACHE) {
-          console.log('pending revalidates promise finished for:', url)
+          console.log('pending revalidates promise finished for:', url.href)
         }
       })
-
       if (renderOpts.waitUntil) {
-        renderOpts.waitUntil(pendingPromise)
+        renderOpts.waitUntil(revalidatesPromise)
       } else {
-        options.waitUntil = pendingPromise
+        options.waitUntil = revalidatesPromise
       }
     }
 
@@ -2371,7 +2359,8 @@ export const renderToHTMLOrFlight: AppPageRender = (
 
     postponedState = parsePostponedState(
       renderOpts.postponed,
-      interpolatedParams
+      interpolatedParams,
+      renderOpts.experimental.maxPostponedStateSizeBytes
     )
   } else {
     interpolatedParams = interpolateParallelRouteParams(

@@ -11,11 +11,16 @@ import type {
 import type { PagesDevOverlayBridgeType } from '../next-devtools/userspace/pages/pages-dev-overlay-setup'
 import type { OpaqueFallbackRouteParams } from './request/fallback-params'
 import type { IncrementalCache } from './lib/incremental-cache'
+import type { NextRequest } from './web/exports'
 
 // FIXME: (wyattjoh) this is a temporary solution to allow us to pass data between bundled modules
 export const NEXT_REQUEST_META = Symbol.for('NextInternalRequestMeta')
 
-export type NextIncomingMessage = (BaseNextRequest | IncomingMessage) & {
+export type NextIncomingMessage = (
+  | BaseNextRequest
+  | IncomingMessage
+  | NextRequest
+) & {
   [NEXT_REQUEST_META]?: RequestMeta
 }
 
@@ -139,6 +144,13 @@ export interface RequestMeta {
    * lookup).
    */
   postponed?: string
+
+  /**
+   * The action body extracted from a server action request when the postponed
+   * state was prepended to the body by the proxy. This allows the action
+   * handler to read the action payload without re-reading the consumed stream.
+   */
+  actionBody?: Buffer
 
   /**
    * If provided, this will be called when a response cache entry was generated
@@ -274,6 +286,16 @@ export interface RequestMeta {
    * DEV only: The duration of getStaticPaths/generateStaticParams in process.hrtime.bigint()
    */
   devGenerateStaticParamsDuration?: bigint
+
+  /**
+   * DEV only: Server action log info to be logged after the request log
+   */
+  devServerActionLog?: {
+    functionName: string
+    args: unknown[]
+    location: string
+    duration: number
+  }
 }
 
 /**

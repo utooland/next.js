@@ -136,12 +136,7 @@ where
     pub fn into_breadth_first_edges(self) -> IntoBreadthFirstEdges<T, E> {
         IntoBreadthFirstEdges {
             adjacency_map: self.adjacency_map,
-            queue: self
-                .roots
-                .into_iter()
-                .rev()
-                .map(|root| (None, root))
-                .collect(),
+            queue: self.roots.into_iter().map(|root| (None, root)).collect(),
             expanded: FxHashSet::default(),
         }
     }
@@ -157,19 +152,6 @@ where
                 .rev()
                 .map(|root| (ReverseTopologicalPass::Pre, root))
                 .collect(),
-            visited: FxHashSet::default(),
-        }
-    }
-
-    /// Returns an iterator over the nodes in postorder topological order,
-    /// starting from the given node.
-    pub fn postorder_topological_from_node<'graph>(
-        &'graph self,
-        node: &'graph T,
-    ) -> PostorderTopologicalIter<'graph, T, E> {
-        PostorderTopologicalIter {
-            adjacency_map: &self.adjacency_map,
-            stack: vec![(ReverseTopologicalPass::Pre, node)],
             visited: FxHashSet::default(),
         }
     }
