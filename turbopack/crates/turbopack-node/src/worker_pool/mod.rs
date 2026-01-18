@@ -99,8 +99,7 @@ impl WorkerThreadPool {
 
             if let Some(worker_id) = idle.pop() {
                 return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
-            } else {
-            }
+            } 
         }
 
         let (tx, rx) = oneshot::channel();
@@ -110,8 +109,7 @@ impl WorkerThreadPool {
             let mut idle = self.state.idle_workers.lock();
             if let Some(worker_id) = idle.pop() {
                 return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
-            } else {
-            }
+            } 
             waiters.push(tx);
         }
 

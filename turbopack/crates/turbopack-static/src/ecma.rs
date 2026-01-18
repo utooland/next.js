@@ -159,9 +159,8 @@ impl EcmascriptChunkItem for StaticUrlJsChunkItem {
             .asset_url(self.static_asset.path().owned().await?, self.tag.clone())
             .await?;
 
-        let code = if asset_url.starts_with("__RUNTIME_PUBLIC_PATH__") {
+        let code = if let Some(asset_path) = asset_url.strip_prefix("__RUNTIME_PUBLIC_PATH__") {
             // For runtime publicPath, use the getPublicPath() runtime function
-            let asset_path = &asset_url["__RUNTIME_PUBLIC_PATH__".len()..];
             format!(
                 "{TURBOPACK_EXPORT_VALUE}({TURBOPACK_PUBLIC_PATH}() + {path});",
                 path = StringifyJs(asset_path)
