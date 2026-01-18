@@ -22,6 +22,7 @@ use crate::{
     pool_stats::{AcquiredPermits, NodeJsPoolStats},
 };
 
+/// A bidirectional message channel using unbounded mpsc.
 #[derive(Clone)]
 pub(crate) struct MessageChannel<T: Send + Sync + 'static> {
     sender: UnboundedSender<T>,
@@ -36,9 +37,7 @@ impl<T: Send + Sync + 'static> MessageChannel<T> {
             receiver: Arc::new(AsyncMutex::new(receiver)),
         }
     }
-}
 
-impl<T: Send + Sync + 'static> MessageChannel<T> {
     pub(crate) async fn send(&self, message: T) -> Result<()> {
         self.sender
             .send(message)
@@ -67,6 +66,8 @@ pub struct WorkerOptions {
     pub cwd: RcStr,
 }
 
+// Allow dead_code for test builds where napi exports are not entry points
+#[allow(dead_code)]
 pub(super) struct TaskMessage {
     pub task_id: u32,
     pub data: Vec<u8>,
@@ -139,26 +140,6 @@ impl WorkerPoolOperation {
         Ok(())
     }
 
-    pub(crate) async fn send_message_to_worker(
-        &self,
-        worker_id: u32,
-        task_id: u32,
-        message: Vec<u8>,
-    ) -> Result<()> {
-        let channel = {
-            let mut map = self.worker_routed_channel.lock();
-            map.entry(worker_id)
-                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
-                .clone()
-        };
-        channel
-            .send((task_id, message))
-            .await
-            .context("failed to send message to worker")?;
-
-        Ok(())
-    }
-
     pub(crate) fn terminate_worker(
         &self,
         worker_options: Arc<WorkerOptions>,
@@ -174,24 +155,6 @@ impl WorkerPoolOperation {
 
     fn remove_worker_channel(&self, worker_id: u32) {
         self.worker_routed_channel.lock().remove(&worker_id);
-    }
-
-    pub async fn recv_task_message(&self, task_id: u32) -> Result<Vec<u8>> {
-        let channel = {
-            let mut map = self.task_routed_channel.lock();
-            map.entry(task_id)
-                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
-                .clone()
-        };
-        let message = channel
-            .recv()
-            .await
-            .context("failed to recv task message")?;
-        Ok(message)
-    }
-
-    pub(crate) fn remove_task_channel(&self, task_id: u32) {
-        self.task_routed_channel.lock().remove(&task_id);
     }
 
     pub(crate) async fn recv_task_message_in_worker(
@@ -227,40 +190,85 @@ impl WorkerPoolOperation {
 pub(crate) static WORKER_POOL_OPERATION: LazyLock<WorkerPoolOperation> =
     LazyLock::new(WorkerPoolOperation::default);
 
-pub(crate) async fn send_message_to_worker(
-    worker_id: u32,
-    task_id: u32,
-    message: Vec<u8>,
-) -> Result<()> {
-    WORKER_POOL_OPERATION
-        .send_message_to_worker(worker_id, task_id, message)
-        .await
-}
-
 pub(crate) fn terminate_worker(worker_options: Arc<WorkerOptions>, worker_id: u32) -> Result<()> {
     WORKER_POOL_OPERATION.terminate_worker(worker_options, worker_id)
-}
-
-pub(crate) async fn recv_task_message(task_id: u32) -> Result<Vec<u8>> {
-    WORKER_POOL_OPERATION.recv_task_message(task_id).await
-}
-
-pub(crate) fn remove_task_channel(task_id: u32) {
-    WORKER_POOL_OPERATION.remove_task_channel(task_id)
 }
 
 pub(crate) async fn get_pool_state(worker_options: Arc<WorkerOptions>) -> Arc<PoolState> {
     WORKER_POOL_OPERATION.get_pool_state(worker_options).await
 }
 
+/// Pre-allocated channels for a single task's communication.
+/// Holds Arc references to avoid HashMap lookups during send/recv.
+pub(crate) struct TaskChannels {
+    /// Channel for Rust -> Worker communication (task_id, data)
+    worker_channel: Arc<MessageChannel<(u32, Vec<u8>)>>,
+    /// Channel for Worker -> Rust communication (data)
+    task_channel: Arc<MessageChannel<Vec<u8>>>,
+    task_id: u32,
+}
+
+impl TaskChannels {
+    /// Create and register channels for a new task.
+    /// Channels are inserted into the global maps so JS workers can find them.
+    pub(crate) fn new(task_id: u32, worker_id: u32) -> Self {
+        let worker_channel = {
+            let mut map = WORKER_POOL_OPERATION.worker_routed_channel.lock();
+            map.entry(worker_id)
+                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
+                .clone()
+        };
+
+        let task_channel = {
+            let mut map = WORKER_POOL_OPERATION.task_routed_channel.lock();
+            map.entry(task_id)
+                .or_insert_with(|| Arc::new(MessageChannel::unbounded()))
+                .clone()
+        };
+
+        Self {
+            worker_channel,
+            task_channel,
+            task_id,
+        }
+    }
+
+    /// Send message to worker (Rust -> JS Worker)
+    pub(crate) async fn send_to_worker(&self, message: Vec<u8>) -> Result<()> {
+        self.worker_channel
+            .send((self.task_id, message))
+            .await
+            .context("failed to send message to worker")
+    }
+
+    /// Receive message from worker (JS Worker -> Rust)
+    pub(crate) async fn recv_from_worker(&self) -> Result<Vec<u8>> {
+        self.task_channel
+            .recv()
+            .await
+            .context("failed to recv task message")
+    }
+}
+
+impl Drop for TaskChannels {
+    fn drop(&mut self) {
+        // Only remove task channel, worker channel is shared across tasks
+        WORKER_POOL_OPERATION
+            .task_routed_channel
+            .lock()
+            .remove(&self.task_id);
+    }
+}
+
 pub(crate) struct WorkerOperation {
     pub(crate) worker_options: Arc<WorkerOptions>,
-    pub(crate) task_id: u32,
     pub(crate) worker_id: u32,
     pub(crate) state: Arc<PoolState>,
     pub(crate) on_drop: Option<Box<dyn FnOnce(u32) + Send + Sync>>,
     #[allow(dead_code)]
     pub(crate) permits: AcquiredPermits,
+    /// Pre-allocated channels for this task
+    pub(crate) channels: TaskChannels,
 }
 
 impl Drop for WorkerOperation {
@@ -268,18 +276,18 @@ impl Drop for WorkerOperation {
         if let Some(on_drop) = self.on_drop.take() {
             on_drop(self.worker_id);
         }
-        remove_task_channel(self.task_id);
+        // TaskChannels handles its own cleanup in its Drop impl
     }
 }
 
 #[async_trait::async_trait]
 impl Operation for WorkerOperation {
     async fn recv(&mut self) -> Result<Vec<u8>> {
-        recv_task_message(self.task_id).await
+        self.channels.recv_from_worker().await
     }
 
     async fn send(&mut self, message: Vec<u8>) -> Result<()> {
-        send_message_to_worker(self.worker_id, self.task_id, message).await
+        self.channels.send_to_worker(message).await
     }
 
     async fn wait_or_kill(&mut self) -> Result<ExitStatus> {
