@@ -45,11 +45,10 @@ impl ChunkType for EcmascriptChunkType {
 
         // Sort chunk items by their module ID for deterministic content ordering
         // This ensures chunks with the same modules produce identical content
-        let mut items_with_id: Vec<(usize, ReadRef<ModuleId>)> = converted_chunk_items
-            .iter()
-            .enumerate()
-            .map(|(idx, item)| async move {
-                let id: ReadRef<ModuleId> = match item {
+        let mut items_with_id: Vec<_> = converted_chunk_items
+            .into_iter()
+            .map(|item| async move {
+                let id: ReadRef<ModuleId> = match &item {
                     EcmascriptChunkItemOrBatchWithAsyncInfo::ChunkItem(item) => {
                         (*item.chunk_item).id().await?
                     }
@@ -62,16 +61,14 @@ impl ChunkType for EcmascriptChunkType {
                         }
                     }
                 };
-                Ok((idx, id))
+                Ok((id, item))
             })
             .try_join()
             .await?;
-        items_with_id.sort_by(|a, b| a.1.cmp(&b.1));
 
-        let sorted_items: Vec<_> = items_with_id
-            .into_iter()
-            .map(|(idx, _)| converted_chunk_items[idx].clone())
-            .collect();
+        items_with_id.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let sorted_items: Vec<_> = items_with_id.into_iter().map(|(_, item)| item).collect();
 
         let content = EcmascriptChunkContent {
             chunk_items: sorted_items,
