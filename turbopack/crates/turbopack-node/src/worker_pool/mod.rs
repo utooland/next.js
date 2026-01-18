@@ -23,7 +23,8 @@ use crate::{
     pool_stats::AcquiredPermits,
     worker_pool::{
         operation::{
-            PoolState, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions, get_pool_state,
+            PoolState, TaskChannels, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions,
+            get_pool_state,
         },
         worker_thread::create_worker,
     },
@@ -79,7 +80,7 @@ impl WorkerThreadPool {
                     concurrency
                 })),
                 bootup_semaphore: Arc::new(Semaphore::new(1)),
-            }),
+            }) as Box<dyn EvaluateOperation>,
             assets_for_source_mapping,
             assets_root,
             project_dir,
@@ -164,9 +165,11 @@ impl EvaluateOperation for WorkerThreadPool {
 
             let state = self.state.clone();
 
+            // Pre-allocate channels for this task to avoid HashMap lookups during communication
+            let channels = TaskChannels::new(task_id, worker_id);
+
             WorkerOperation {
                 worker_options,
-                task_id,
                 worker_id,
                 state: state.clone(),
                 on_drop: Some(Box::new(move |worker_id| {
@@ -183,6 +186,7 @@ impl EvaluateOperation for WorkerThreadPool {
                     }
                 })),
                 permits,
+                channels,
             }
         };
 

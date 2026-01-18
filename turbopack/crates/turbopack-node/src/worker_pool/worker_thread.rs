@@ -24,8 +24,9 @@ static WORKER_TERMINATOR: OnceCell<
 
 static PENDING_CREATIONS: OnceCell<Mutex<VecDeque<oneshot::Sender<u32>>>> = OnceCell::new();
 
+// Allow dead_code for test builds where napi exports are not entry points
+#[allow(dead_code)]
 #[napi]
-#[allow(unused)]
 pub fn register_worker_scheduler(
     env: Env,
     creator: ThreadsafeFunction<NapiWorkerCreation, ErrorStrategy::Fatal>,
@@ -85,8 +86,9 @@ pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
     Ok(worker_id)
 }
 
+// Allow dead_code for test builds where napi exports are not entry points
+#[allow(dead_code)]
 #[napi]
-#[allow(unused)]
 pub fn worker_created(worker_id: u32) {
     if let Some(pending) = PENDING_CREATIONS.get()
         && let Some(tx) = pending.lock().pop_front()
@@ -108,13 +110,11 @@ pub fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
 }
 
 #[napi(object)]
-#[allow(unused)]
 pub struct NapiWorkerCreation {
     pub options: NapiWorkerOptions,
 }
 
 #[napi(object)]
-#[allow(unused)]
 pub struct NapiWorkerOptions {
     pub filename: RcStr,
     pub cwd: RcStr,
@@ -134,14 +134,14 @@ where
 }
 
 #[napi(object)]
-#[allow(unused)]
 pub struct NapiWorkerTermination {
     pub options: NapiWorkerOptions,
     pub worker_id: u32,
 }
 
+// Allow dead_code for test builds where napi exports are not entry points
+#[allow(dead_code)]
 #[napi(object)]
-#[allow(unused)]
 pub struct NapiTaskMessage {
     pub task_id: u32,
     pub data: napi::bindgen_prelude::Buffer,
@@ -157,8 +157,9 @@ impl From<NapiTaskMessage> for TaskMessage {
     }
 }
 
+// Allow dead_code for test builds where napi exports are not entry points
+#[allow(dead_code)]
 #[napi]
-#[allow(unused)]
 pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTaskMessage> {
     let (task_id, message) = WORKER_POOL_OPERATION
         .recv_task_message_in_worker(worker_id)
@@ -169,8 +170,9 @@ pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTas
     })
 }
 
+// Allow dead_code for test builds where napi exports are not entry points
+#[allow(dead_code)]
 #[napi]
-#[allow(unused)]
 pub async fn send_task_message(message: NapiTaskMessage) -> napi::Result<()> {
     Ok(WORKER_POOL_OPERATION
         .send_task_message(message.into())
