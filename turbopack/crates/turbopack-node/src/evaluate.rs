@@ -32,7 +32,7 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
-#[cfg(feature = "process_pool")]
+#[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
 use crate::process_pool::ChildProcessPool;
 #[cfg(feature = "worker_pool")]
 use crate::worker_pool::WorkerThreadPool;
@@ -240,7 +240,7 @@ pub async fn get_evaluate_pool(
         }
     };
 
-    #[cfg(feature = "process_pool")]
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
     #[allow(unused_variables)]
     let pool = ChildProcessPool::create(
         cwd.clone(),
@@ -417,7 +417,7 @@ pub async fn get_evaluate_entries(
     asset_context: ResolvedVc<Box<dyn AssetContext>>,
     runtime_entries: Option<ResolvedVc<EvaluatableAssets>>,
 ) -> Result<Vc<EvaluateEntries>> {
-    #[cfg(feature = "process_pool")]
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
     #[allow(unused_variables)]
     let runtime_module_path = rcstr!("child_process/evaluate.ts");
     #[cfg(feature = "worker_pool")]
@@ -457,7 +457,7 @@ pub async fn get_evaluate_entries(
     let runtime_entries = {
         let mut entries = vec![];
 
-        #[cfg(feature = "process_pool")]
+        #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
         #[allow(unused_variables)]
         let global_module_path = embed_file_path(rcstr!("child_process/globals.ts"));
 
@@ -717,7 +717,7 @@ impl Issue for EvaluationIssue {
 }
 
 pub fn scale_down() {
-    #[cfg(feature = "process_pool")]
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
     {
         ChildProcessPool::scale_down();
     }
@@ -728,7 +728,7 @@ pub fn scale_down() {
 }
 
 pub fn scale_zero() {
-    #[cfg(feature = "process_pool")]
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
     {
         ChildProcessPool::scale_zero();
     }
