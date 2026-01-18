@@ -267,10 +267,25 @@ impl AssetIdent {
             fragment.deterministic_hash(&mut hasher);
             has_hash = true;
         }
-        for (key, ident) in assets.iter() {
+        if !assets.is_empty() {
+            // Use XOR to combine asset hashes in an order-independent way
+            // This ensures chunks with the same modules but different order get the same hash
+            let mut asset_hashes = Vec::with_capacity(assets.len());
+            for (key, ident) in assets.iter() {
+                let mut asset_hasher = Xxh3Hash64Hasher::new();
+                key.deterministic_hash(&mut asset_hasher);
+                ident
+                    .to_string()
+                    .await?
+                    .deterministic_hash(&mut asset_hasher);
+                asset_hashes.push(asset_hasher.finish());
+            }
+            asset_hashes.sort_unstable();
+
             2_u8.deterministic_hash(&mut hasher);
-            key.deterministic_hash(&mut hasher);
-            ident.to_string().await?.deterministic_hash(&mut hasher);
+            for h in asset_hashes {
+                h.deterministic_hash(&mut hasher);
+            }
             has_hash = true;
         }
         for modifier in modifiers.iter() {
