@@ -1,9 +1,10 @@
 use anyhow::{Result, bail};
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{ResolvedVc, TryJoinIterExt, ValueDefault, ValueToString, Vc};
+use turbo_tasks::{ReadRef, ResolvedVc, TryJoinIterExt, ValueDefault, ValueToString, Vc};
 use turbopack_core::chunk::{
-    AsyncModuleInfo, Chunk, ChunkItem, ChunkItemBatchGroup, ChunkItemOrBatchWithAsyncModuleInfo,
-    ChunkType, ChunkingContext, round_chunk_item_size,
+    AsyncModuleInfo, Chunk, ChunkItem, ChunkItemBatchGroup, ChunkItemExt,
+    ChunkItemOrBatchWithAsyncModuleInfo, ChunkType, ChunkingContext, ModuleId,
+    round_chunk_item_size,
 };
 
 use super::{EcmascriptChunk, EcmascriptChunkContent, EcmascriptChunkItem};
@@ -35,12 +36,45 @@ impl ChunkType for EcmascriptChunkType {
         chunk_items: Vec<ChunkItemOrBatchWithAsyncModuleInfo>,
         batch_groups: Vec<ResolvedVc<ChunkItemBatchGroup>>,
     ) -> Result<Vc<Box<dyn Chunk>>> {
+        // Convert chunk items first
+        let converted_chunk_items: Vec<_> = chunk_items
+            .iter()
+            .map(EcmascriptChunkItemOrBatchWithAsyncInfo::from_chunk_item_or_batch)
+            .try_join()
+            .await?;
+
+        // Sort chunk items by their module ID for deterministic content ordering
+        // This ensures chunks with the same modules produce identical content
+        let mut items_with_id: Vec<(usize, ReadRef<ModuleId>)> = converted_chunk_items
+            .iter()
+            .enumerate()
+            .map(|(idx, item)| async move {
+                let id: ReadRef<ModuleId> = match item {
+                    EcmascriptChunkItemOrBatchWithAsyncInfo::ChunkItem(item) => {
+                        (*item.chunk_item).id().await?
+                    }
+                    EcmascriptChunkItemOrBatchWithAsyncInfo::Batch(batch) => {
+                        let batch_ref = batch.await?;
+                        if let Some(first_item) = batch_ref.chunk_items.first() {
+                            (*first_item.chunk_item).id().await?
+                        } else {
+                            ReadRef::new_owned(ModuleId::String(RcStr::default()))
+                        }
+                    }
+                };
+                Ok((idx, id))
+            })
+            .try_join()
+            .await?;
+        items_with_id.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let sorted_items: Vec<_> = items_with_id
+            .into_iter()
+            .map(|(idx, _)| converted_chunk_items[idx].clone())
+            .collect();
+
         let content = EcmascriptChunkContent {
-            chunk_items: chunk_items
-                .iter()
-                .map(EcmascriptChunkItemOrBatchWithAsyncInfo::from_chunk_item_or_batch)
-                .try_join()
-                .await?,
+            chunk_items: sorted_items,
             batch_groups: batch_groups
                 .into_iter()
                 .map(|batch_group| {

@@ -267,10 +267,21 @@ impl AssetIdent {
             fragment.deterministic_hash(&mut hasher);
             has_hash = true;
         }
-        for (key, ident) in assets.iter() {
+        if !assets.is_empty() {
+            // Use XOR to combine asset hashes in an order-independent way
+            // This ensures chunks with the same modules but different order get the same hash
+            let mut combined_asset_hash = 0u64;
+            for (key, ident) in assets.iter() {
+                let mut asset_hasher = Xxh3Hash64Hasher::new();
+                key.deterministic_hash(&mut asset_hasher);
+                ident
+                    .to_string()
+                    .await?
+                    .deterministic_hash(&mut asset_hasher);
+                combined_asset_hash ^= asset_hasher.finish();
+            }
             2_u8.deterministic_hash(&mut hasher);
-            key.deterministic_hash(&mut hasher);
-            ident.to_string().await?.deterministic_hash(&mut hasher);
+            combined_asset_hash.deterministic_hash(&mut hasher);
             has_hash = true;
         }
         for modifier in modifiers.iter() {
