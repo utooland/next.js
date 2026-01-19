@@ -1708,11 +1708,6 @@ async fn handle_before_resolve_plugins(
 ) -> Result<Option<Vc<ResolveResult>>> {
     let options_value = options.await?;
 
-    // Early return if no before_resolve_plugins are configured
-    if options_value.before_resolve_plugins.is_empty() {
-        return Ok(None);
-    }
-
     for plugin in &options_value.before_resolve_plugins {
         let condition = plugin.before_resolve_condition().resolve().await?;
         if !*condition.matches(request).await? {
@@ -1739,11 +1734,6 @@ async fn handle_after_resolve_plugins(
 ) -> Result<Vc<ResolveResult>> {
     // Pre-fetch options to avoid repeated await calls in the inner loop
     let options_value = options.await?;
-
-    // Early return if no after_resolve_plugins are configured
-    if options_value.after_resolve_plugins.is_empty() {
-        return Ok(result);
-    }
 
     // Pre-resolve all plugin conditions once to avoid repeated resolve calls in the loop
     let mut resolved_conditions: Vec<AfterResolvePluginWithCondition> =
@@ -2636,11 +2626,6 @@ async fn apply_in_package(
     query: RcStr,
     fragment: RcStr,
 ) -> Result<Option<Vc<ResolveResult>>> {
-    // Early return if no in_package rules
-    if options_value.in_package.is_empty() {
-        return Ok(None);
-    }
-
     // Check alias field for module aliases first
     for in_package in options_value.in_package.iter() {
         // resolve_module_request is called when importing a node
