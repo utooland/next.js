@@ -88,11 +88,15 @@ where
     }
 
     async fn resolve_input(&self) -> Result<Self> {
-        let mut resolved = Vec::with_capacity(self.len());
-        for value in self {
-            resolved.push(value.resolve_input().await?);
+        // Early return for empty vec avoids async state machine overhead
+        if self.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(resolved)
+        let mut result = Vec::with_capacity(self.len());
+        for v in self {
+            result.push(v.resolve_input().await?);
+        }
+        Ok(result)
     }
 }
 
@@ -259,6 +263,10 @@ where
     V: TaskInput,
 {
     async fn resolve_input(&self) -> Result<Self> {
+        // Early return for empty map avoids async state machine overhead
+        if self.is_empty() {
+            return Ok(BTreeMap::new());
+        }
         let mut new_map = BTreeMap::new();
         for (k, v) in self {
             new_map.insert(
@@ -285,6 +293,10 @@ where
     T: TaskInput + Ord,
 {
     async fn resolve_input(&self) -> Result<Self> {
+        // Early return for empty set avoids async state machine overhead
+        if self.is_empty() {
+            return Ok(BTreeSet::new());
+        }
         let mut new_set = BTreeSet::new();
         for value in self {
             new_set.insert(TaskInput::resolve_input(value).await?);
@@ -307,6 +319,10 @@ where
     V: TaskInput + 'static,
 {
     async fn resolve_input(&self) -> Result<Self> {
+        // Early return for empty map avoids async state machine overhead
+        if self.is_empty() {
+            return Ok(Self::default());
+        }
         let mut new_entries = Vec::with_capacity(self.len());
         for (k, v) in self {
             new_entries.push((
@@ -334,6 +350,10 @@ where
     T: TaskInput + Ord + 'static,
 {
     async fn resolve_input(&self) -> Result<Self> {
+        // Early return for empty set avoids async state machine overhead
+        if self.is_empty() {
+            return Ok(Self::default());
+        }
         let mut new_set = Vec::with_capacity(self.len());
         for value in self {
             new_set.push(TaskInput::resolve_input(value).await?);
