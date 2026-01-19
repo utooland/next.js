@@ -367,12 +367,13 @@ impl DiskWatcher {
         }
         path.components().any(|component| {
             if let Component::Normal(name) = component
-                && let Some(name_str) = name.to_str() {
-                    return self
-                        .ignored_paths
-                        .iter()
-                        .any(|ignored| ignored.as_str() == name_str);
-                }
+                && let Some(name_str) = name.to_str()
+            {
+                return self
+                    .ignored_paths
+                    .iter()
+                    .any(|ignored| ignored.as_str() == name_str);
+            }
             false
         })
     }
