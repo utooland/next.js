@@ -72,7 +72,12 @@ impl<'a> FormattingStruct<'a> {
     ) -> Self {
         Self::Named {
             name,
-            fields: join_all(fields.into_iter().map(AsyncFormattingField::resolve)).await,
+            // Optimize for empty case: avoid JoinAll heap allocation when fields is empty
+            fields: if fields.is_empty() {
+                Vec::new()
+            } else {
+                join_all(fields.into_iter().map(AsyncFormattingField::resolve)).await
+            },
         }
     }
 
@@ -82,7 +87,12 @@ impl<'a> FormattingStruct<'a> {
     ) -> Self {
         Self::Unnamed {
             name,
-            fields: join_all(fields).await,
+            // Optimize for empty case: avoid JoinAll heap allocation when fields is empty
+            fields: if fields.is_empty() {
+                Vec::new()
+            } else {
+                join_all(fields).await
+            },
         }
     }
 }

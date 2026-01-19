@@ -13,12 +13,29 @@ use pin_project_lite::pin_project;
 
 pin_project! {
     /// Future for the [JoinIterExt::join] method.
+    ///
+    /// Uses an enum to optimize the empty iterator case by avoiding
+    /// heap allocation and executor overhead when there are no futures to join.
     pub struct Join<F>
     where
         F: Future,
     {
         #[pin]
-        inner: JoinAll<F>,
+        inner: JoinInner<F>,
+    }
+}
+
+pin_project! {
+    #[project = JoinInnerProj]
+    enum JoinInner<F>
+    where
+        F: Future,
+    {
+        Empty,
+        NonEmpty {
+            #[pin]
+            inner: JoinAll<F>,
+        },
     }
 }
 
@@ -32,7 +49,10 @@ where
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        self.project().inner.poll(cx)
+        match self.project().inner.project() {
+            JoinInnerProj::Empty => std::task::Poll::Ready(Vec::new()),
+            JoinInnerProj::NonEmpty { inner } => inner.poll(cx),
+        }
     }
 }
 
@@ -42,18 +62,39 @@ where
 {
     /// Returns a future that resolves to a vector of the outputs of the futures
     /// in the iterator.
+    ///
+    /// This method is optimized for empty iterators - when the iterator is empty,
+    /// it avoids creating a `JoinAll` future and its associated heap allocation,
+    /// returning a ready future directly instead.
     fn join(self) -> Join<F>;
 }
 
 pin_project! {
     /// Future for the [TryJoinIterExt::try_join] method.
+    ///
+    /// Uses `Either` to optimize the empty iterator case by avoiding
+    /// heap allocation and executor overhead when there are no futures to join.
     #[must_use]
     pub struct TryJoin<F>
     where
         F: Future,
     {
         #[pin]
-        inner: JoinAll<F>,
+        inner: TryJoinInner<F>,
+    }
+}
+
+pin_project! {
+    #[project = TryJoinInnerProj]
+    enum TryJoinInner<F>
+    where
+        F: Future,
+    {
+        Empty,
+        NonEmpty {
+            #[pin]
+            inner: JoinAll<F>,
+        },
     }
 }
 
@@ -67,11 +108,14 @@ where
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
-        match self.project().inner.poll_unpin(cx) {
-            std::task::Poll::Ready(res) => {
-                std::task::Poll::Ready(res.into_iter().collect::<Result<Vec<_>>>())
-            }
-            std::task::Poll::Pending => std::task::Poll::Pending,
+        match self.project().inner.project() {
+            TryJoinInnerProj::Empty => std::task::Poll::Ready(Ok(Vec::new())),
+            TryJoinInnerProj::NonEmpty { mut inner } => match inner.poll_unpin(cx) {
+                std::task::Poll::Ready(res) => {
+                    std::task::Poll::Ready(res.into_iter().collect::<Result<Vec<_>>>())
+                }
+                std::task::Poll::Pending => std::task::Poll::Pending,
+            },
         }
     }
 }
@@ -85,6 +129,10 @@ where
     ///
     /// Unlike `Futures::future::try_join_all`, this returns the Error that
     /// occurs first in the list of futures, not the first to fail in time.
+    ///
+    /// This method is optimized for empty iterators - when the iterator is empty,
+    /// it avoids creating a `JoinAll` future and its associated heap allocation,
+    /// returning a ready future directly instead.
     fn try_join(self) -> TryJoin<F>;
 }
 
@@ -95,8 +143,19 @@ where
     It: Iterator<Item = IF>,
 {
     fn join(self) -> Join<F> {
-        Join {
-            inner: join_all(self.map(|f| f.into_future())),
+        // Collect futures into a Vec first to enable empty check optimization.
+        // This avoids heap allocation from JoinAll when the iterator is empty.
+        let futures: Vec<F> = self.map(|f| f.into_future()).collect();
+        if futures.is_empty() {
+            Join {
+                inner: JoinInner::Empty,
+            }
+        } else {
+            Join {
+                inner: JoinInner::NonEmpty {
+                    inner: join_all(futures),
+                },
+            }
         }
     }
 }
@@ -108,20 +167,48 @@ where
     It: Iterator<Item = IF>,
 {
     fn try_join(self) -> TryJoin<F> {
-        TryJoin {
-            inner: join_all(self.map(|f| f.into_future())),
+        // Collect futures into a Vec first to enable empty check optimization.
+        // This avoids heap allocation from JoinAll when the iterator is empty.
+        let futures: Vec<F> = self.map(|f| f.into_future()).collect();
+        if futures.is_empty() {
+            TryJoin {
+                inner: TryJoinInner::Empty,
+            }
+        } else {
+            TryJoin {
+                inner: TryJoinInner::NonEmpty {
+                    inner: join_all(futures),
+                },
+            }
         }
     }
 }
 
 pin_project! {
     /// Future for the [TryFlatJoinIterExt::try_flat_join] method.
+    ///
+    /// Uses an enum to optimize the empty iterator case by avoiding
+    /// heap allocation and executor overhead when there are no futures to join.
     pub struct TryFlatJoin<F>
     where
         F: Future,
     {
         #[pin]
-        inner: JoinAll<F>,
+        inner: TryFlatJoinInner<F>,
+    }
+}
+
+pin_project! {
+    #[project = TryFlatJoinInnerProj]
+    enum TryFlatJoinInner<F>
+    where
+        F: Future,
+    {
+        Empty,
+        NonEmpty {
+            #[pin]
+            inner: JoinAll<F>,
+        },
     }
 }
 
@@ -134,16 +221,18 @@ where
     type Output = Result<Vec<U::Item>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
-        match self.project().inner.poll_unpin(cx) {
-            Poll::Ready(res) => {
-                let mut v = Vec::new();
-                for r in res {
-                    v.extend(r?);
+        match self.project().inner.project() {
+            TryFlatJoinInnerProj::Empty => Poll::Ready(Ok(Vec::new())),
+            TryFlatJoinInnerProj::NonEmpty { mut inner } => match inner.poll_unpin(cx) {
+                Poll::Ready(res) => {
+                    let mut v = Vec::new();
+                    for r in res {
+                        v.extend(r?);
+                    }
+                    Poll::Ready(Ok(v))
                 }
-
-                Poll::Ready(Ok(v))
-            }
-            Poll::Pending => Poll::Pending,
+                Poll::Pending => Poll::Pending,
+            },
         }
     }
 }
@@ -161,6 +250,10 @@ where
     ///
     /// Unlike `Futures::future::try_join_all`, this returns the Error that
     /// occurs first in the list of futures, not the first to fail in time.
+    ///
+    /// This method is optimized for empty iterators - when the iterator is empty,
+    /// it avoids creating a `JoinAll` future and its associated heap allocation,
+    /// returning a ready future directly instead.
     fn try_flat_join(self) -> TryFlatJoin<F>;
 }
 
@@ -173,8 +266,19 @@ where
     U: Iterator,
 {
     fn try_flat_join(self) -> TryFlatJoin<F> {
-        TryFlatJoin {
-            inner: join_all(self.map(|f| f.into_future())),
+        // Collect futures into a Vec first to enable empty check optimization.
+        // This avoids heap allocation from JoinAll when the iterator is empty.
+        let futures: Vec<F> = self.map(|f| f.into_future()).collect();
+        if futures.is_empty() {
+            TryFlatJoin {
+                inner: TryFlatJoinInner::Empty,
+            }
+        } else {
+            TryFlatJoin {
+                inner: TryFlatJoinInner::NonEmpty {
+                    inner: join_all(futures),
+                },
+            }
         }
     }
 }
