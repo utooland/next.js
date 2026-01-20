@@ -240,6 +240,11 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn chunk_loading_global(mut self, chunk_loading_global: RcStr) -> Self {
+        self.chunking_context.chunk_loading_global = Some(chunk_loading_global);
+        self
+    }
+
     pub fn build(self) -> Vc<BrowserChunkingContext> {
         BrowserChunkingContext::cell(self.chunking_context)
     }
@@ -328,6 +333,9 @@ pub struct BrowserChunkingContext {
     filename: Option<RcStr>,
     /// Non evaluate chunk filename template
     chunk_filename: Option<RcStr>,
+    /// The global variable name used for chunk loading.
+    /// Default: "TURBOPACK"
+    chunk_loading_global: Option<RcStr>,
 }
 
 impl BrowserChunkingContext {
@@ -377,6 +385,7 @@ impl BrowserChunkingContext {
                 should_use_absolute_url_references: false,
                 filename: Default::default(),
                 chunk_filename: Default::default(),
+                chunk_loading_global: Default::default(),
             },
         }
     }
@@ -478,6 +487,17 @@ impl BrowserChunkingContext {
     #[turbo_tasks::function]
     pub fn minify_type(&self) -> Vc<MinifyType> {
         self.minify_type.cell()
+    }
+
+    /// Returns the chunk loading global variable name.
+    /// Defaults to "TURBOPACK" if not set.
+    #[turbo_tasks::function]
+    pub fn chunk_loading_global(&self) -> Vc<RcStr> {
+        Vc::cell(
+            self.chunk_loading_global
+                .clone()
+                .unwrap_or_else(|| rcstr!("TURBOPACK")),
+        )
     }
 
     /// Returns the chunk path information.
