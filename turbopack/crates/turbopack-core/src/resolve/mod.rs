@@ -2969,6 +2969,12 @@ async fn resolve_import_map_result(
         ImportMapResult::Result(result) => Some(**result),
         ImportMapResult::Alias(request, alias_lookup_path) => {
             let request = **request;
+            // Preserve the query string from the original request (e.g., ?modules for CSS modules)
+            let request = if !query.is_empty() {
+                request.with_query(query.clone())
+            } else {
+                request
+            };
             let lookup_path = match alias_lookup_path {
                 Some(path) => path.clone(),
                 None => lookup_path,
