@@ -350,7 +350,7 @@ mod non_recursive_helpers {
 
 impl DiskWatcher {
     pub fn new() -> Self {
-        Self::new_with_ignored_paths(vec!["node_modules".into()])
+        Self::new_with_ignored_paths(vec![])
     }
 
     pub fn new_with_ignored_paths(ignored_paths: Vec<RcStr>) -> Self {
