@@ -101,6 +101,11 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn entry_root_export(mut self, name: Option<RcStr>) -> Self {
+        self.chunking_context.entry_root_export = name;
+        self
+    }
+
     pub fn tracing(mut self, enable_tracing: bool) -> Self {
         self.chunking_context.enable_tracing = enable_tracing;
         self
@@ -336,6 +341,11 @@ pub struct BrowserChunkingContext {
     /// The global variable name used for chunk loading.
     /// Default: "TURBOPACK"
     chunk_loading_global: Option<RcStr>,
+    /// Expose entry module exports to global scope with the specified name.
+    /// When set, all named exports from the entry module will be available on
+    /// `window`/`globalThis` under the specified name.
+    /// Default: None (no exposure)
+    entry_root_export: Option<RcStr>,
 }
 
 impl BrowserChunkingContext {
@@ -386,6 +396,7 @@ impl BrowserChunkingContext {
                 filename: Default::default(),
                 chunk_filename: Default::default(),
                 chunk_loading_global: Default::default(),
+                entry_root_export: None,
             },
         }
     }
@@ -498,6 +509,12 @@ impl BrowserChunkingContext {
                 .clone()
                 .unwrap_or_else(|| rcstr!("TURBOPACK")),
         )
+    }
+
+    /// Returns the entry root export name to expose to global scope.
+    #[turbo_tasks::function]
+    pub fn entry_root_export(&self) -> Vc<Option<RcStr>> {
+        Vc::cell(self.entry_root_export.clone())
     }
 
     /// Returns the chunk path information.

@@ -199,6 +199,7 @@ impl EcmascriptBrowserEvaluateChunk {
                     output_root_to_root_path,
                     source_maps,
                     this.chunking_context.chunk_loading_global(),
+                    this.chunking_context.entry_root_export(),
                 );
                 code.push_code(&*runtime_code.await?);
             }
