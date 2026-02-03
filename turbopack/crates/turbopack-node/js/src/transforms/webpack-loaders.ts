@@ -3,7 +3,7 @@ declare const __turbopack_external_require__: {
 } & ((id: string, thunk: () => any, esm?: boolean) => any)
 
 import type { Channel as Ipc } from '../types'
-import { dirname, resolve as pathResolve, relative } from 'path'
+import { resolve as pathResolve, relative } from 'path'
 import {
   StackFrame,
   parse as parseStackTrace,
@@ -21,6 +21,7 @@ import {
 } from './webpack-loaders-runtime'
 import fs from 'fs'
 import path from 'path'
+import { workerData } from 'worker_threads'
 
 export type IpcInfoMessage =
   | {
@@ -166,7 +167,6 @@ const transform = (
 ) => {
   return new Promise((resolve, reject) => {
     const resource = pathResolve(contextDir, name)
-    const resourceDir = dirname(resource)
 
     const loadersWithOptions = loaders.map((loader) =>
       typeof loader === 'string' ? { loader, options: {} } : loader
@@ -520,9 +520,7 @@ const transform = (
         },
 
         loaders: loadersWithOptions.map((loader) => ({
-          loader: __turbopack_external_require__.resolve(loader.loader, {
-            paths: [contextDir, resourceDir],
-          }),
+          loader: __turbopack_external_require__.resolve(loader.loader),
           options: loader.options,
         })),
         readResource: (_filename, callback) => {
@@ -604,6 +602,16 @@ const transform = (
 }
 
 export { transform as default }
+
+if (workerData && workerData.binding) {
+  // @ts-ignore
+  const { run } = require('../web_worker/evaluate')
+  run(async () => {
+    return {
+      default: transform,
+    }
+  })
+}
 
 function makeErrorEmitter(
   severity: 'warning' | 'error',

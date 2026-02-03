@@ -34,6 +34,10 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
+#[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+use crate::process_pool::ChildProcessPool;
+#[cfg(feature = "worker_pool")]
+use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping,
     backend::{CreatePoolOptions, NodeBackend},
@@ -82,6 +86,7 @@ pub struct EvaluatePool {
 }
 
 impl EvaluatePool {
+    #[allow(dead_code)]
     pub(crate) fn new(
         pool: Box<dyn EvaluateOperation>,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
@@ -272,7 +277,13 @@ pub async fn get_evaluate_pool(
             assets_for_source_mapping,
             assets_root: output_root.clone(),
             project_dir: chunking_context.root_path().owned().await?,
-            concurrency: available_parallelism().map_or(1, |v| v.get()),
+            concurrency: if cfg!(all(target_family = "wasm", target_os = "unknown")) {
+                //TODO: Enable concurrency may cause OPFS error, which can't resolve files under
+                // .turbopack/
+                1
+            } else {
+                available_parallelism().map_or(1, |v| v.get())
+            },
             debug,
         })
         .await?;
@@ -767,5 +778,27 @@ impl Issue for EvaluationIssue {
 
     fn source(&self) -> Option<IssueSource> {
         Some(self.source)
+    }
+}
+
+pub fn scale_down() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_down();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }

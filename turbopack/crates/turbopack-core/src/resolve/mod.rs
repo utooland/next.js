@@ -20,7 +20,7 @@ use turbo_tasks::{
     FxIndexMap, NonLocalValue, ReadRef, ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt,
     ValueToString, ValueToStringRef, Vc, trace::TraceRawVcs,
 };
-use turbo_tasks_fs::{FileSystemEntryType, FileSystemPath};
+use turbo_tasks_fs::{DiskFileSystem, FileSystem, FileSystemEntryType, FileSystemPath};
 use turbo_unix_path::normalize_request;
 
 use crate::{
@@ -473,7 +473,9 @@ pub enum ExternalType {
     CommonJs,
     EcmaScriptModule,
     Global,
+    Promise,
     Script,
+    Umd,
 }
 
 impl Display for ExternalType {
@@ -483,7 +485,9 @@ impl Display for ExternalType {
             ExternalType::EcmaScriptModule => write!(f, "esm"),
             ExternalType::Url => write!(f, "url"),
             ExternalType::Global => write!(f, "global"),
+            ExternalType::Promise => write!(f, "promise"),
             ExternalType::Script => write!(f, "script"),
+            ExternalType::Umd => write!(f, "umd"),
         }
     }
 }
@@ -2056,18 +2060,82 @@ async fn resolve_internal_inline(
                 .await?
             }
             Request::Windows {
-                path: _,
-                query: _,
-                fragment: _,
+                path,
+                query,
+                fragment,
             } => {
+                if let Some(path_str) = path.as_constant_string() {
+                    let sys_path = std::path::Path::new(path_str.as_str());
+
+                    let mut candidate_disk_fses = Vec::new();
+
+                    if let Some(disk_fs_vc) =
+                        ResolvedVc::try_downcast_type::<DiskFileSystem>(lookup_path.fs)
+                    {
+                        candidate_disk_fses.push(disk_fs_vc);
+                    }
+
+                    for module in &options_value.modules {
+                        let fs = match module {
+                            ResolveModules::Nested(root, _) => root.fs,
+                            ResolveModules::Path { dir, .. } => dir.fs,
+                        };
+                        if let Some(disk_fs_vc) =
+                            ResolvedVc::try_downcast_type::<DiskFileSystem>(fs)
+                        {
+                            candidate_disk_fses.push(disk_fs_vc);
+                        }
+                    }
+
+                    for disk_fs_vc in candidate_disk_fses {
+                        let disk_fs = disk_fs_vc.await?;
+                        if let Some(fs_path) = disk_fs.try_from_sys_path(disk_fs_vc, sys_path, None)
+                        {
+                            let root_path = disk_fs_vc.root().owned().await?;
+                            // Windows absolute requests should be normalized through the
+                            // filesystem root. Otherwise an absolute request can keep the
+                            // importer's lookup path in the resolved identity chain, which may
+                            // create a different module record from a relative request to the same
+                            // physical file.
+                            let (relative_lookup_path, relative_path) = if let Some(relative_path) =
+                                root_path.get_relative_path_to(&fs_path)
+                            {
+                                (root_path.clone(), relative_path)
+                            } else if let Some(relative_path) =
+                                lookup_path.get_relative_path_to(&fs_path)
+                            {
+                                (lookup_path.clone(), relative_path)
+                            } else {
+                                continue;
+                            };
+
+                            return resolve_relative_request(
+                                relative_lookup_path,
+                                request,
+                                options,
+                                options_value,
+                                &Pattern::Constant(relative_path),
+                                query.clone(),
+                                false,
+                                fragment.clone(),
+                            )
+                            .await;
+                        }
+                    }
+                }
+
                 if !has_alias {
                     ResolvingIssue {
                         severity: resolve_error_severity(options).await?,
-                        request_type: "windows import: not implemented yet".to_string(),
+                        request_type: "windows import".to_string(),
                         request: request.to_resolved().await?,
                         file_path: lookup_path.clone(),
                         resolve_options: options.to_resolved().await?,
-                        error_message: Some("windows imports are not implemented yet".to_string()),
+                        error_message: Some(
+                            "Windows absolute path imports can only be resolved if the path is \
+                             within the project root. Please use a relative path instead."
+                                .to_string(),
+                        ),
                         source: None,
                     }
                     .resolved_cell()
@@ -3027,7 +3095,11 @@ async fn resolve_import_map_result(
                         ExternalType::EcmaScriptModule => {
                             node_esm_resolve_options(alias_lookup_path.root().owned().await?)
                         }
-                        ExternalType::Script | ExternalType::Url | ExternalType::Global => options,
+                        ExternalType::Script
+                        | ExternalType::Url
+                        | ExternalType::Global
+                        | ExternalType::Promise
+                        | ExternalType::Umd => options,
                     },
                 )
                 .await?

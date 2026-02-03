@@ -6,8 +6,9 @@ use turbo_tasks::{ResolvedVc, ValueToString, Vc, turbobail};
 use turbo_tasks_fs::{File, FileContent, FileSystemPath};
 use turbopack_core::{
     asset::{Asset, AssetContent},
-    chunk::{ChunkingContext, EvaluatableAssets, ModuleChunkItemIdExt},
+    chunk::{ChunkData, ChunkingContext, ChunksData, EvaluatableAssets, ModuleChunkItemIdExt},
     code_builder::{Code, CodeBuilder},
+    module::Module,
     module_graph::ModuleGraph,
     output::{
         OutputAsset, OutputAssets, OutputAssetsReference, OutputAssetsReferences,
@@ -26,7 +27,7 @@ use crate::NodeJsChunkingContext;
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Build Node Entry Chunk")]
-pub(crate) struct EcmascriptBuildNodeEntryChunk {
+pub struct EcmascriptBuildNodeEntryChunk {
     path: FileSystemPath,
     other_chunks: ResolvedVc<OutputAssets>,
     evaluatable_assets: ResolvedVc<EvaluatableAssets>,
@@ -62,6 +63,29 @@ impl EcmascriptBuildNodeEntryChunk {
             chunking_context,
         }
         .cell()
+    }
+
+    #[turbo_tasks::function]
+    pub async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
+        Ok(ChunkData::from_assets(
+            self.chunking_context.output_root().owned().await?,
+            *self.other_chunks,
+        ))
+    }
+
+    #[turbo_tasks::function]
+    pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
+        *self.evaluatable_assets
+    }
+
+    #[turbo_tasks::function]
+    pub fn module_graph(&self) -> Vc<ModuleGraph> {
+        *self.module_graph
+    }
+
+    #[turbo_tasks::function]
+    pub fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
+        Vc::upcast(*self.chunking_context)
     }
 
     #[turbo_tasks::function]
@@ -157,7 +181,17 @@ impl EcmascriptBuildNodeEntryChunk {
             *self.chunking_context.runtime_type().await?,
             RuntimeType::Production
         ) {
-            !self.module_graph.async_module_info().await?.is_empty()
+            let mut has_async_modules = !self.module_graph.async_module_info().await?.is_empty();
+            if !has_async_modules {
+                let evaluatable_assets = self.evaluatable_assets.await?;
+                for evaluatable_asset in &*evaluatable_assets {
+                    if *evaluatable_asset.is_self_async().await? {
+                        has_async_modules = true;
+                        break;
+                    }
+                }
+            }
+            has_async_modules
         } else {
             true
         };

@@ -40,22 +40,26 @@ pub fn rcstr(input: TokenStream) -> TokenStream {
                 format!("::turbo_rcstr::inline_atom({lit}).unwrap()")
             } else {
                 format!(
-                    "{{ static RCSTR_STORAGE: ::turbo_rcstr::StaticPrehashedString = \
-                     ::turbo_rcstr::make_const_prehashed_string({lit}); const RCSTR: \
-                     ::turbo_rcstr::RcStr = ::turbo_rcstr::from_static(&RCSTR_STORAGE); \
-                     ::turbo_rcstr::__rcstr_static_submit!(
-                     ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); RCSTR }}",
+                    "{{ #[cfg(target_arch = \"wasm32\")] {{ ::turbo_rcstr::RcStr::from({lit}) }} \
+                     #[cfg(not(target_arch = \"wasm32\"))] {{ static RCSTR_STORAGE: \
+                     ::turbo_rcstr::StaticPrehashedString = \
+                     ::turbo_rcstr::make_const_prehashed_string({lit}); \
+                     ::turbo_rcstr::__rcstr_static_submit!( \
+                     ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); \
+                     ::turbo_rcstr::from_static(&RCSTR_STORAGE) }} }}",
                 )
             }
         } else {
             format!(
-                "{{ const TEXT: &str = {input}; if ::turbo_rcstr::is_atom_inlineable(TEXT) {{ \
+                "{{ const TEXT: &str = {input}; #[cfg(target_arch = \"wasm32\")] {{ \
+                 ::turbo_rcstr::inline_atom(TEXT).unwrap() }} #[cfg(not(target_arch = \
+                 \"wasm32\"))] {{ if ::turbo_rcstr::is_atom_inlineable(TEXT) {{ \
                  ::turbo_rcstr::inline_atom(TEXT).unwrap() }} else {{ static RCSTR_STORAGE: \
                  ::turbo_rcstr::StaticPrehashedString = \
-                 ::turbo_rcstr::make_const_prehashed_string(TEXT); const RCSTR: \
-                 ::turbo_rcstr::RcStr = ::turbo_rcstr::from_static(&RCSTR_STORAGE); \
-                 ::turbo_rcstr::__rcstr_static_submit!(
-                 ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); RCSTR }} }}",
+                 ::turbo_rcstr::make_const_prehashed_string(TEXT); \
+                 ::turbo_rcstr::__rcstr_static_submit!( \
+                 ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); \
+                 ::turbo_rcstr::from_static(&RCSTR_STORAGE) }} }} }}",
             )
         };
         TokenStream::from_str(&source).expect("emitted source parses")

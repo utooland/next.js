@@ -12,9 +12,13 @@ mod utils;
 use std::path::Path;
 
 use anyhow::Result;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_persistence::{CompactConfig, TurboPersistence};
 
-use crate::database::turbo::{self, TurboKeyValueDatabase};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::database::turbo;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::database::turbo::TurboKeyValueDatabase;
 pub use crate::{
     backend::{BackendOptions, StorageMode, TurboTasksBackend},
     database::{
@@ -28,6 +32,10 @@ pub use crate::{
 /// Creates a `BackingStorage` to be passed to [`TurboTasksBackend::new`].
 ///
 /// Information about the state of the on-disk cache is returned using [`StartupCacheState`].
+///
+/// This is the fastest most-tested implementation of `BackingStorage`, and is normally returned by
+/// [`default_backing_storage`].
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn turbo_backing_storage(
     base_path: &Path,
     version_info: &GitVersionInfo,
@@ -43,8 +51,18 @@ pub fn turbo_backing_storage(
 /// Creates an in-memory `BackingStorage` to be passed to [`TurboTasksBackend::new`]. Backed by
 /// an empty, read-only [`TurboPersistence`] — reads return `None`, writes are not expected
 /// (callers should set [`BackendOptions::storage_mode`] to `None`).
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn noop_backing_storage() -> TurboBackingStorage {
     TurboBackingStorage::new_in_memory(TurboKeyValueDatabase::empty_in_memory())
+}
+
+/// Creates a no-op `BackingStorage` for browser wasm builds.
+///
+/// Browser wasm has no on-disk persistence; callers should set
+/// [`BackendOptions::storage_mode`] to `None`.
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub fn noop_backing_storage() -> TurboBackingStorage {
+    TurboBackingStorage::new_in_memory()
 }
 
 /// Opens a Turbopack persistent cache database at the given base path and performs a full
@@ -53,6 +71,7 @@ pub fn noop_backing_storage() -> TurboBackingStorage {
 ///
 /// The parallel scheduler requires a Tokio runtime. If one is already active (e.g. when called
 /// from a NAPI async function), it is reused. Otherwise a new multi-threaded runtime is created.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn compact_database(
     base_path: &Path,
     version_info: &GitVersionInfo,

@@ -5,7 +5,7 @@ use indoc::writedoc;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, Vc};
 use turbopack_core::{
-    chunk::{AssetSuffix, ChunkLoadRetry, CrossOrigin},
+    chunk::{AssetSuffix, ChunkLoadRetry, CrossOrigin, WorkerConfigurationOptions},
     code_builder::{Code, CodeBuilder},
     context::AssetContext,
     environment::ChunkLoading,
@@ -14,11 +14,30 @@ use turbopack_ecmascript::utils::StringifyJs;
 
 use crate::{RuntimeType, embed_js::embed_static_code};
 
+#[turbo_tasks::value(cell = "new")]
+pub struct BrowserRuntimeOptions {
+    pub has_async_modules: bool,
+    pub entry_root_export: Option<RcStr>,
+}
+
+#[turbo_tasks::function]
+pub fn browser_runtime_options(
+    has_async_modules: bool,
+    entry_root_export: Option<RcStr>,
+) -> Vc<BrowserRuntimeOptions> {
+    BrowserRuntimeOptions {
+        has_async_modules,
+        entry_root_export,
+    }
+    .cell()
+}
+
 /// Returns the code for the ECMAScript runtime.
 #[turbo_tasks::function]
 pub async fn get_browser_runtime_code(
     asset_context: ResolvedVc<Box<dyn AssetContext>>,
     chunk_base_path: Vc<Option<RcStr>>,
+    worker_configuration_options: Vc<WorkerConfigurationOptions>,
     asset_suffix: Vc<AssetSuffix>,
     runtime_type: RuntimeType,
     output_root_to_root_path: RcStr,
@@ -26,8 +45,8 @@ pub async fn get_browser_runtime_code(
     chunk_loading_global: Vc<RcStr>,
     cross_origin: Vc<CrossOrigin>,
     chunk_load_retry: Vc<ChunkLoadRetry>,
-    has_async_modules: bool,
     chunk_loading: Vc<ChunkLoading>,
+    options: Vc<BrowserRuntimeOptions>,
 ) -> Result<Vc<Code>> {
     let asset_context = *asset_context;
     let environment = asset_context.compile_time_info().environment();
@@ -89,10 +108,23 @@ pub async fn get_browser_runtime_code(
     let relative_root_path = output_root_to_root_path;
     let chunk_base_path = chunk_base_path.await?;
     let chunk_base_path = chunk_base_path.as_ref().map_or_else(|| "", |f| f.as_str());
+    let worker_configuration_options = worker_configuration_options.await?;
+    // `null` (no override) and `Some("")` (empty-string prefix) are distinct
+    // states, so inject as a JS literal instead of collapsing both to "".
+    let worker_asset_prefix_js: String = worker_configuration_options
+        .asset_prefix
+        .as_ref()
+        .map_or_else(
+            || "null".to_string(),
+            |f| format!("{}", StringifyJs(f.as_str())),
+        );
     let asset_suffix = asset_suffix.await?;
     let chunk_loading_global = chunk_loading_global.await?;
     let cross_origin = *cross_origin.await?;
     let chunk_lists_global = format!("{}_CHUNK_LISTS", chunk_loading_global);
+    let options = options.await?;
+    let has_async_modules = options.has_async_modules;
+    let entry_root_export = &options.entry_root_export;
 
     if *environment
         .runtime_versions()
@@ -103,23 +135,59 @@ pub async fn get_browser_runtime_code(
     } else {
         code += "(function(){\n";
     }
+    // Start the IIFE
+    if let Some(ref export_name) = *entry_root_export {
+        writedoc!(
+            code,
+            r#"
+                (function(root, factory) {{
+                    if (typeof exports === 'object' && typeof module === 'object')
+                        module.exports = factory();
+                    else if (typeof exports === 'object')
+                        exports[{}] = factory();
+                    else
+                        root[{}] = factory();
+                }}(typeof self !== 'undefined' ? self : this, function() {{
 
-    writedoc!(
-        code,
-        r#"
-            if (!Array.isArray(globalThis[{}])) {{
-                return;
-            }}
+                const __chunk__ = (() => {{
+                if (!Array.isArray(globalThis["{chunk_loading_global}"])) {{
+                    return;
+                }}
 
-            var CHUNK_BASE_PATH = {};
-            var RELATIVE_ROOT_PATH = {};
-            var RUNTIME_PUBLIC_PATH = {};
-        "#,
-        StringifyJs(&chunk_loading_global),
-        StringifyJs(chunk_base_path),
-        StringifyJs(relative_root_path.as_str()),
-        StringifyJs(chunk_base_path),
-    )?;
+                let __entryExports__ = undefined;
+
+                var CHUNK_BASE_PATH = {};
+                var WORKER_BASE_PATH = {};
+                var RELATIVE_ROOT_PATH = {};
+                var RUNTIME_PUBLIC_PATH = {};
+            "#,
+            StringifyJs(export_name.as_str()),
+            StringifyJs(export_name.as_str()),
+            StringifyJs(chunk_base_path),
+            worker_asset_prefix_js,
+            StringifyJs(relative_root_path.as_str()),
+            StringifyJs(chunk_base_path),
+        )?;
+    } else {
+        writedoc!(
+            code,
+            r#"
+                if (!Array.isArray(globalThis[{}])) {{
+                    return;
+                }}
+
+                var CHUNK_BASE_PATH = {};
+                var WORKER_BASE_PATH = {};
+                var RELATIVE_ROOT_PATH = {};
+                var RUNTIME_PUBLIC_PATH = {};
+            "#,
+            StringifyJs(&chunk_loading_global),
+            StringifyJs(chunk_base_path),
+            worker_asset_prefix_js,
+            StringifyJs(relative_root_path.as_str()),
+            StringifyJs(chunk_base_path),
+        )?;
+    }
 
     match &*asset_suffix {
         AssetSuffix::None => {
@@ -188,6 +256,14 @@ pub async fn get_browser_runtime_code(
         chunk_load_retry.max_jitter_ms,
     )?;
 
+    writedoc!(
+        code,
+        r#"
+            var WORKER_FORWARDED_GLOBALS = {};
+        "#,
+        StringifyJs(&worker_configuration_options.forwarded_globals)
+    )?;
+
     code.push_code(&*shared_runtime_utils_code.await?);
     // Only include the async-module (top-level await) machinery when the app uses it.
     if has_async_modules {
@@ -254,12 +330,59 @@ pub async fn get_browser_runtime_code(
             chunk_lists_global = StringifyJs(&chunk_lists_global),
         )?;
     }
-    writedoc!(
-        code,
-        r#"
+
+    // Add expose entry exports code if enabled
+    if entry_root_export.is_some() {
+        writedoc!(
+            code,
+            r#"
+
+                try {{
+                for (const registration of chunksToRegister) {{
+                    const runtimeParams = registration.length === 2 ? registration[1] : null;
+                    if (runtimeParams && runtimeParams.runtimeModuleIds && runtimeParams.runtimeModuleIds.length > 0) {{
+                        const entryModuleId = runtimeParams.runtimeModuleIds[runtimeParams.runtimeModuleIds.length - 1];
+                        const chunkPath = getPathFromScript(registration[0]);
+
+                        const entryModule = getOrInstantiateRuntimeModule(chunkPath, entryModuleId);
+
+                        if (entryModule && entryModule.exports) {{
+                            const moduleExports = entryModule.namespaceObject || entryModule.exports;
+
+                            // Save for return value (will be handled by UMD wrapper)
+                            __entryExports__ = moduleExports;
+                        }}
+                        break;
+                    }}
+                }}
+                }} catch (e) {{
+                    console.error('Failed to expose entry module exports:', e);
+                }}
+            "#
+        )?;
+    }
+
+    // Close the IIFE and return exports if enabled
+    if entry_root_export.is_some() {
+        writedoc!(
+            code,
+            r#"
+                return __entryExports__;
             }})();
-        "#
-    )?;
+
+            // Return the exports from the factory function
+            return __chunk__;
+            }}));
+            "#
+        )?;
+    } else {
+        writedoc!(
+            code,
+            r#"
+            }})();
+            "#
+        )?;
+    }
 
     Ok(Code::cell(code.build()))
 }

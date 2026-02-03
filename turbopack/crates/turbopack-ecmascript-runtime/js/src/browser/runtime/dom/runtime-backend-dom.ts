@@ -37,7 +37,7 @@ const chunkResolvers: Map<ChunkUrl, ChunkResolver> = new Map()
   BACKEND = {
     async registerChunk(chunk, params) {
       let chunkPath = getPathFromScript(chunk)
-      let chunkUrl = getUrlFromScript(chunk)
+      let chunkUrl = getUrlFromScript(chunkPath)
 
       const resolver = getOrCreateResolver(chunkUrl)
       resolver.resolve()
@@ -179,21 +179,54 @@ const chunkResolvers: Map<ChunkUrl, ChunkResolver> = new Map()
     }
 
     if (sourceType === SourceType.Runtime) {
-      // We don't need to load chunks references from runtime code, as they're already
-      // present in the DOM.
+      // CSS chunks do not register themselves, and as such must be marked as
+      // loaded instantly.
       resolver.loadingStarted = true
 
       if (isCss(chunkUrl)) {
-        // CSS chunks do not register themselves, and as such must be marked as
-        // loaded instantly.
+        if (typeof importScripts !== 'function') {
+          const decodedChunkUrl = decodeURI(chunkUrl)
+          const previousLinks = document.querySelectorAll(
+            `link[rel=stylesheet][href="${chunkUrl}"],link[rel=stylesheet][href^="${chunkUrl}?"],link[rel=stylesheet][href="${decodedChunkUrl}"],link[rel=stylesheet][href^="${decodedChunkUrl}?"]`
+          )
+
+          if (previousLinks.length === 0) {
+            const link = document.createElement('link')
+            link.rel = 'stylesheet'
+            link.crossOrigin = CROSS_ORIGIN
+            link.href = chunkUrl
+            link.onerror = () => {
+              resolver.reject()
+            }
+            link.onload = () => {
+              resolver.resolve()
+            }
+            document.head.appendChild(link)
+            return resolver.promise
+          }
+        }
+
         resolver.resolve()
+        return resolver.promise
       }
 
-      // We need to wait for JS chunks to register themselves within `registerChunk`
-      // before we can start instantiating runtime modules, hence the absence of
-      // `resolver.resolve()` in this branch.
-
-      return resolver.promise
+      // Runtime JS chunks are expected to be present in the DOM already.
+      // Load it first
+      if (typeof importScripts !== 'function') {
+        const decodedChunkUrl = decodeURI(chunkUrl)
+        const previousScripts = document.querySelectorAll(
+          `script[src="${chunkUrl}"],script[src^="${chunkUrl}?"],script[src="${decodedChunkUrl}"],script[src^="${decodedChunkUrl}?"]`
+        )
+        if (previousScripts.length > 0) {
+          for (const script of Array.from(previousScripts)) {
+            script.addEventListener('error', () => {
+              resolver.reject()
+            })
+          }
+          return resolver.promise
+        }
+      }
+      // If it wasn't present in the DOM, fallback to loading logic.
     }
 
     if (typeof importScripts === 'function') {

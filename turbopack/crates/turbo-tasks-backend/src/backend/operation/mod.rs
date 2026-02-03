@@ -313,6 +313,7 @@ impl<'e> ExecuteContextImpl<'e> {
 
         // Fast path: no backing storage to restore from — all tasks should already
         // have restored flags set at allocation time, so just invoke callbacks directly.
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         if !self.backend.should_restore() {
             for (task_id, category) in task_ids {
                 self.task_lock_counter.acquire();

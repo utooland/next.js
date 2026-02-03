@@ -78,6 +78,8 @@ struct SnapshotOptions {
     browserslist: String,
     #[serde(default = "default_entry")]
     entry: String,
+    #[serde(default)]
+    runtime_entries: Vec<String>,
     #[serde(default = "default_minify_type")]
     minify_type: MinifyType,
     #[serde(default)]
@@ -127,6 +129,7 @@ impl Default for SnapshotOptions {
         SnapshotOptions {
             browserslist: default_browserslist(),
             entry: default_entry(),
+            runtime_entries: Vec::new(),
             minify_type: default_minify_type(),
             runtime: Default::default(),
             runtime_type: default_runtime_type(),
@@ -459,11 +462,22 @@ async fn run_test_operation(resource: RcStr) -> Result<Vc<FileSystemPath>> {
         .to_resolved()
         .await?;
 
+    let mut runtime_entry_modules = Vec::new();
+    for runtime_entry in &options.runtime_entries {
+        let runtime_entry_asset = project_path.join(runtime_entry)?;
+        let runtime_entry_module = FileSource::new(runtime_entry_asset)
+            .to_evaluatable(asset_context)
+            .to_resolved()
+            .await?;
+        runtime_entry_modules.push(ResolvedVc::upcast(runtime_entry_module));
+    }
+
     let entry_modules: Vec<ResolvedVc<Box<dyn Module>>> =
         maybe_load_env(asset_context, project_path.clone())
             .await?
             .into_iter()
             .map(ResolvedVc::upcast)
+            .chain(runtime_entry_modules)
             .chain(std::iter::once(entry_module))
             .collect();
 
@@ -603,7 +617,6 @@ async fn run_test_operation(resource: RcStr) -> Result<Vc<FileSystemPath>> {
         }
     };
 
-    // TODO: Load runtime entries from snapshots
     let chunks = match options.runtime {
         Runtime::Browser if options.single_chunk => OutputAssetsWithReferenced {
             assets: ResolvedVc::cell(vec![

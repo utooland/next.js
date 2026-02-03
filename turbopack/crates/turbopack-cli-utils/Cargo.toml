@@ -17,7 +17,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-crossterm = "0.26.0"
+clap = { workspace = true, features = ["derive"] }
 owo-colors = { workspace = true }
 rustc-hash = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -27,3 +27,5 @@ turbo-tasks-fs = { workspace = true }
 turbopack-core = { workspace = true }
 turbopack-resolve = { workspace = true }
 
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+crossterm = "0.29.0"

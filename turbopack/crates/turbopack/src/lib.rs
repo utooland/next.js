@@ -56,9 +56,7 @@ use turbopack_ecmascript::{
         follow_reexports,
     },
     rename::module::EcmascriptModuleRenameModule,
-    side_effect_optimization::{
-        facade::module::EcmascriptModuleFacadeModule, locals::module::EcmascriptModuleLocalsModule,
-    },
+    side_effect_optimization::facade::module::EcmascriptModuleFacadeModule,
     tree_shake::part::module::EcmascriptModulePartAsset,
 };
 use turbopack_node::transforms::webpack::{WebpackLoaderItem, WebpackLoaderItems, WebpackLoaders};
@@ -67,6 +65,7 @@ use turbopack_resolve::{
     typescript::type_resolve,
 };
 use turbopack_static::{css::StaticUrlCssModule, ecma::StaticUrlJsModule};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::{module_asset::WebAssemblyModuleAsset, source::WebAssemblySource};
 
 use crate::{
@@ -212,7 +211,15 @@ async fn apply_module_type(
                             if let Some(part) = part {
                                 match part {
                                     ModulePart::Evaluation => {
-                                        Vc::upcast(EcmascriptModuleLocalsModule::new(*module))
+                                        // Evaluating an ESM module must evaluate the original
+                                        // module record, not just the synthesized locals part.
+                                        // Otherwise a re-export barrel can be re-entered through a
+                                        // namespace import while only `<locals>` is in the module
+                                        // cache, which can execute later re-exports before earlier
+                                        // dependencies have finished initializing.
+                                        Vc::upcast(EcmascriptModuleFacadeModule::new(Vc::upcast(
+                                            *module,
+                                        )))
                                     }
                                     ModulePart::Export(_) => {
                                         apply_reexport_tree_shaking(
@@ -260,6 +267,7 @@ async fn apply_module_type(
             ty,
             environment,
             lightningcss_features,
+            css_modules_pattern,
         } => ResolvedVc::upcast(
             CssModule::new(
                 *source,
@@ -268,6 +276,7 @@ async fn apply_module_type(
                 css_import_context.map(|c| *c),
                 environment.as_deref().copied(),
                 *lightningcss_features,
+                css_modules_pattern.clone(),
             )
             .to_resolved()
             .await?,
@@ -282,6 +291,7 @@ async fn apply_module_type(
                 .to_resolved()
                 .await?,
         ),
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         ModuleType::WebAssembly { source_ty } => ResolvedVc::upcast(
             WebAssemblyModuleAsset::new(
                 WebAssemblySource::new(*source, *source_ty),
@@ -318,7 +328,7 @@ async fn apply_reexport_tree_shaking(
             module: final_module,
             export_name: new_export,
             ..
-        } = &*follow_reexports(module, export.clone(), true).await?;
+        } = &*follow_reexports(module, export.clone(), false).await?;
         let module = if let Some(new_export) = new_export {
             if *new_export == *export {
                 Vc::upcast(**final_module)
@@ -761,6 +771,7 @@ async fn process_default_internal(
                     default_options,
                     None,
                     Default::default(),
+                    None,
                 )
                 .await?;
             match effect {
@@ -1251,7 +1262,9 @@ pub async fn replace_external(
             }
         }
         ExternalType::Global => CachedExternalType::Global,
+        ExternalType::Promise => CachedExternalType::Promise,
         ExternalType::Script => CachedExternalType::Script,
+        ExternalType::Umd => CachedExternalType::Umd,
         ExternalType::Url => {
             // we don't want to wrap url externals.
             return Ok(None);

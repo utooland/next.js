@@ -22,10 +22,10 @@ use turbopack_core::{
 };
 use turbopack_ecmascript::{
     chunk::{EcmascriptChunkData, EcmascriptChunkPlaceable},
-    minify::minify,
+    minify::{get_compress_options, minify},
     utils::StringifyJs,
 };
-use turbopack_ecmascript_runtime::RuntimeType;
+use turbopack_ecmascript_runtime::{RuntimeType, browser_runtime_options};
 
 use crate::{
     BrowserChunkingContext,
@@ -38,7 +38,7 @@ use crate::{
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Browser Evaluate Chunk")]
-pub(crate) struct EcmascriptBrowserEvaluateChunk {
+pub struct EcmascriptBrowserEvaluateChunk {
     chunking_context: ResolvedVc<BrowserChunkingContext>,
     ident: ResolvedVc<AssetIdent>,
     other_chunks: ResolvedVc<OutputAssets>,
@@ -70,11 +70,31 @@ impl EcmascriptBrowserEvaluateChunk {
     }
 
     #[turbo_tasks::function]
-    async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
+    pub async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
         Ok(ChunkData::from_assets(
             self.chunking_context.output_root().owned().await?,
             *self.other_chunks,
         ))
+    }
+
+    #[turbo_tasks::function]
+    pub fn ident(&self) -> Vc<AssetIdent> {
+        *self.ident
+    }
+
+    #[turbo_tasks::function]
+    pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
+        *self.evaluatable_assets
+    }
+
+    #[turbo_tasks::function]
+    pub fn module_graph(&self) -> Vc<ModuleGraph> {
+        *self.module_graph
+    }
+
+    #[turbo_tasks::function]
+    pub fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
+        Vc::upcast(*self.chunking_context)
     }
 
     #[turbo_tasks::function]
@@ -186,6 +206,7 @@ impl EcmascriptBrowserEvaluateChunk {
                 let runtime_code = turbopack_ecmascript_runtime::get_browser_runtime_code(
                     asset_context,
                     this.chunking_context.chunk_base_path(),
+                    this.chunking_context.worker_configuration_options(),
                     this.chunking_context.asset_suffix(),
                     runtime_type,
                     output_root_to_root_path,
@@ -193,8 +214,11 @@ impl EcmascriptBrowserEvaluateChunk {
                     this.chunking_context.chunk_loading_global(),
                     this.chunking_context.cross_origin(),
                     this.chunking_context.chunk_load_retry(),
-                    has_async_modules,
                     this.chunking_context.chunk_loading(),
+                    browser_runtime_options(
+                        has_async_modules,
+                        this.chunking_context.entry_root_export().owned().await?,
+                    ),
                 );
                 code.push_code(&*runtime_code.await?);
             }
@@ -207,8 +231,15 @@ impl EcmascriptBrowserEvaluateChunk {
 
         let mut code = code.build();
 
-        if let MinifyType::Minify { mangle } = *this.chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } =
+            *this.chunking_context.minify_type().await?
+        {
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options(compress, mangle),
+            )?;
         }
 
         Ok(code.cell())

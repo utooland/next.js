@@ -156,7 +156,7 @@ impl EcmascriptDevChunkListContent {
 
         let mut code = CodeBuilder::default();
 
-        // When loaded, JS chunks must register themselves with the `TURBOPACK` global
+        // When loaded, JS chunks must register themselves with the chunk loading global
         // variable. Similarly, we register the chunk list with the
         // `{chunk_loading_global}_CHUNK_LISTS` global variable.
         let chunk_lists_global = format!("{}_CHUNK_LISTS", this.chunk_loading_global);

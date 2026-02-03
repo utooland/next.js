@@ -280,14 +280,15 @@ hashbrown = "0.14.5"
 image = { version = "0.25.8", default-features = false }
 indexmap = "2.13.0"
 indoc = "2.0.0"
+inventory = "0.3.21"
 itertools = "0.10.5"
-lightningcss = { version = "1.0.0-alpha.70", features = [
+lightningcss = { version = "1.0.0-alpha.71", features = [
   "serde",
   "visitor",
   "into_owned",
   "browserslist",
 ] }
-lightningcss-napi = { version = "0.4.6", default-features = false, features = [
+lightningcss-napi = { version = "0.4.8", default-features = false, features = [
   "visitor",
 ] }
 lzzzz = "2.0.0"
@@ -308,6 +309,7 @@ napi-derive = "2"
 napi-build = "2"
 nohash-hasher = "0.2.0"
 notify = "8.1.0"
+notify-types = "2.0.0"
 owo-colors = "4.2.2"
 parcel_selectors = "0.28.2"
 parking_lot = "0.12.1"
@@ -321,6 +323,7 @@ qstring = "0.7.2"
 quick_cache = { version = "0.6.14" }
 quote = "1.0.45"
 rand = "0.10.1"
+getrandom = "0.3"
 rayon = "1.10.0"
 regex = "1.12.3"
 regress = "0.10.4"
@@ -352,7 +355,7 @@ tempfile = "3.20.0"
 terminal_size = "0.3.0"
 thiserror = "1.0.48"
 thread_local = "1.1.8"
-tokio = "1.52.1"
+tokio = "=1.51.0"
 tokio-util = { version = "0.7.18", features = ["io", "rt"] }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.16"
@@ -374,3 +377,9 @@ virtue = { git = "https://github.com/bgw/virtue.git", branch = "bgw/fix-generic-
 mdxjs = { git = "https://github.com/vercel-labs/mdxjs-rs-turbopack.git", branch = "turbopack" }
 # Doesn't compile on recent nightly versions because of https://github.com/Michael-F-Bryan/include_dir/pull/117
 include_dir = { git = "https://github.com/vercel-labs/include_dir", branch = "turbopack" }
+libmimalloc-sys = { git = "https://github.com/utooland/mimalloc_rust.git" }
+lightningcss = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
+mimalloc = { git = "https://github.com/utooland/mimalloc_rust.git" }
+parcel_selectors = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
+tokio = { git = "https://github.com/utooland/tokio.git", package = "tokio" }
+tokio-util = { git = "https://github.com/utooland/tokio.git", package = "tokio-util" }
