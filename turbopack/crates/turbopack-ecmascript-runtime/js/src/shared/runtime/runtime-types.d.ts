@@ -76,6 +76,7 @@ type DynamicExport = (
 
 type LoadChunk = (chunkPath: ChunkPath) => Promise<any> | undefined
 type LoadChunkByUrl = (chunkUrl: ChunkUrl) => Promise<any> | undefined
+type LoadScript = (scriptUrl: string) => Promise<void>
 
 type ModuleCache<M> = Record<ModuleId, M>
 // TODO properly type values here
@@ -102,6 +103,8 @@ type AsyncModule = (
 
 type ResolveAbsolutePath = (modulePath?: string) => string
 type ResolveFileUrl = (modulePath?: string) => string
+
+type GetPublicPath = (mode?: 'auto') => string
 
 type ExternalRequire = (
   id: DependencySpecifier,
@@ -146,6 +149,7 @@ interface TurbopackBaseContext<M> {
   l: LoadChunk
   L: LoadChunkByUrl
   h: GetChunkRelativeURL
+  S: LoadScript
   w: string
   P: ResolveAbsolutePath
   F: ResolveFileUrl
@@ -156,4 +160,5 @@ interface TurbopackBaseContext<M> {
   y: ExternalImport
   z: CommonJsRequire
   g: typeof globalThis
+  p: GetPublicPath
 }

@@ -4,7 +4,9 @@ pub mod headers;
 pub mod issue_context;
 pub mod lazy_instantiated;
 pub mod query;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod request;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod resolve;
 pub mod route_tree;
 pub mod router;

@@ -45,6 +45,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub mod wasm_fs_offload;
+
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use auto_hash_map::{AutoMap, AutoSet};
@@ -488,11 +491,21 @@ impl DiskFileSystemInner {
         let root_path = self.root_path().to_path_buf();
 
         // create the directory for the filesystem on disk, if it doesn't exist
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         retry_blocking(|| std::fs::create_dir_all(&root_path))
             .instrument(tracing::info_span!("create root directory", name = ?root_path))
             .concurrency_limited(&self.write_semaphore)
             .await?;
 
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        wasm_fs_offload::CLIENT.create_dir_all(root_path).await?;
+
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        self.watcher
+            .start_watching(self.clone(), report_invalidation_reason, poll_interval)
+            .await?;
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         self.watcher
             .start_watching(self.clone(), report_invalidation_reason, poll_interval)
             .await?;
@@ -557,6 +570,7 @@ impl DiskFileSystem {
             .await
     }
 
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn stop_watching(&self) {
         self.inner.watcher.stop_watching().await;
     }
@@ -646,7 +660,7 @@ impl DiskFileSystem {
     /// * `root` - Path to the given filesystem's root. Should be
     ///   [canonicalized][std::fs::canonicalize].
     pub fn new(name: RcStr, root: Vc<RcStr>) -> Vc<Self> {
-        Self::new_internal(name, root, Vec::new())
+        Self::new_internal(name, root, Vec::new(), Vec::new())
     }
 
     /// Create a new instance of `DiskFileSystem`.
@@ -669,7 +683,31 @@ impl DiskFileSystem {
                 "denied_path must be normalized: {denied_path:?}"
             );
         }
-        Self::new_internal(name, root, denied_paths)
+        Self::new_internal(name, root, denied_paths, Vec::new())
+    }
+
+    /// Create a new instance of `DiskFileSystem` with watch ignore patterns.
+    /// # Arguments
+    ///
+    /// * `name` - Name of the filesystem.
+    /// * `root` - Path to the given filesystem's root. Should be
+    ///   [canonicalized][std::fs::canonicalize].
+    /// * `denied_paths` - Paths within this filesystem that are not allowed to be accessed.
+    /// * `watched_ignored` - Paths that should be ignored when watching for file changes.
+    pub fn new_with_denied_paths_and_watched_ignored(
+        name: RcStr,
+        root: Vc<RcStr>,
+        denied_paths: Vec<RcStr>,
+        watched_ignored: Vec<RcStr>,
+    ) -> Vc<Self> {
+        for denied_path in &denied_paths {
+            debug_assert!(!denied_path.is_empty(), "denied_path must not be empty");
+            debug_assert!(
+                normalize_path(denied_path).as_deref() == Some(&**denied_path),
+                "denied_path must be normalized: {denied_path:?}"
+            );
+        }
+        Self::new_internal(name, root, denied_paths, watched_ignored)
     }
 }
 
@@ -680,8 +718,15 @@ impl DiskFileSystem {
         name: RcStr,
         root: Vc<RcStr>,
         denied_paths: Vec<RcStr>,
+        watched_ignored: Vec<RcStr>,
     ) -> Result<Vc<Self>> {
         let root = root.owned().await?;
+        let watcher = if watched_ignored.is_empty() {
+            DiskWatcher::new()
+        } else {
+            DiskWatcher::new_with_ignored_paths(watched_ignored)
+        };
+
         let instance = DiskFileSystem {
             inner: Arc::new(DiskFileSystemInner {
                 name,
@@ -692,7 +737,7 @@ impl DiskFileSystem {
                 dir_invalidator_map: InvalidatorMap::new(),
                 read_semaphore: create_read_semaphore(),
                 write_semaphore: create_write_semaphore(),
-                watcher: DiskWatcher::new(),
+                watcher,
                 denied_paths,
                 turbo_tasks: turbo_tasks_weak(),
                 tokio_handle: Handle::current(),
@@ -723,6 +768,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path).await?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let content = match retry_blocking(|| File::from_path(&full_path))
             .instrument(tracing::info_span!("read file", name = ?full_path))
             .concurrency_limited(&self.inner.read_semaphore)
@@ -735,6 +781,15 @@ impl FileSystem for DiskFileSystem {
             // ast-grep-ignore: no-context-format
             Err(e) => return Err(anyhow!(e).context(format!("reading file {full_path:?}"))),
         };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let content = match wasm_fs_offload::CLIENT.read(&full_path).await {
+            Ok(buf) => Ok(FileContent::from(File::from_bytes(buf))),
+            Err(e) if e.kind() == ErrorKind::NotFound || e.kind() == ErrorKind::InvalidFilename => {
+                Ok(FileContent::NotFound)
+            }
+            Err(e) => Err(anyhow!(e).context(format!("reading file {}", full_path.display()))),
+        }?;
         Ok(content.cell())
     }
 
@@ -749,6 +804,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_dir_invalidator(&full_path).await?;
 
         // we use the sync std function here as it's a lot faster (600%) in node-file-trace
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let read_dir = match retry_blocking(|| std::fs::read_dir(&full_path))
             .instrument(tracing::info_span!("read directory", name = ?full_path))
             .concurrency_limited(&self.inner.read_semaphore)
@@ -765,6 +821,21 @@ impl FileSystem for DiskFileSystem {
             Err(e) => {
                 // ast-grep-ignore: no-context-format
                 return Err(anyhow!(e).context(format!("reading dir {full_path:?}")));
+            }
+        };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let read_dir = match wasm_fs_offload::CLIENT.read_dir(&full_path).await {
+            Ok(dir) => dir,
+            Err(e)
+                if e.kind() == ErrorKind::NotFound
+                    || e.kind() == ErrorKind::NotADirectory
+                    || e.kind() == ErrorKind::InvalidFilename =>
+            {
+                return Ok(RawDirectoryContent::not_found());
+            }
+            Err(e) => {
+                bail!(anyhow!(e).context(format!("reading dir {}", full_path.display())))
             }
         };
         let dir_path = fs_path.path.as_str();
@@ -837,6 +908,7 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path).await?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let link_path = match retry_blocking(|| std::fs::read_link(&full_path))
             .instrument(tracing::info_span!("read symlink", name = ?full_path))
             .concurrency_limited(&self.inner.read_semaphore)
@@ -845,6 +917,13 @@ impl FileSystem for DiskFileSystem {
             Ok(res) => res,
             Err(_) => return Ok(LinkContent::NotFound.cell()),
         };
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let link_path: PathBuf = {
+            // TODO: not supported now
+            todo!()
+        };
+
         let is_link_absolute = link_path.is_absolute();
 
         let mut file = link_path.clone();
@@ -1036,6 +1115,7 @@ impl FileSystem for DiskFileSystem {
                     return Ok(());
                 }
 
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                 match &**content {
                     PersistedFileContent::Content(..) => {
                         let content = content.clone();
@@ -1128,6 +1208,40 @@ impl FileSystem for DiskFileSystem {
                     }
                 }
 
+                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                match &**content {
+                    PersistedFileContent::Content(..) => {
+                        let create_directory = compare == FileComparison::Create;
+                        if create_directory && let Some(parent) = full_path.parent() {
+                            wasm_fs_offload::CLIENT
+                                .create_dir_all(parent)
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "failed to create directory {parent:?} for write to \
+                                         {full_path:?}",
+                                    )
+                                })?;
+                        }
+                        let content = content.clone();
+                        let PersistedFileContent::Content(file) = &*content else {
+                            unreachable!()
+                        };
+                        wasm_fs_offload::CLIENT
+                            .write(&full_path, file.content().to_bytes())
+                            .instrument(tracing::info_span!("write file", name = ?full_path))
+                            .await
+                            .with_context(|| format!("failed to write to {full_path:?}"))?;
+                    }
+                    PersistedFileContent::NotFound => {
+                        wasm_fs_offload::CLIENT
+                            .remove_file(&full_path)
+                            .instrument(tracing::info_span!("remove file", name = ?full_path))
+                            .await
+                            .with_context(|| format!("removing {full_path:?} failed"))?;
+                    }
+                }
+
                 // Invalidate any read tasks tracking this path so they re-read the new content
                 self.inner.invalidate_from_write(&self.full_path);
 
@@ -1153,6 +1267,11 @@ impl FileSystem for DiskFileSystem {
         fs_path: FileSystemPath,
         target: ResolvedVc<LinkContent>,
     ) -> Result<()> {
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            unreachable!()
+        }
+
         // You might be tempted to use `session_dependent` here, but we purely declare a side
         // effect and does not need to be re-executed in the next session. All side effects are
         // re-executed in general.
@@ -1327,7 +1446,7 @@ impl FileSystem for DiskFileSystem {
                                 })?;
                                 has_old_content = false;
                             }
-                            #[cfg(not(windows))]
+                            #[cfg(unix)]
                             let io_result = std::os::unix::fs::symlink(&target, &full_path);
                             #[cfg(windows)]
                             let io_result = if is_directory {
@@ -1335,6 +1454,11 @@ impl FileSystem for DiskFileSystem {
                             } else {
                                 std::os::windows::fs::symlink_file(&target, &full_path)
                             };
+                            #[cfg(all(not(unix), not(windows)))]
+                            let io_result = Err(io::Error::new(
+                                ErrorKind::Unsupported,
+                                "symbolic links are unsupported on this platform",
+                            ));
                             io_result.map_err(|err| {
                                 if err.kind() == ErrorKind::AlreadyExists {
                                     // try to remove the symlink on the next iteration of the loop
@@ -1350,7 +1474,7 @@ impl FileSystem for DiskFileSystem {
                             err.source.kind() == ErrorKind::AlreadyExists || can_retry(&err.source)
                         }
                         let err_context = || {
-                            #[cfg(not(windows))]
+                            #[cfg(unix)]
                             let message = format!(
                                 "failed to create symlink at {full_path:?} pointing to {target:?}"
                             );
@@ -1369,6 +1493,11 @@ impl FileSystem for DiskFileSystem {
                                      https://learn.microsoft.com/en-us/windows/advanced-settings/developer-mode)",
                                 )
                             };
+                            #[cfg(all(not(unix), not(windows)))]
+                            let message = format!(
+                                "failed to create symlink at {full_path:?} pointing to \
+                                 {target:?}: symbolic links are unsupported on this platform"
+                            );
                             message
                         };
                         async {
@@ -1402,7 +1531,7 @@ impl FileSystem for DiskFileSystem {
                                     // removed (has_old_content is now false), so just create.
                                     retry_blocking_custom(
                                         || {
-                                            #[cfg(not(windows))]
+                                            #[cfg(unix)]
                                             let io_result =
                                                 std::os::unix::fs::symlink(&target, &full_path);
                                             #[cfg(windows)]
@@ -1415,6 +1544,11 @@ impl FileSystem for DiskFileSystem {
                                                     &target, &full_path,
                                                 )
                                             };
+                                            #[cfg(all(not(unix), not(windows)))]
+                                            let io_result = Err(io::Error::new(
+                                                ErrorKind::Unsupported,
+                                                "symbolic links are unsupported on this platform",
+                                            ));
                                             io_result.map_err(|err| SymlinkCreationError {
                                                 msg: "creation of a new symbolic link or junction \
                                                       point failed",
@@ -1480,12 +1614,18 @@ impl FileSystem for DiskFileSystem {
         self.inner.register_read_invalidator(&full_path).await?;
 
         let _lock = self.inner.lock_path(&full_path).await;
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         let meta = retry_blocking(|| std::fs::metadata(&full_path))
             .instrument(tracing::info_span!("read metadata", name = ?full_path))
             .concurrency_limited(&self.inner.read_semaphore)
             .await
             .with_context(|| format!("reading metadata for {:?}", full_path))?;
 
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        let meta = wasm_fs_offload::CLIENT
+            .metadata(&full_path)
+            .await
+            .with_context(|| format!("reading metadata for {}", full_path.display()))?;
         Ok(FileMeta::cell(meta.into()))
     }
 }
@@ -1659,7 +1799,7 @@ impl FileSystemPath {
     /// 1. The parent directory, if any;
     /// 2. The file stem;
     /// 3. The extension, if any.
-    fn split_file_stem_extension(&self) -> (Option<&str>, &str, Option<&str>) {
+    pub fn split_file_stem_extension(&self) -> (Option<&str>, &str, Option<&str>) {
         let (path_before_extension, extension) = self.split_extension();
 
         if let Some((parent, file_stem)) = path_before_extension.rsplit_once('/') {
@@ -2109,6 +2249,7 @@ pub enum PersistedFileContent {
 
 impl PersistedFileContent {
     /// Performs a comparison of self's data against a disk file's streamed read.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
         let old_file =
             extract_disk_access(retry_blocking(|| std::fs::File::open(path)).await, path)?;
@@ -2138,6 +2279,51 @@ impl PersistedFileContent {
         // if they match.
         let mut new_contents = new_file.read();
         let mut old_contents = BufReader::new(old_file);
+        Ok(loop {
+            let new_chunk = new_contents.fill_buf()?;
+            let Ok(old_chunk) = old_contents.fill_buf() else {
+                break FileComparison::NotEqual;
+            };
+
+            let len = min(new_chunk.len(), old_chunk.len());
+            if len == 0 {
+                if new_chunk.len() == old_chunk.len() {
+                    break FileComparison::Equal;
+                } else {
+                    break FileComparison::NotEqual;
+                }
+            }
+
+            if new_chunk[0..len] != old_chunk[0..len] {
+                break FileComparison::NotEqual;
+            }
+
+            new_contents.consume(len);
+            old_contents.consume(len);
+        })
+    }
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
+        let old_meta = extract_disk_access(wasm_fs_offload::CLIENT.metadata(path).await, path)?;
+        let Some(old_meta) = old_meta else {
+            return Ok(FileComparison::Create);
+        };
+        let PersistedFileContent::Content(new_file) = self else {
+            return Ok(FileComparison::NotEqual);
+        };
+        if new_file.meta != old_meta.into() {
+            return Ok(FileComparison::NotEqual);
+        }
+        let mut new_contents = new_file.read();
+        let mut old_contents = if let Some(content) =
+            extract_disk_access(wasm_fs_offload::CLIENT.read(path).await, path)?
+        {
+            let cursor = std::io::Cursor::new(content);
+            BufReader::new(cursor)
+        } else {
+            return Ok(FileComparison::Create);
+        };
         Ok(loop {
             let new_chunk = new_contents.fill_buf()?;
             let Ok(old_chunk) = old_contents.fill_buf() else {
@@ -2387,6 +2573,13 @@ impl DeterministicHash for FileMeta {
         if let Some(content_type) = &self.content_type {
             content_type.to_string().deterministic_hash(state);
         }
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl From<tokio_fs_ext::Metadata> for FileMeta {
+    fn from(_meta: tokio_fs_ext::Metadata) -> Self {
+        FileMeta::default()
     }
 }
 
@@ -3250,7 +3443,7 @@ mod tests {
 
         use rand::{RngExt, SeedableRng};
         use turbo_rcstr::{RcStr, rcstr};
-        use turbo_tasks::{ResolvedVc, Vc, read_strongly_consistent_and_apply_effects};
+        use turbo_tasks::{ResolvedVc, Vc};
         use turbo_tasks_backend::{BackendOptions, TurboTasksBackend, noop_backing_storage};
 
         use super::extract_effects_operation;
@@ -3322,14 +3515,14 @@ mod tests {
                     .await?;
                 let root_path = disk_file_system_root(fs);
 
-                read_strongly_consistent_and_apply_effects(
-                    extract_effects_operation(test_write_link_effect_operation(
-                        fs,
-                        root_path.clone(),
-                        rcstr!("subdir-a"),
-                    )),
-                    |e| e,
-                )
+                extract_effects_operation(test_write_link_effect_operation(
+                    fs,
+                    root_path.clone(),
+                    rcstr!("subdir-a"),
+                ))
+                .read_strongly_consistent()
+                .await?
+                .apply()
                 .await?;
 
                 assert_eq!(read_to_string(path.join("symlink-file")).unwrap(), "foo");
@@ -3339,14 +3532,14 @@ mod tests {
                 );
 
                 // Write the same links again but with different targets
-                read_strongly_consistent_and_apply_effects(
-                    extract_effects_operation(test_write_link_effect_operation(
-                        fs,
-                        root_path,
-                        rcstr!("subdir-b"),
-                    )),
-                    |e| e,
-                )
+                extract_effects_operation(test_write_link_effect_operation(
+                    fs,
+                    root_path,
+                    rcstr!("subdir-b"),
+                ))
+                .read_strongly_consistent()
+                .await?
+                .apply()
                 .await?;
 
                 assert_eq!(read_to_string(path.join("symlink-file")).unwrap(), "bar");
@@ -3437,14 +3630,14 @@ mod tests {
 
                 let initial_updates: Vec<(usize, usize)> =
                     (0..STRESS_SYMLINK_COUNT).map(|i| (i, 0)).collect();
-                read_strongly_consistent_and_apply_effects(
-                    extract_effects_operation(write_symlink_stress_batch(
-                        fs,
-                        symlinks_dir.clone(),
-                        initial_updates,
-                    )),
-                    |e| e,
-                )
+                extract_effects_operation(write_symlink_stress_batch(
+                    fs,
+                    symlinks_dir.clone(),
+                    initial_updates,
+                ))
+                .read_strongly_consistent()
+                .await?
+                .apply()
                 .await?;
 
                 let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
@@ -3457,14 +3650,14 @@ mod tests {
                     }
                     let updates: Vec<(usize, usize)> = updates_map.into_iter().collect();
 
-                    read_strongly_consistent_and_apply_effects(
-                        extract_effects_operation(write_symlink_stress_batch(
-                            fs,
-                            symlinks_dir.clone(),
-                            updates,
-                        )),
-                        |e| e,
-                    )
+                    extract_effects_operation(write_symlink_stress_batch(
+                        fs,
+                        symlinks_dir.clone(),
+                        updates,
+                    ))
+                    .read_strongly_consistent()
+                    .await?
+                    .apply()
                     .await?;
                 }
 
@@ -3487,7 +3680,7 @@ mod tests {
         };
 
         use turbo_rcstr::{RcStr, rcstr};
-        use turbo_tasks::{Effects, Vc, read_strongly_consistent_and_apply_effects, take_effects};
+        use turbo_tasks::{Effects, Vc, take_effects};
         use turbo_tasks_backend::{BackendOptions, TurboTasksBackend, noop_backing_storage};
 
         use crate::{
@@ -3813,13 +4006,15 @@ mod tests {
                 const TEST_CONTENT: &str = "test content";
 
                 // Test 1: Writing to allowed directory should work
-                let effects_op = write_allowed_file_operation(
+                let effects = write_allowed_file_operation(
                     root.clone(),
                     denied_path.clone(),
                     RcStr::from(ALLOWED_FILE),
                     RcStr::from(TEST_CONTENT),
-                );
-                read_strongly_consistent_and_apply_effects(effects_op, |e| e).await?;
+                )
+                .read_strongly_consistent()
+                .await?;
+                effects.apply().await?;
 
                 // Verify the file was written to disk
                 let content = read_to_string(Path::new(root.as_str()).join(ALLOWED_FILE))?;

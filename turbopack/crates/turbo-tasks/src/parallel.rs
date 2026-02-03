@@ -9,7 +9,6 @@ use std::{
     env, io,
     num::NonZeroUsize,
     sync::{Arc, OnceLock},
-    thread,
 };
 
 use crate::{
@@ -34,10 +33,32 @@ pub fn available_parallelism() -> Result<NonZeroUsize, Arc<io::Error>> {
                     panic!("Invalid TURBO_TASKS_AVAILABLE_PARALLELISM={raw:?}: {err}")
                 }))
             } else {
-                thread::available_parallelism().map_err(Arc::new)
+                available_parallelism_impl()
             }
         })
         .clone()
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+fn available_parallelism_impl() -> Result<NonZeroUsize, Arc<io::Error>> {
+    std::thread::available_parallelism().map_err(Arc::new)
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+fn available_parallelism_impl() -> Result<NonZeroUsize, Arc<io::Error>> {
+    use wasm_bindgen::prelude::*;
+
+    let parallelism = js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("navigator"))
+        .ok()
+        .and_then(|navigator| {
+            js_sys::Reflect::get(&navigator, &JsValue::from_str("hardwareConcurrency")).ok()
+        })
+        .and_then(|hardware_concurrency| hardware_concurrency.as_f64())
+        .map(|hardware_concurrency| hardware_concurrency as usize)
+        .and_then(NonZeroUsize::new)
+        .unwrap_or(NonZeroUsize::MIN);
+
+    Ok(parallelism)
 }
 
 struct Chunked {

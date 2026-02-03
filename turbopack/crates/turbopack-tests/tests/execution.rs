@@ -30,7 +30,7 @@ use turbopack::{
     module_options::{EcmascriptOptionsContext, ModuleOptionsContext, TypescriptTransformOptions},
 };
 use turbopack_core::{
-    chunk::{ChunkingConfig, MangleType, MinifyType},
+    chunk::{ChunkingConfig, CompressType, MangleType, MinifyType},
     compile_time_defines,
     compile_time_info::CompileTimeInfo,
     condition::ContextCondition,
@@ -548,6 +548,7 @@ async fn run_test_operation(prepared_test: ResolvedVc<PreparedTest>) -> Result<V
     .minify_type(if options.minify {
         MinifyType::Minify {
             mangle: Some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify

@@ -1,11 +1,15 @@
+use std::{cmp::min, sync::LazyLock};
+
 use anyhow::{Context, Result, bail};
+use qstring::QString;
+use regex::Regex;
 use tracing::Instrument;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{FxIndexMap, FxIndexSet, ResolvedVc, TryJoinIterExt, Upcast, ValueToString, Vc};
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::HashAlgorithm;
+use turbo_tasks_hash::{HashAlgorithm, hash_xxh3_hash64};
 use turbopack_core::{
-    asset::{Asset, AssetContent},
+    asset::{Asset, AssetContent, no_hash_salt},
     chunk::{
         AssetSuffix, Chunk, ChunkGroupResult, ChunkItem, ChunkLoadRetry, ChunkType,
         ChunkableModule, ChunkingConfig, ChunkingConfigs, ChunkingContext, ContentHashing,
@@ -17,7 +21,7 @@ use turbopack_core::{
         chunk_id_strategy::ModuleIdStrategy,
     },
     environment::Environment,
-    ident::AssetIdent,
+    ident::{AssetIdent, escape_file_path},
     module::Module,
     module_graph::{
         ModuleGraph,
@@ -26,6 +30,7 @@ use turbopack_core::{
     },
     output::{ExpandOutputAssetsInput, OutputAsset, OutputAssets, expand_output_assets},
 };
+use turbopack_css::chunk::{CssChunk, source_map::CssChunkSourceMapAsset};
 use turbopack_ecmascript::{
     async_chunk::module::AsyncLoaderModule,
     chunk::EcmascriptChunk,
@@ -67,6 +72,11 @@ impl BrowserChunkingContextBuilder {
 
     pub fn source_map_source_type(mut self, source_map_source_type: SourceMapSourceType) -> Self {
         self.chunking_context.source_map_source_type = source_map_source_type;
+        self
+    }
+
+    pub fn entry_root_export(mut self, name: Option<RcStr>) -> Self {
+        self.chunking_context.entry_root_export = name;
         self
     }
 
@@ -215,6 +225,31 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn filename(mut self, filename: RcStr) -> Self {
+        self.chunking_context.filename = Some(filename);
+        self
+    }
+
+    pub fn chunk_filename(mut self, chunk_filename: RcStr) -> Self {
+        self.chunking_context.chunk_filename = Some(chunk_filename);
+        self
+    }
+
+    pub fn css_filename(mut self, css_filename: RcStr) -> Self {
+        self.chunking_context.css_filename = Some(css_filename);
+        self
+    }
+
+    pub fn css_chunk_filename(mut self, css_chunk_filename: RcStr) -> Self {
+        self.chunking_context.css_chunk_filename = Some(css_chunk_filename);
+        self
+    }
+
+    pub fn asset_module_filename(mut self, asset_module_filename: RcStr) -> Self {
+        self.chunking_context.asset_module_filename = Some(asset_module_filename);
+        self
+    }
+
     pub fn chunk_loading_global(mut self, chunk_loading_global: RcStr) -> Self {
         self.chunking_context.chunk_loading_global = Some(chunk_loading_global);
         self
@@ -340,9 +375,25 @@ pub struct BrowserChunkingContext {
     /// Salt mixed into chunk and asset content hashes. Empty string means no salt.
     hash_salt: ResolvedVc<RcStr>,
     /// The crossorigin mode for dynamically loaded chunks.
+    /// Supported: anonymous, use-credentials.
     cross_origin: CrossOrigin,
     /// The retry policy for transient chunk load failures in the browser runtime.
     chunk_load_retry: ChunkLoadRetry,
+    /// Evaluate chunk filename template
+    filename: Option<RcStr>,
+    /// Non evaluate chunk filename template
+    chunk_filename: Option<RcStr>,
+    /// Initial css chunk filename template
+    css_filename: Option<RcStr>,
+    /// Non initial css chunk filename template
+    css_chunk_filename: Option<RcStr>,
+    /// Asset module filename template
+    asset_module_filename: Option<RcStr>,
+    /// Expose entry module exports to global scope with the specified name.
+    /// When set, all named exports from the entry module will be available on
+    /// `window`/`globalThis` under the specified name.
+    /// Default: None (no exposure)
+    entry_root_export: Option<RcStr>,
 }
 
 impl BrowserChunkingContext {
@@ -398,6 +449,12 @@ impl BrowserChunkingContext {
                 hash_salt: ResolvedVc::cell(RcStr::default()),
                 cross_origin: Default::default(),
                 chunk_load_retry: Default::default(),
+                filename: Default::default(),
+                chunk_filename: Default::default(),
+                css_filename: Default::default(),
+                css_chunk_filename: Default::default(),
+                asset_module_filename: Default::default(),
+                entry_root_export: None,
             },
         }
     }
@@ -506,6 +563,12 @@ impl BrowserChunkingContext {
         self.minify_type.cell()
     }
 
+    /// Returns the entry root export name to expose to global scope.
+    #[turbo_tasks::function]
+    pub fn entry_root_export(&self) -> Vc<Option<RcStr>> {
+        Vc::cell(self.entry_root_export.clone())
+    }
+
     /// Returns the chunk path information.
     #[turbo_tasks::function]
     fn chunk_path_info(&self) -> Vc<ChunkPathInfo> {
@@ -588,48 +651,102 @@ impl ChunkingContext for BrowserChunkingContext {
             "`extension` should include the leading '.', got '{extension}'"
         );
         let ChunkPathInfo {
-            chunk_root_path,
-            chunk_content_hashing,
             root_path,
+            chunk_root_path,
+            chunk_content_hashing: _,
         } = &*self.chunk_path_info().await?;
-        let name = match *chunk_content_hashing {
-            None => {
-                ident
-                    .output_name(root_path.clone(), prefix, extension)
-                    .owned()
-                    .await?
-            }
-            Some(ContentHashing::Direct { length }) => {
-                let Some(asset) = asset else {
-                    bail!("chunk_path requires an asset when content hashing is enabled");
-                };
-                let hash = asset
-                    .content()
-                    .content_hash(self.hash_salt(), HashAlgorithm::Xxh3Hash128Base38)
-                    .await?;
-                let hash = hash.as_ref().context(
-                    "chunk_path requires an asset with file content when content hashing is \
-                     enabled",
-                )?;
-                let hash = &hash[..length as usize];
-                if let Some(prefix) = prefix {
-                    format!("{prefix}-{hash}{extension}").into()
+
+        let output_name = ident
+            .output_name(root_path.clone(), prefix, extension.clone())
+            .owned()
+            .await?;
+
+        let mut filename = match asset {
+            Some(asset) => {
+                let ident = ident.await?;
+
+                let mut evaluate = false;
+                let mut dev_chunk_list = false;
+                ident.modifiers.iter().for_each(|m| {
+                    if m.contains("evaluate") {
+                        evaluate = true;
+                    }
+                    if m.contains("dev chunk list") {
+                        dev_chunk_list = true;
+                    }
+                });
+                let query = QString::from(ident.query.as_str());
+                let name = if dev_chunk_list {
+                    output_name.as_str()
                 } else {
-                    format!("{hash}{extension}").into()
+                    query.get("name").unwrap_or(output_name.as_str())
+                };
+
+                let this = self.await?;
+                let filename_template = if evaluate {
+                    this.filename.clone()
+                } else {
+                    let resolved_asset = asset.to_resolved().await?;
+                    if ResolvedVc::try_downcast_type::<CssChunk>(resolved_asset).is_some()
+                        || ResolvedVc::try_downcast_type::<CssChunkSourceMapAsset>(resolved_asset)
+                            .is_some()
+                    {
+                        // TODO: distinguash initial or non-initial css chunk, the non-initial css
+                        // chunk should use css_chunk_filename for template
+                        this.css_filename.clone()
+                    } else {
+                        this.chunk_filename.clone()
+                    }
+                };
+
+                match filename_template {
+                    Some(filename) => {
+                        let mut filename = filename.to_string();
+                        let name = escape_file_path(name);
+
+                        if match_name_placeholder(&filename) {
+                            filename = replace_name_placeholder(&filename, &name);
+                        }
+
+                        if match_content_hash_placeholder(&filename) {
+                            let content = asset.content().await?;
+                            if let AssetContent::File(file) = &*content {
+                                let content_hash = hash_xxh3_hash64(&file.await?);
+                                filename = replace_content_hash_placeholder(
+                                    &filename,
+                                    &format!("{content_hash:016x}"),
+                                );
+                            } else {
+                                bail!(
+                                    "chunk_path requires an asset with file content when content \
+                                     hashing is enabled"
+                                );
+                            }
+                        };
+
+                        filename
+                    }
+                    None => name.to_string(),
                 }
             }
+            None => output_name.to_string(),
         };
-        Ok(chunk_root_path.join(&name)?.cell())
+
+        if !filename.ends_with(extension.as_str()) {
+            filename.push_str(&extension);
+        }
+
+        Ok(chunk_root_path.join(&filename)?.cell())
     }
 
     #[turbo_tasks::function]
     async fn asset_url(&self, ident: FileSystemPath, tag: Option<RcStr>) -> Result<Vc<RcStr>> {
         let asset_path = ident.to_string();
 
-        let client_root = tag
-            .as_ref()
-            .and_then(|tag| self.client_roots.get(tag))
-            .unwrap_or(&self.client_root);
+        // let client_root = tag
+        //     .as_ref()
+        //     .and_then(|tag| self.client_roots.get(tag))
+        //     .unwrap_or(&self.client_root);
 
         let asset_base_path = tag
             .as_ref()
@@ -637,8 +754,8 @@ impl ChunkingContext for BrowserChunkingContext {
             .or(self.asset_base_path.as_ref());
 
         let asset_path = asset_path
-            .strip_prefix(&format!("{}/", client_root.path))
-            .context("expected asset_path to contain client_root")?;
+            .strip_prefix(&format!("{}/", self.client_root.path))
+            .unwrap_or(&asset_path);
 
         Ok(Vc::cell(
             format!(
@@ -679,20 +796,47 @@ impl ChunkingContext for BrowserChunkingContext {
         let ident = original_asset_ident.await?;
         let source_path = &ident.path;
         let basename = source_path.file_name();
-        let ContentHashing::Direct { length } = this.asset_content_hashing;
-        let hash = content
-            .content_hash(self.hash_salt(), HashAlgorithm::Xxh3Hash128Base38)
+        let content_hash = content
+            .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
             .await?;
-        let hash = hash
+        let content_hash = content_hash
             .as_ref()
             .context("Missing content when trying to generate the content hash for static asset")?;
-        let short_hash = &hash[..length as usize];
-        let asset_path = match source_path.extension() {
-            Some(ext) => format!(
-                "{basename}.{short_hash}.{ext}",
-                basename = &basename[..basename.len() - ext.len() - 1],
-            ),
-            None => format!("{basename}.{short_hash}"),
+
+        let asset_path = match &this.asset_module_filename {
+            Some(filename_template) => {
+                let mut filename = filename_template.to_string();
+
+                let (_, name, ext) = source_path.split_file_stem_extension();
+                let name = escape_file_path(name);
+
+                if match_name_placeholder(&filename) {
+                    filename = replace_name_placeholder(&filename, &name);
+                }
+
+                if match_content_hash_placeholder(&filename) {
+                    filename = replace_content_hash_placeholder(&filename, content_hash);
+                };
+
+                if let Some(ext) = ext
+                    && !filename.ends_with(ext)
+                {
+                    filename = format!("{filename}.{ext}");
+                }
+
+                filename
+            }
+            None => match source_path.extension() {
+                Some(ext) => format!(
+                    "{basename}.{content_hash}.{ext}",
+                    basename = &basename[..basename.len() - ext.len() - 1],
+                    content_hash = &content_hash[..8],
+                ),
+                None => format!(
+                    "{basename}.{content_hash}",
+                    content_hash = &content_hash[..8]
+                ),
+            },
         };
 
         let asset_root_path = tag
@@ -1043,4 +1187,51 @@ struct ChunkPathInfo {
     root_path: FileSystemPath,
     chunk_root_path: FileSystemPath,
     chunk_content_hashing: Option<ContentHashing>,
+}
+
+static NAME_PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[name\]").unwrap());
+
+pub fn match_name_placeholder(s: &str) -> bool {
+    NAME_PLACEHOLDER_REGEX.is_match(s)
+}
+
+pub fn replace_name_placeholder(s: &str, name: &str) -> String {
+    NAME_PLACEHOLDER_REGEX
+        .replace_all(s, |caps: &regex::Captures| {
+            let m = caps.get(0).unwrap();
+            let after = &s[m.end()..];
+            // If the name already ends with an extension (e.g. "foo.js") and the template
+            // text right after [name] starts with that same extension (e.g. ".js"), strip
+            // the extension from the name to avoid duplication like "foo.js.js".
+            if let Some(dot_pos) = name.rfind('.') {
+                let ext = &name[dot_pos..]; // e.g. ".js"
+                if after.starts_with(ext) {
+                    return name[..dot_pos].to_string();
+                }
+            }
+            name.to_string()
+        })
+        .to_string()
+}
+
+static CONTENT_HASH_PLACEHOLDER_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[contenthash(?::(?P<len>\d+))?\]").unwrap());
+
+pub fn match_content_hash_placeholder(s: &str) -> bool {
+    CONTENT_HASH_PLACEHOLDER_REGEX.is_match(s)
+}
+
+pub fn replace_content_hash_placeholder(s: &str, hash: &str) -> String {
+    CONTENT_HASH_PLACEHOLDER_REGEX
+        .replace_all(s, |caps: &regex::Captures| {
+            let len = caps.name("len").map(|m| m.as_str()).unwrap_or("");
+            let len = if len.is_empty() {
+                hash.len()
+            } else {
+                len.parse().unwrap_or(hash.len())
+            };
+            let len = min(len, hash.len());
+            hash[..len].to_string()
+        })
+        .to_string()
 }

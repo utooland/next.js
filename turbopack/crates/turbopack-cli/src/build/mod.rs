@@ -93,6 +93,7 @@ impl TurbopackBuildBuilder {
             source_maps_type: SourceMapsType::Full,
             minify_type: MinifyType::Minify {
                 mangle: Some(MangleType::OptimalSize),
+                compress: Some(CompressType::Default),
             },
             target: Target::Node,
             scope_hoist: true,
@@ -600,6 +601,7 @@ pub async fn build(args: &BuildArguments) -> Result<()> {
         } else {
             MinifyType::Minify {
                 mangle: Some(MangleType::OptimalSize),
+                compress: Some(CompressType::Default),
             }
         })
         .scope_hoist(!args.no_scope_hoist)

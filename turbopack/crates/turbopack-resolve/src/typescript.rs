@@ -94,7 +94,7 @@ pub async fn read_tsconfigs(
                         continue;
                     } else {
                         TsConfigIssue {
-                            severity: IssueSeverity::Error,
+                            severity: IssueSeverity::Warning,
                             // TODO: this should point at the `extends` property
                             source: IssueSource::from_source_only(tsconfig),
                             message: format!("extends: \"{extends}\" doesn't resolve correctly")

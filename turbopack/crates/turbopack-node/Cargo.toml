@@ -14,7 +14,8 @@ default = ["process_pool"]
 # enable "HMR" for embedded assets
 dynamic_embed_contents = ["turbo-tasks-fs/dynamic_embed_contents"]
 process_pool = ["tokio/full"]
-worker_pool = ["tokio/sync", "napi", "napi-derive", "turbo-rcstr/napi"]
+worker_pool      = ["tokio/sync"]
+worker_pool_napi = ["worker_pool", "napi", "napi-derive", "turbo-rcstr/napi"]
 
 [lints]
 workspace = true
@@ -59,3 +60,11 @@ napi-derive = { workspace = true, optional = true }
 rustc-hash = { workspace = true }
 turbo-tasks-backend = { workspace = true }
 turbo-tasks-testing = { workspace = true }
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+turbo-rcstr = { workspace = true, features= ["napi"] }
+
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+wasm-bindgen = { version = "0.2.104" }
+wasm-bindgen-futures = { version = "0.4.54" }
+js-sys = { version = "0.3.78" }

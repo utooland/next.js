@@ -593,19 +593,35 @@ fn require_context_require_resolve<'a>(
 fn path_to_file_url<'a>(arena: &'a Bump, args: BumpVec<'a, JsValue<'a>>) -> JsValue<'a> {
     if args.len() == 1 {
         if let Some(path) = args[0].as_str() {
-            Url::from_file_path(path)
-                .map(|url| JsValue::Url(String::from(url).into(), JsValueUrlKind::Absolute))
-                .unwrap_or_else(|_| {
-                    JsValue::unknown(
-                        JsValue::call_from_parts(
-                            arena,
-                            JsValue::WellKnownFunction(WellKnownFunctionKind::PathToFileUrl),
-                            args,
-                        ),
-                        true,
-                        rcstr!("url not parseable: path is relative or has an invalid prefix"),
-                    )
-                })
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            {
+                Url::from_file_path(path)
+                    .map(|url| JsValue::Url(String::from(url).into(), JsValueUrlKind::Absolute))
+                    .unwrap_or_else(|_| {
+                        JsValue::unknown(
+                            JsValue::call_from_parts(
+                                arena,
+                                JsValue::WellKnownFunction(WellKnownFunctionKind::PathToFileUrl),
+                                args,
+                            ),
+                            true,
+                            rcstr!("url not parseable: path is relative or has an invalid prefix"),
+                        )
+                    })
+            }
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            {
+                let _ = path;
+                JsValue::unknown(
+                    JsValue::call_from_parts(
+                        arena,
+                        JsValue::WellKnownFunction(WellKnownFunctionKind::PathToFileUrl),
+                        args,
+                    ),
+                    true,
+                    rcstr!("pathToFileURL constant evaluation is not supported in browser wasm"),
+                )
+            }
         } else {
             JsValue::unknown(
                 JsValue::call_from_parts(

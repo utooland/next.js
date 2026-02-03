@@ -19,7 +19,7 @@ use crate::NodeJsChunkingContext;
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Build Node Chunk")]
-pub(crate) struct EcmascriptBuildNodeChunk {
+pub struct EcmascriptBuildNodeChunk {
     chunking_context: ResolvedVc<NodeJsChunkingContext>,
     chunk: ResolvedVc<EcmascriptChunk>,
 }
@@ -70,6 +70,11 @@ impl EcmascriptBuildNodeChunk {
             this.chunk.chunk_content(),
             self.source_map(),
         ))
+    }
+
+    #[turbo_tasks::function]
+    pub fn chunk(&self) -> Vc<Box<dyn Chunk>> {
+        Vc::upcast(*self.chunk)
     }
 }
 

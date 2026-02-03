@@ -23,6 +23,7 @@ pub async fn content_from_relative_path(
         root_path.to_string_lossy().into(),
         Vc::cell(root_path.to_string_lossy().into()),
     );
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     disk_fs.await?.start_watching(None).await?;
 
     let fs_path = disk_fs.root().await?.join(path)?;
