@@ -7,7 +7,7 @@ use std::{
     ops::{ControlFlow, Deref},
     sync::Arc,
     thread::yield_now,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -16,6 +16,7 @@ use indexmap::map::Entry;
 use ringmap::RingSet;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use smallvec::{SmallVec, smallvec};
+use tokio::time::Instant;
 #[cfg(feature = "trace_aggregation_update_queue")]
 use tracing::span::Span;
 #[cfg(any(

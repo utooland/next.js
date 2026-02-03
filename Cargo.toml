@@ -301,6 +301,7 @@ napi-derive = "2"
 napi-build = "2"
 nohash-hasher = "0.2.0"
 notify = "8.1.0"
+notify-types = "2.0.0"
 once_cell = "1.21.3"
 owo-colors = "4.2.2"
 parcel_selectors = "0.28.2"
@@ -315,6 +316,7 @@ qstring = "0.7.2"
 quick_cache = { version = "0.6.14" }
 quote = "1.0.23"
 rand = "0.10.0"
+getrandom = "0.3"
 rayon = "1.10.0"
 regex = "1.10.6"
 regress = "0.10.4"
@@ -345,8 +347,8 @@ tempfile = "3.20.0"
 terminal_size = "0.3.0"
 thiserror = "1.0.48"
 thread_local = "1.1.8"
-tokio = "~1.47.3"
-tokio-util = { version = "0.7.13", features = ["io", "rt"] }
+tokio = "1.51.0"
+tokio-util = { version = "=0.7.16", features = ["io", "rt"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.16"
 triomphe = { git = "https://github.com/sokra/triomphe", branch = "sokra/unstable" }
@@ -367,3 +369,5 @@ virtue = { git = "https://github.com/bgw/virtue.git", branch = "bgw/fix-generic-
 mdxjs = { git = "https://github.com/vercel-labs/mdxjs-rs-turbopack.git", branch = "turbopack" }
 # Doesn't compile on recent nightly versions because of https://github.com/Michael-F-Bryan/include_dir/pull/117
 include_dir = { git = "https://github.com/vercel-labs/include_dir", branch = "turbopack" }
+tokio = { git = "https://github.com/utooland/tokio.git", package = "tokio" }
+tokio-util = { git = "https://github.com/utooland/tokio.git", package = "tokio-util" }
