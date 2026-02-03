@@ -39,6 +39,10 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
+#[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+use crate::process_pool::ChildProcessPool;
+#[cfg(feature = "worker_pool")]
+use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping,
     backend::{CreatePoolOptions, NodeBackend},
@@ -723,5 +727,27 @@ impl Issue for EvaluationIssue {
     #[turbo_tasks::function]
     fn source(&self) -> Vc<OptionIssueSource> {
         Vc::cell(Some(self.source))
+    }
+}
+
+pub fn scale_down() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_down();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }
