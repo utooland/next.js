@@ -6,12 +6,16 @@
 #![feature(arbitrary_self_types_pointers)]
 
 pub mod html;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod http;
 pub mod introspect;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod invalidation;
 pub mod source;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub mod update;
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::{
     collections::VecDeque,
     future::Future,
@@ -21,27 +25,38 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use anyhow::{Context, Result};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use hyper::{
     Request, Response, Server,
     server::{Builder, conn::AddrIncoming},
     service::{make_service_fn, service_fn},
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use parking_lot::Mutex;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use socket2::{Domain, Protocol, Socket, Type};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use tokio::task::JoinHandle;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use tracing::{Instrument, Level, Span, event, info_span};
+use turbo_tasks::OperationVc;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_tasks::{
-    Effects, NonLocalValue, OperationVc, PrettyPrintError, TurboTasksApi, Vc, get_effects,
-    run_once_with_reason, trace::TraceRawVcs, util::FormatDuration,
+    Effects, NonLocalValue, PrettyPrintError, TurboTasksApi, Vc, get_effects, run_once_with_reason,
+    trace::TraceRawVcs, util::FormatDuration,
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_core::issue::{IssueReporter, IssueSeverity, handle_issues};
 
-use self::{source::ContentSource, update::UpdateServer};
-use crate::{
-    invalidation::{ServerRequest, ServerRequestSideEffects},
-    source::ContentSourceSideEffect,
-};
+use self::source::ContentSource;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use self::update::UpdateServer;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::invalidation::{ServerRequest, ServerRequestSideEffects};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::source::ContentSourceSideEffect;
 
 pub trait SourceProvider: Send + Clone + 'static {
     /// must call a turbo-tasks function internally
@@ -80,6 +95,7 @@ pub struct DevServerBuilder {
     server: Builder<AddrIncoming>,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[derive(TraceRawVcs, NonLocalValue)]
 pub struct DevServer {
     #[turbo_tasks(trace_ignore)]
@@ -88,6 +104,7 @@ pub struct DevServer {
     pub future: Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl DevServer {
     pub fn listen(addr: SocketAddr) -> Result<DevServerBuilder, anyhow::Error> {
         // This is annoying. The hyper::Server doesn't allow us to know which port was
@@ -123,6 +140,7 @@ impl DevServer {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl DevServerBuilder {
     pub fn serve(
         self,

@@ -448,16 +448,20 @@ async fn process_content(
                     let mut validator = CssValidator { errors: Vec::new() };
                     ss.visit(&mut validator).unwrap();
 
-                    for err in validator.errors {
-                        err.report(source);
-                    }
+                    // TODO: remove pure selector
+                    // for err in validator.errors {
+                    //     err.report(source);
+                    // }
                 }
 
                 for err in warnings.read().unwrap().iter() {
-                    match err.kind {
+                    match &err.kind {
+                        // Ignore all SelectorError errors
+                        lightningcss::error::ParserError::SelectorError(..) => {
+                            continue;
+                        }
                         lightningcss::error::ParserError::UnexpectedToken(_)
                         | lightningcss::error::ParserError::UnexpectedImportRule
-                        | lightningcss::error::ParserError::SelectorError(..)
                         | lightningcss::error::ParserError::EndOfInput => {
                             let source = match &err.loc {
                                 Some(loc) => IssueSource::from_single_line_col(
@@ -482,7 +486,7 @@ async fn process_content(
                         }
 
                         _ => {
-                            // Ignore
+                            // Ignore other warnings
                         }
                     }
                 }
@@ -523,6 +527,11 @@ async fn process_content(
                 stylesheet_into_static(&ss, without_warnings(config.clone()))
             }
             Err(e) => {
+                // Ignore all SelectorError errors
+                if matches!(e.kind, lightningcss::error::ParserError::SelectorError(..)) {
+                    return Ok(ParseCssResult::Unparsable.cell());
+                }
+
                 let source = match &e.loc {
                     Some(loc) => IssueSource::from_single_line_col(
                         source,
@@ -580,6 +589,7 @@ enum CssError {
 }
 
 impl CssError {
+    #[allow(unused)]
     fn report(self, source: ResolvedVc<Box<dyn Source>>) {
         match self {
             CssError::CssSelectorInModuleNotPure { selector } => {
