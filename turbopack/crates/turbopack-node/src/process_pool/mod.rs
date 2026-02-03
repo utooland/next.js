@@ -606,6 +606,7 @@ impl NodeBackend for ChildProcessesBackend {
     fn runtime_module_path(&self) -> RcStr {
         rcstr!("child_process/evaluate.ts")
     }
+}
 
     fn globals_module_path(&self) -> RcStr {
         rcstr!("child_process/globals.ts")

@@ -39,7 +39,7 @@ arc-swap = { version = "1.8.2" }
 auto-hash-map = { workspace = true }
 bitfield = { workspace = true }
 byteorder = { workspace = true }
-dashmap = { workspace = true, features = ["raw-api"]}
+dashmap = { workspace = true, features = ["raw-api"] }
 either = { workspace = true }
 hashbrown = { workspace = true, features = ["raw"] }
 indexmap = { workspace = true }
@@ -58,10 +58,12 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 thread_local = { workspace = true }
 turbo-bincode = { workspace = true }
-turbo-persistence = { workspace = true }
 turbo-rcstr = { workspace = true }
 turbo-tasks = { workspace = true }
 turbo-tasks-hash = { workspace = true }
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+turbo-persistence = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }

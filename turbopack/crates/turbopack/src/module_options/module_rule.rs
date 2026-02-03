@@ -14,6 +14,7 @@ use turbopack_ecmascript::{
     EcmascriptInputTransforms, EcmascriptOptions, bytes_source_transform::BytesSourceTransform,
     json_source_transform::JsonSourceTransform,
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
 use crate::module_options::{CustomModuleType, RuleCondition, match_mode::MatchMode};
@@ -151,6 +152,7 @@ pub enum ModuleType {
         /// The tag that is passed to ChunkingContext::asset_url
         tag: Option<RcStr>,
     },
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     WebAssembly {
         source_ty: WebAssemblySourceType,
     },
@@ -170,6 +172,7 @@ impl Display for ModuleType {
             ModuleType::Css { .. } => write!(f, "Css"),
             ModuleType::StaticUrlJs { .. } => write!(f, "StaticUrlJs"),
             ModuleType::StaticUrlCss { .. } => write!(f, "StaticUrlCss"),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleType::WebAssembly { .. } => write!(f, "WebAssembly"),
             ModuleType::Custom(_) => write!(f, "Custom"),
         }
@@ -272,9 +275,9 @@ impl ConfiguredModuleType {
                     JsonSourceTransform::new_cjs().to_resolved().await?,
                 )]))
             }
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ConfiguredModuleType::Wasm => ModuleRuleEffect::ModuleType(ModuleType::WebAssembly {
-                source_ty: WebAssemblySourceType::Binary,
-            }),
+            },
             ConfiguredModuleType::Raw => ModuleRuleEffect::ModuleType(ModuleType::Raw),
             ConfiguredModuleType::Node => ModuleRuleEffect::ModuleType(ModuleType::NodeAddon),
         })

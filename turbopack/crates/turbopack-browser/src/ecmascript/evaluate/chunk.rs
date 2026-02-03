@@ -38,7 +38,7 @@ use crate::{
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Browser Evaluate Chunk")]
-pub(crate) struct EcmascriptBrowserEvaluateChunk {
+pub struct EcmascriptBrowserEvaluateChunk {
     chunking_context: ResolvedVc<BrowserChunkingContext>,
     ident: ResolvedVc<AssetIdent>,
     other_chunks: ResolvedVc<OutputAssets>,
@@ -70,11 +70,31 @@ impl EcmascriptBrowserEvaluateChunk {
     }
 
     #[turbo_tasks::function]
-    async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
+    pub async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
         Ok(ChunkData::from_assets(
             self.chunking_context.output_root().owned().await?,
             *self.other_chunks,
         ))
+    }
+
+    #[turbo_tasks::function]
+    pub fn ident(&self) -> Vc<AssetIdent> {
+        *self.ident
+    }
+
+    #[turbo_tasks::function]
+    pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
+        *self.evaluatable_assets
+    }
+
+    #[turbo_tasks::function]
+    pub fn module_graph(&self) -> Vc<ModuleGraph> {
+        *self.module_graph
+    }
+
+    #[turbo_tasks::function]
+    pub fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
+        Vc::upcast(*self.chunking_context)
     }
 
     #[turbo_tasks::function]
@@ -183,6 +203,7 @@ impl EcmascriptBrowserEvaluateChunk {
                     output_root_to_root_path,
                     source_maps,
                     this.chunking_context.chunk_loading_global(),
+                    this.chunking_context.entry_root_export(),
                 );
                 code.push_code(&*runtime_code.await?);
             }

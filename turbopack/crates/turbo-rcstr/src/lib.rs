@@ -246,6 +246,12 @@ impl AsRef<[u8]> for RcStr {
     }
 }
 
+impl AsRef<str> for RcStr {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl From<RcStr> for BytesStr {
     fn from(value: RcStr) -> Self {
         Self::from_str_slice(value.as_str())

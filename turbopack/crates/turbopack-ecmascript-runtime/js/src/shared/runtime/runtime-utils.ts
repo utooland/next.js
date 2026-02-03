@@ -834,6 +834,22 @@ contextPrototype.z = requireStub
 // Make `globalThis` available to the module in a way that cannot be shadowed by a local variable.
 contextPrototype.g = globalThis
 
+/**
+ * Gets the public path for runtime assets.
+ * Checks globalThis.publicPath and falls back to empty string.
+ */
+function getPublicPath(): string {
+  if (
+    typeof globalThis !== 'undefined' &&
+    typeof (globalThis as any).publicPath === 'string'
+  ) {
+    const publicPath = (globalThis as any).publicPath as string
+    return publicPath.endsWith('/') ? publicPath : `${publicPath}/`
+  }
+  return ''
+}
+contextPrototype.p = getPublicPath
+
 type ContextConstructor<M> = {
   new (module: Module, exports: Exports): TurbopackBaseContext<M>
 }
