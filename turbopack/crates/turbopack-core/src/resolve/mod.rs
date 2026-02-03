@@ -20,7 +20,7 @@ use turbo_tasks::{
     FxIndexMap, FxIndexSet, NonLocalValue, PrettyPrintError, ReadRef, ResolvedVc, TaskInput,
     TryFlatJoinIterExt, TryJoinIterExt, ValueToString, Vc, trace::TraceRawVcs,
 };
-use turbo_tasks_fs::{FileSystemEntryType, FileSystemPath};
+use turbo_tasks_fs::{DiskFileSystem, FileSystemEntryType, FileSystemPath};
 use turbo_unix_path::normalize_request;
 
 use crate::{
@@ -456,6 +456,7 @@ pub enum ExternalType {
     EcmaScriptModule,
     Global,
     Script,
+    Umd,
 }
 
 impl Display for ExternalType {
@@ -466,6 +467,7 @@ impl Display for ExternalType {
             ExternalType::Url => write!(f, "url"),
             ExternalType::Global => write!(f, "global"),
             ExternalType::Script => write!(f, "script"),
+            ExternalType::Umd => write!(f, "umd"),
         }
     }
 }
@@ -2035,18 +2037,77 @@ async fn resolve_internal_inline(
                 .await?
             }
             Request::Windows {
-                path: _,
-                query: _,
-                fragment: _,
+                path,
+                query,
+                fragment,
             } => {
+                if let Some(path_str) = path.as_constant_string() {
+                    let sys_path = std::path::Path::new(path_str.as_str());
+
+                    if let Some(disk_fs_vc) =
+                        ResolvedVc::try_downcast_type::<DiskFileSystem>(lookup_path.fs)
+                    {
+                        let disk_fs = disk_fs_vc.await?;
+                        let root_path = lookup_path.root().owned().await?;
+
+                        // Try to convert the Windows path to a FileSystemPath
+                        if let Some(fs_path) = disk_fs.try_from_sys_path(disk_fs_vc, sys_path, None)
+                        {
+                            // Successfully converted - resolve as a raw path
+                            let mut results = Vec::new();
+                            let unix_path = &fs_path.path;
+                            let pattern = Pattern::Constant(unix_path.clone());
+                            let matches = read_matches(
+                                root_path.clone(),
+                                rcstr!(""),
+                                false,
+                                Pattern::new(pattern).resolve().await?,
+                            )
+                            .await?;
+
+                            for m in matches.iter() {
+                                match m {
+                                    PatternMatch::File(matched_pattern, path) => {
+                                        results.push(
+                                            resolved(
+                                                RequestKey::new(matched_pattern.clone()),
+                                                path.clone(),
+                                                lookup_path.clone(),
+                                                request,
+                                                options_value,
+                                                options,
+                                                query.clone(),
+                                                fragment.clone(),
+                                            )
+                                            .await?,
+                                        );
+                                    }
+                                    PatternMatch::Directory(matched_pattern, path) => {
+                                        results.push(
+                                            resolve_into_folder(path.clone(), options)
+                                                .with_request(matched_pattern.clone()),
+                                        );
+                                    }
+                                }
+                            }
+
+                            return Ok(merge_results(results));
+                        }
+                    }
+                }
+
                 if !has_alias {
                     ResolvingIssue {
                         severity: error_severity(options).await?,
-                        request_type: "windows import: not implemented yet".to_string(),
+                        request_type: "windows import".to_string(),
                         request: request.to_resolved().await?,
                         file_path: lookup_path.clone(),
                         resolve_options: options.to_resolved().await?,
-                        error_message: Some("windows imports are not implemented yet".to_string()),
+                        error_message: Some(
+                            "Windows absolute path imports can only be resolved if the path is \
+                             within the project root. Please use a relative path instead."
+                                .to_string(),
+                        ),
                         source: None,
                     }
                     .resolved_cell()
@@ -2935,6 +2996,12 @@ async fn resolve_import_map_result(
         ImportMapResult::Result(result) => Some(**result),
         ImportMapResult::Alias(request, alias_lookup_path) => {
             let request = **request;
+            // Preserve the query string from the original request (e.g., ?modules for CSS modules)
+            let request = if !query.is_empty() {
+                request.with_query(query.clone())
+            } else {
+                request
+            };
             let lookup_path = match alias_lookup_path {
                 Some(path) => path.clone(),
                 None => lookup_path,
@@ -2986,7 +3053,10 @@ async fn resolve_import_map_result(
                         ExternalType::EcmaScriptModule => {
                             node_esm_resolve_options(alias_lookup_path.root().owned().await?)
                         }
-                        ExternalType::Script | ExternalType::Url | ExternalType::Global => options,
+                        ExternalType::Script
+                        | ExternalType::Url
+                        | ExternalType::Global
+                        | ExternalType::Umd => options,
                     },
                 )
                 .await?

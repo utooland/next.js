@@ -268,6 +268,27 @@ impl AssetIdent {
             fragment.deterministic_hash(&mut hasher);
             has_hash = true;
         }
+        if !assets.is_empty() {
+            // Use XOR to combine asset hashes in an order-independent way
+            // This ensures chunks with the same modules but different order get the same hash
+            let mut asset_hashes = Vec::with_capacity(assets.len());
+            for (key, ident) in assets.iter() {
+                let mut asset_hasher = Xxh3Hash64Hasher::new();
+                key.deterministic_hash(&mut asset_hasher);
+                ident
+                    .to_string()
+                    .await?
+                    .deterministic_hash(&mut asset_hasher);
+                asset_hashes.push(asset_hasher.finish());
+            }
+            asset_hashes.sort_unstable();
+
+            2_u8.deterministic_hash(&mut hasher);
+            for h in asset_hashes {
+                h.deterministic_hash(&mut hasher);
+            }
+            has_hash = true;
+        }
         for (key, ident) in assets.iter() {
             2_u8.deterministic_hash(&mut hasher);
             key.deterministic_hash(&mut hasher);
@@ -364,10 +385,10 @@ impl AssetIdent {
         // We need to make sure that `.json` and `.json.js` doesn't end up with the same
         // name. So when we add an extra extension when want to mark that with a "._"
         // suffix.
-        if !removed_extension {
-            name += "._";
-        }
-        name += &expected_extension;
+        // if !removed_extension {
+        //     name += "._";
+        // }
+        // name += &expected_extension;
         Ok(Vc::cell(name.into()))
     }
 }
@@ -434,8 +455,8 @@ impl ValueToString for AssetIdent {
     }
 }
 
-fn escape_file_path(s: &str) -> String {
-    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?:]").unwrap());
+pub fn escape_file_path(s: &str) -> String {
+    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?:\[\]<>@\s()]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "_").to_string()
 }
 

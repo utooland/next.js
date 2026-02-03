@@ -14,7 +14,7 @@ use turbopack_ecmascript::{
         EcmascriptChunkItem, EcmascriptChunkItemContent, EcmascriptChunkPlaceable,
         EcmascriptChunkType, EcmascriptExports,
     },
-    runtime_functions::{TURBOPACK_EXPORT_URL, TURBOPACK_EXPORT_VALUE},
+    runtime_functions::{TURBOPACK_EXPORT_URL, TURBOPACK_EXPORT_VALUE, TURBOPACK_PUBLIC_PATH},
     utils::StringifyJs,
 };
 
@@ -149,6 +149,23 @@ impl EcmascriptChunkItem for StaticUrlJsChunkItem {
             .chunking_context
             .asset_url(self.static_asset.path().owned().await?, self.tag.clone())
             .await?;
+
+        /*
+         * TODO: @fireairefore
+         * remove this, switch to use AssetSuffix::FromGlobal
+         */
+        if let Some(asset_path) = url.strip_prefix("__RUNTIME_PUBLIC_PATH__") {
+            // For runtime publicPath, use the getPublicPath() runtime function
+            let code = format!(
+                "{TURBOPACK_EXPORT_VALUE}({TURBOPACK_PUBLIC_PATH}() + {path});",
+                path = StringifyJs(asset_path)
+            );
+            return Ok(EcmascriptChunkItemContent {
+                inner_code: code.into(),
+                ..Default::default()
+            }
+            .cell());
+        }
 
         let url_behavior = self.chunking_context.url_behavior(self.tag.clone()).await?;
 

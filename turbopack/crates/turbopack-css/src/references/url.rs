@@ -81,7 +81,7 @@ impl ModuleReference for UrlAssetReference {
             *self.request,
             ReferenceType::Url(UrlReferenceSubType::CssUrl),
             Some(self.issue_source),
-            ResolveErrorMode::Error,
+            ResolveErrorMode::Warn,
         )
     }
 }
