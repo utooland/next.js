@@ -36,7 +36,7 @@ use crate::{
 /// * Contains the Turbopack browser runtime code; and
 /// * Evaluates a list of runtime entries.
 #[turbo_tasks::value(shared)]
-pub(crate) struct EcmascriptBrowserEvaluateChunk {
+pub struct EcmascriptBrowserEvaluateChunk {
     chunking_context: ResolvedVc<BrowserChunkingContext>,
     ident: ResolvedVc<AssetIdent>,
     other_chunks: ResolvedVc<OutputAssets>,
@@ -68,11 +68,31 @@ impl EcmascriptBrowserEvaluateChunk {
     }
 
     #[turbo_tasks::function]
-    async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
+    pub async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
         Ok(ChunkData::from_assets(
             self.chunking_context.output_root().owned().await?,
             *self.other_chunks,
         ))
+    }
+
+    #[turbo_tasks::function]
+    pub fn ident(&self) -> Vc<AssetIdent> {
+        *self.ident
+    }
+
+    #[turbo_tasks::function]
+    pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
+        *self.evaluatable_assets
+    }
+
+    #[turbo_tasks::function]
+    pub fn module_graph(&self) -> Vc<ModuleGraph> {
+        *self.module_graph
+    }
+
+    #[turbo_tasks::function]
+    pub fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
+        Vc::upcast(*self.chunking_context)
     }
 
     #[turbo_tasks::function]
@@ -151,20 +171,21 @@ impl EcmascriptBrowserEvaluateChunk {
             *this.chunking_context.debug_ids_enabled().await?,
         );
 
-        // We still use the `TURBOPACK` global variable to store the chunk here,
-        // as there may be another runtime already loaded in the page.
-        // This is the case in integration tests.
+        // Use the configured chunk loading global variable to store the chunk here.
+        // This allows multiple runtimes to coexist on the same page when using different global
+        // names.
+        let chunk_loading_global = this.chunking_context.chunk_loading_global().await?;
         writedoc!(
             code,
             // `||=` would be better but we need to be es2020 compatible
             //`x || (x = default)` is better than `x = x || default` simply because we avoid _writing_ the property in the common case.
             r#"
-                (globalThis.TURBOPACK || (globalThis.TURBOPACK = [])).push([
+                (globalThis["{chunk_loading_global}"] || (globalThis["{chunk_loading_global}"] = [])).push([
                     {script_or_path},
-                    {}
+                    {params}
                 ]);
             "#,
-            StringifyJs(&params),
+            params = StringifyJs(&params),
         )?;
 
         let runtime_type = *this.chunking_context.runtime_type().await?;
@@ -178,6 +199,8 @@ impl EcmascriptBrowserEvaluateChunk {
                     runtime_type,
                     output_root_to_root_path,
                     source_maps,
+                    this.chunking_context.chunk_loading_global(),
+                    this.chunking_context.entry_root_export(),
                 );
                 code.push_code(&*runtime_code.await?);
             }
