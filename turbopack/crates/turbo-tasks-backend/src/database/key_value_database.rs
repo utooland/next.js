@@ -1,5 +1,6 @@
 use anyhow::Result;
 use smallvec::SmallVec;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_persistence::{FamilyConfig, FamilyKind};
 
 use crate::database::write_batch::ConcurrentWriteBatch;
@@ -11,6 +12,8 @@ pub enum KeySpace {
     TaskData = 2,
     TaskCache = 3,
 }
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl KeySpace {
     /// Constructs a [`KeySpace`] from its numeric index (i.e., the `usize` discriminant).
     ///

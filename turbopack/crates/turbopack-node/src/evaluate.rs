@@ -1,4 +1,4 @@
-use std::{iter, process::ExitStatus, sync::Arc, thread::available_parallelism, time::Duration};
+use std::{iter, process::ExitStatus, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use async_trait::async_trait;
@@ -35,8 +35,13 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
+#[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+use crate::process_pool::ChildProcessPool;
+#[cfg(feature = "worker_pool")]
+use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping,
+    available_parallelism::available_parallelism,
     backend::{CreatePoolOptions, NodeBackend},
     embed_js::embed_file_path,
     emit, emit_package_json,
@@ -273,7 +278,7 @@ pub async fn get_evaluate_pool(
             assets_for_source_mapping,
             assets_root: output_root.clone(),
             project_dir: chunking_context.root_path().owned().await?,
-            concurrency: available_parallelism().map_or(1, |v| v.get()),
+            concurrency: available_parallelism(),
             debug,
         })
         .await?;
@@ -718,5 +723,27 @@ impl Issue for EvaluationIssue {
 
     fn source(&self) -> Option<IssueSource> {
         Some(self.source)
+    }
+}
+
+pub fn scale_down() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_down();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }

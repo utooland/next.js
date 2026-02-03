@@ -13,6 +13,7 @@ use turbopack_core::{
     virtual_output::VirtualOutputAsset,
 };
 
+mod available_parallelism;
 mod backend;
 pub mod debug;
 pub mod embed_js;
