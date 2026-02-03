@@ -1,4 +1,4 @@
-use std::time::Instant;
+use tokio::time::Instant;
 
 /// Guard that emits a tracing event when dropped with the duration of the
 /// lifetime of the guard.

@@ -63,6 +63,9 @@ let DEV_BACKEND: DevRuntimeBackend
 
         const link = document.createElement('link')
         link.rel = 'stylesheet'
+        if (CROSS_ORIGIN_LOADING) {
+          link.crossOrigin = CROSS_ORIGIN_LOADING
+        }
 
         if (navigator.userAgent.includes('Firefox')) {
           // Firefox won't reload CSS files that were previously loaded on the current page,

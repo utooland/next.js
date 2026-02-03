@@ -1,9 +1,9 @@
 use std::io::Write;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use indoc::writedoc;
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{ResolvedVc, Vc};
+use turbo_tasks::{ResolvedVc, TaskInput, Vc};
 use turbopack_core::{
     chunk::AssetSuffix,
     code_builder::{Code, CodeBuilder},
@@ -13,6 +13,41 @@ use turbopack_core::{
 use turbopack_ecmascript::utils::StringifyJs;
 
 use crate::{RuntimeType, asset_context::get_runtime_asset_context, embed_js::embed_static_code};
+
+#[turbo_tasks::value(shared)]
+#[derive(Debug, Default, Clone, Copy, Hash, TaskInput)]
+pub enum CrossOriginLoading {
+    #[default]
+    None,
+    Anonymous,
+    UseCredentials,
+}
+
+impl CrossOriginLoading {
+    fn as_str(self) -> Option<&'static str> {
+        match self {
+            Self::None => None,
+            Self::Anonymous => Some("anonymous"),
+            Self::UseCredentials => Some("use-credentials"),
+        }
+    }
+}
+
+impl TryFrom<Option<&str>> for CrossOriginLoading {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Option<&str>) -> Result<Self> {
+        match value {
+            None | Some("") => Ok(Self::None),
+            Some("anonymous") => Ok(Self::Anonymous),
+            Some("use-credentials") => Ok(Self::UseCredentials),
+            Some(value) => bail!(
+                "invalid crossOriginLoading value `{value}`; supported values are `anonymous` and \
+                 `use-credentials`"
+            ),
+        }
+    }
+}
 
 /// Returns the code for the ECMAScript runtime.
 #[turbo_tasks::function]
@@ -25,6 +60,8 @@ pub async fn get_browser_runtime_code(
     output_root_to_root_path: RcStr,
     generate_source_map: bool,
     chunk_loading_global: Vc<RcStr>,
+    cross_origin_loading: Vc<CrossOriginLoading>,
+    entry_root_export: Vc<Option<RcStr>>,
 ) -> Result<Vc<Code>> {
     let asset_context = get_runtime_asset_context(*environment).resolve().await?;
 
@@ -86,25 +123,60 @@ pub async fn get_browser_runtime_code(
     let chunk_base_path = chunk_base_path.as_ref().map_or_else(|| "", |f| f.as_str());
     let asset_suffix = asset_suffix.await?;
     let chunk_loading_global = chunk_loading_global.await?;
+    let cross_origin_loading = *cross_origin_loading.await?;
     let chunk_lists_global = format!("{}_CHUNK_LISTS", &*chunk_loading_global);
+    let entry_root_export = entry_root_export.await?;
 
-    writedoc!(
-        code,
-        r#"
-            (() => {{
-            if (!Array.isArray(globalThis[{}])) {{
-                return;
-            }}
+    // Start the IIFE
+    if let Some(ref export_name) = *entry_root_export {
+        writedoc!(
+            code,
+            r#"
+                (function(root, factory) {{
+                    if (typeof exports === 'object' && typeof module === 'object')
+                        module.exports = factory();
+                    else if (typeof exports === 'object')
+                        exports[{}] = factory();
+                    else
+                        root[{}] = factory();
+                }}(typeof self !== 'undefined' ? self : this, function() {{
 
-            const CHUNK_BASE_PATH = {};
-            const RELATIVE_ROOT_PATH = {};
-            const RUNTIME_PUBLIC_PATH = {};
-        "#,
-        StringifyJs(&chunk_loading_global),
-        StringifyJs(chunk_base_path),
-        StringifyJs(relative_root_path.as_str()),
-        StringifyJs(chunk_base_path),
-    )?;
+                const __chunk__ = (() => {{
+                if (!Array.isArray(globalThis["{chunk_loading_global}"])) {{
+                    return;
+                }}
+
+                let __entryExports__ = undefined;
+
+                const CHUNK_BASE_PATH = {};
+                const RELATIVE_ROOT_PATH = {};
+                const RUNTIME_PUBLIC_PATH = {};
+            "#,
+            StringifyJs(export_name.as_str()),
+            StringifyJs(export_name.as_str()),
+            StringifyJs(chunk_base_path),
+            StringifyJs(relative_root_path.as_str()),
+            StringifyJs(chunk_base_path),
+        )?;
+    } else {
+        writedoc!(
+            code,
+            r#"
+                (() => {{
+                if (!Array.isArray(globalThis[{}])) {{
+                    return;
+                }}
+
+                const CHUNK_BASE_PATH = {};
+                const RELATIVE_ROOT_PATH = {};
+                const RUNTIME_PUBLIC_PATH = {};
+            "#,
+            StringifyJs(&chunk_loading_global),
+            StringifyJs(chunk_base_path),
+            StringifyJs(relative_root_path.as_str()),
+            StringifyJs(chunk_base_path),
+        )?;
+    }
 
     match &*asset_suffix {
         AssetSuffix::None => {
@@ -145,6 +217,16 @@ pub async fn get_browser_runtime_code(
             )?;
         }
     }
+
+    let cross_origin_loading_literal =
+        StringifyJs(cross_origin_loading.as_str().unwrap_or("")).to_string();
+    writedoc!(
+        code,
+        r#"
+            const CROSS_ORIGIN_LOADING = {};
+        "#,
+        cross_origin_loading_literal
+    )?;
 
     // Output the list of global variable names to forward to workers
     let worker_forwarded_globals = worker_forwarded_globals.await?;
@@ -222,12 +304,59 @@ pub async fn get_browser_runtime_code(
             chunk_lists_global = StringifyJs(&chunk_lists_global),
         )?;
     }
-    writedoc!(
-        code,
-        r#"
+
+    // Add expose entry exports code if enabled
+    if entry_root_export.is_some() {
+        writedoc!(
+            code,
+            r#"
+
+                try {{
+                for (const registration of chunksToRegister) {{
+                    const runtimeParams = registration.length === 2 ? registration[1] : null;
+                    if (runtimeParams && runtimeParams.runtimeModuleIds && runtimeParams.runtimeModuleIds.length > 0) {{
+                        const entryModuleId = runtimeParams.runtimeModuleIds[runtimeParams.runtimeModuleIds.length - 1];
+                        const chunkPath = getPathFromScript(registration[0]);
+
+                        const entryModule = getOrInstantiateRuntimeModule(chunkPath, entryModuleId);
+
+                        if (entryModule && entryModule.exports) {{
+                            const moduleExports = entryModule.namespaceObject || entryModule.exports;
+
+                            // Save for return value (will be handled by UMD wrapper)
+                            __entryExports__ = moduleExports;
+                        }}
+                        break;
+                    }}
+                }}
+                }} catch (e) {{
+                    console.error('Failed to expose entry module exports:', e);
+                }}
+            "#
+        )?;
+    }
+
+    // Close the IIFE and return exports if enabled
+    if entry_root_export.is_some() {
+        writedoc!(
+            code,
+            r#"
+                return __entryExports__;
             }})();
-        "#
-    )?;
+
+            // Return the exports from the factory function
+            return __chunk__;
+            }}));
+            "#
+        )?;
+    } else {
+        writedoc!(
+            code,
+            r#"
+            }})();
+            "#
+        )?;
+    }
 
     Ok(Code::cell(code.build()))
 }

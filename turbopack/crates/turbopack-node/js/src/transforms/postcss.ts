@@ -5,6 +5,7 @@ declare const __turbopack_external_require__: (
 ) => any
 
 import type { Processor } from 'postcss'
+import { workerData } from 'worker_threads'
 
 // @ts-ignore
 import postcss from '@vercel/turbopack/postcss'
@@ -46,7 +47,11 @@ export const init = async (ipc: TransformIpc) => {
       let pluginFactory = arg
 
       if (typeof pluginFactory === 'string') {
-        pluginFactory = require(/* turbopackIgnore: true */ pluginFactory)
+        // turbopackIgnore: true does not take effects, this may be a bug
+        // use module.require to workaround
+        pluginFactory = module.require(
+          /* turbopackIgnore: true */ pluginFactory
+        )
       }
 
       if (pluginFactory.default) {
@@ -127,4 +132,18 @@ export default async function transform(
     map: sourceMap ? JSON.stringify(map) : undefined,
     assets,
   }
+}
+
+if (workerData && workerData.binding) {
+  // @ts-ignore
+  const { run } = require('../web_worker/evaluate')
+  run(async () => {
+    return {
+      init: async () => {
+        // @ts-ignore
+        await init()
+      },
+      default: transform,
+    }
+  })
 }

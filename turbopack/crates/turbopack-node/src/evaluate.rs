@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use bincode::{Decode, Encode};
+use bytes::Bytes;
 use futures_retry::{FutureRetry, RetryPolicy};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value as JsonValue;
@@ -35,6 +36,10 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
+#[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+use crate::process_pool::ChildProcessPool;
+#[cfg(feature = "worker_pool")]
+use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping,
     backend::{CreatePoolOptions, NodeBackend},
@@ -118,9 +123,9 @@ pub trait EvaluateOperation: Send + Sync {
 
 #[async_trait::async_trait]
 pub trait Operation: Send {
-    async fn recv(&mut self) -> Result<Vec<u8>>;
+    async fn recv(&mut self) -> Result<Bytes>;
 
-    async fn send(&mut self, data: Vec<u8>) -> Result<()>;
+    async fn send(&mut self, data: Bytes) -> Result<()>;
 
     async fn wait_or_kill(&mut self) -> Result<ExitStatus>;
 
@@ -371,11 +376,11 @@ pub async fn custom_evaluate(evaluate_context: impl EvaluateContext) -> Result<V
         || async {
             let mut operation = pool.operation().await?;
             operation
-                .send(serde_json::to_vec(
+                .send(Bytes::from(serde_json::to_vec(
                     &EvalJavaScriptOutgoingMessage::Evaluate {
                         args: args.iter().map(|v| &**v).collect(),
                     },
-                )?)
+                )?))
                 .await?;
             Ok(operation)
         },
@@ -564,24 +569,24 @@ async fn pull_operation<T: EvaluateContext>(
                 {
                     Ok(response) => {
                         operation
-                            .send(serde_json::to_vec(
+                            .send(Bytes::from(serde_json::to_vec(
                                 &EvalJavaScriptOutgoingMessage::Result {
                                     id,
                                     error: None,
                                     data: Some(serde_json::to_value(response)?),
                                 },
-                            )?)
+                            )?))
                             .await?;
                     }
                     Err(e) => {
                         operation
-                            .send(serde_json::to_vec(
+                            .send(Bytes::from(serde_json::to_vec(
                                 &EvalJavaScriptOutgoingMessage::Result {
                                     id,
                                     error: Some(PrettyPrintError(&e).to_string()),
                                     data: None,
                                 },
-                            )?)
+                            )?))
                             .await?;
                     }
                 }
@@ -719,5 +724,27 @@ impl Issue for EvaluationIssue {
     #[turbo_tasks::function]
     fn source(&self) -> Vc<OptionIssueSource> {
         Vc::cell(Some(self.source))
+    }
+}
+
+pub fn scale_down() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_down();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }

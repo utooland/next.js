@@ -90,7 +90,8 @@ fn split_off_query_fragment(mut raw: &str) -> (Pattern, RcStr, RcStr) {
     (Pattern::Constant(RcStr::from(raw)), query, hash)
 }
 
-static WINDOWS_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z]:\\|\\\\").unwrap());
+static WINDOWS_PATH: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[A-Za-z]:[/\\]|^\\\\").unwrap());
 static URI_PATH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([^/\\:]+:)(.+)$").unwrap());
 static DATA_URI_REMAINDER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^([^;,]*)(?:;([^,]+))?,(.*)$").unwrap());
@@ -161,6 +162,20 @@ impl Request {
         if r.is_empty() {
             return Request::Empty;
         }
+
+        // Handle webpack-style tilde prefix (~) for node_modules resolution
+        // This is commonly used in CSS preprocessors like less-loader and sass-loader
+        // Only strip ~ if it's followed by a module path (not a relative path like ~/home)
+        // for utoopack issue: https://github.com/utooland/utoo/issues/2309
+        let r = if let Some(remainder) = r
+            .strip_prefix('~')
+            .filter(|s| !s.is_empty() && !s.starts_with('/') && !s.starts_with('\\'))
+            .filter(|s| MODULE_PATH.is_match(s))
+        {
+            remainder.into()
+        } else {
+            r
+        };
 
         if let Some(remainder) = r.strip_prefix("//") {
             return Request::Uri {
@@ -849,6 +864,27 @@ pub async fn stringify_data_uri(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_windows_paths() {
+        assert_eq!(
+            Request::Windows {
+                path: rcstr!(r"C:\Users\demo\src\index.ts").into(),
+                query: rcstr!(""),
+                fragment: rcstr!(""),
+            },
+            Request::parse_ref(rcstr!(r"C:\Users\demo\src\index.ts").into())
+        );
+
+        assert_eq!(
+            Request::Windows {
+                path: rcstr!("C:/Users/demo/src/index.ts").into(),
+                query: rcstr!(""),
+                fragment: rcstr!(""),
+            },
+            Request::parse_ref(rcstr!("C:/Users/demo/src/index.ts").into())
+        );
+    }
 
     #[test]
     fn test_parse_module() {
