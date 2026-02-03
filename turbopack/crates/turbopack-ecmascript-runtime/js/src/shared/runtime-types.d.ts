@@ -103,6 +103,8 @@ type GetWorkerURL = (
   shared: boolean
 ) => URL
 
+type GetPublicPath = () => string
+
 type ExternalRequire = (
   id: DependencySpecifier,
   thunk: () => any,
@@ -154,4 +156,5 @@ interface TurbopackBaseContext<M> {
   y: ExternalImport
   z: CommonJsRequire
   g: typeof globalThis
+  p: GetPublicPath
 }

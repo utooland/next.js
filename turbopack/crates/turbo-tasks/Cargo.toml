@@ -35,7 +35,7 @@ futures = { workspace = true }
 indexmap = { workspace = true, features = ["serde"] }
 inventory = { workspace = true }
 once_cell = { workspace = true }
-parking_lot = { workspace = true, features = ["serde"]}
+parking_lot = { workspace = true, features = ["serde"] }
 pin-project-lite = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
@@ -44,7 +44,8 @@ serde = { workspace = true, features = ["rc", "derive"] }
 serde_json = { workspace = true }
 shrink-to-fit = { workspace = true, features = ["indexmap", "serde_json", "smallvec", "nightly"] }
 smallvec = { workspace = true }
-tokio = { workspace = true, features = ["full"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt-multi-thread"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 triomphe = { workspace = true, features = ["unsize", "unstable"] }
@@ -59,7 +60,5 @@ unsize = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
+tokio = { workspace = true }
 
-[[bench]]
-name = "mod"
-harness = false
