@@ -1232,7 +1232,7 @@ export default async function getBaseWebpackConfig(
         isRspack
           ? new (getRspackCore().SwcJsMinimizerRspackPlugin)({
               // JS minimizer configuration
-              // options should align with crates/napi/src/minify.rs#patch_opts
+              // options should align with crates/next-napi-bindings/src/minify.rs#patch_opts
               minimizerOptions: {
                 compress: {
                   inline: 2,
@@ -2115,6 +2115,8 @@ export default async function getBaseWebpackConfig(
       isClient &&
         new BuildManifestPlugin({
           buildId,
+          dev,
+          deploymentId: config.deploymentId,
           rewrites,
           isDevFallback,
           appDirEnabled: hasAppDir,
