@@ -41,6 +41,7 @@ import type {
 } from './types'
 import { runLoaderWorkerPool } from './loaderWorkerPool'
 import { throwTurbopackInternalError } from '../../shared/lib/turbopack/internal-error'
+import { runLoaderWorkerPool } from './loaderWorkerPool'
 
 export enum HmrTarget {
   Client = 'client',
