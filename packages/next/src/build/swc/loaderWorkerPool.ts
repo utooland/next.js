@@ -18,7 +18,7 @@ export async function runLoaderWorkerPool(
 
       let poolId = getPoolId(cwd, filename)
 
-      const worker = new Worker(filename, {
+      const worker = new Worker(/* turbopackIgnore: true*/ filename, {
         workerData: {
           bindingPath,
           cwd,
