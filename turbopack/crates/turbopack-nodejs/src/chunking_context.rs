@@ -7,7 +7,7 @@ use turbo_tasks::{
 use turbo_tasks_fs::FileSystemPath;
 use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
-    asset::{Asset, AssetContent},
+    asset::{Asset, AssetContent, no_hash_salt},
     chunk::{
         AssetSuffix, Chunk, ChunkGroupResult, ChunkItem, ChunkType, ChunkableModule,
         ChunkingConfig, ChunkingConfigs, ChunkingContext, ContentHashing, EntryChunkGroupResult,
@@ -428,10 +428,13 @@ impl ChunkingContext for NodeJsChunkingContext {
         extension: RcStr,
     ) -> Result<Vc<FileSystemPath>> {
         let root_path = self.chunk_root_path.clone();
-        let name = ident
-            .output_name(self.root_path.clone(), prefix, extension)
-            .owned()
-            .await?;
+        let mut name = ident
+            .output_name(self.root_path.clone(), prefix, extension.clone())
+            .await?
+            .to_string();
+        if !name.ends_with(extension.as_str()) {
+            name.push_str(&extension);
+        }
         Ok(root_path.join(&name)?.cell())
     }
 
@@ -473,20 +476,22 @@ impl ChunkingContext for NodeJsChunkingContext {
         let this = self.await?;
         let source_path = original_asset_ident.await?.path.clone();
         let basename = source_path.file_name();
-        let ContentHashing::Direct { length } = this.asset_content_hashing;
-        let hash = content
-            .content_hash(self.hash_salt(), HashAlgorithm::Xxh3Hash128Base38)
+        let content_hash = content
+            .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
             .await?;
-        let hash = hash
+        let content_hash = content_hash
             .as_ref()
             .context("Missing content when trying to generate the content hash for static asset")?;
-        let short_hash = &hash[..length as usize];
         let asset_path = match source_path.extension() {
             Some(ext) => format!(
-                "{basename}.{short_hash}.{ext}",
+                "{basename}.{content_hash}.{ext}",
                 basename = &basename[..basename.len() - ext.len() - 1],
+                content_hash = &content_hash[..8],
             ),
-            None => format!("{basename}.{short_hash}"),
+            None => format!(
+                "{basename}.{content_hash}",
+                content_hash = &content_hash[..8]
+            ),
         };
 
         let asset_root_path = tag

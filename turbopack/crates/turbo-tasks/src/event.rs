@@ -209,7 +209,16 @@ impl EventListener {
     /// This is the synchronous equivalent of `.await`-ing the `EventListener`.
     /// Only valid in synchronous contexts (e.g. backend operations).
     pub fn wait(self) {
-        self.listener.wait();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            self.listener.wait();
+        }
+
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = self;
+            panic!("EventListener::wait is not supported on wasm targets");
+        }
     }
 }
 
@@ -292,11 +301,20 @@ impl EventListener {
     /// Note: In `hanging_detection` builds, timeout warnings are not emitted
     /// for sync waits (only for async `.await` usage).
     pub fn wait(mut self) {
-        if let Some(future) = self.future.take() {
-            // SAFETY: EventListener is Unpin, so it's safe to move out of the Pin.
-            unsafe { std::pin::Pin::into_inner_unchecked(future) }
-                .into_inner()
-                .wait();
+        #[cfg(not(target_family = "wasm"))]
+        {
+            if let Some(future) = self.future.take() {
+                // SAFETY: EventListener is Unpin, so it's safe to move out of the Pin.
+                unsafe { std::pin::Pin::into_inner_unchecked(future) }
+                    .into_inner()
+                    .wait();
+            }
+        }
+
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = self;
+            panic!("EventListener::wait is not supported on wasm targets");
         }
     }
 }

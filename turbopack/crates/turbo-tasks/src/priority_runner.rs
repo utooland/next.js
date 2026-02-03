@@ -9,11 +9,12 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use parking_lot::Mutex;
 use pin_project_lite::pin_project;
+use tokio::time::Instant;
 
 pub trait Executor<C, T, P>: Send + Sync {
     type Future: Future<Output = ()> + Send;

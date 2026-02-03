@@ -36,6 +36,14 @@ declare var ASSET_SUFFIX: string
 declare var CROSS_ORIGIN: 'anonymous' | 'use-credentials' | null
 declare var WORKER_FORWARDED_GLOBALS: string[]
 
+// Support runtime public path from window.publicPath
+function getRuntimeChunkBasePath(basePath: string = CHUNK_BASE_PATH): string {
+  if (CHUNK_BASE_PATH === '__RUNTIME_PUBLIC_PATH__') {
+    return contextPrototype.p()
+  }
+  return basePath
+}
+
 interface TurbopackBrowserBaseContext<M> extends TurbopackBaseContext<M> {
   R: ResolvePathFromModule
 }
@@ -210,6 +218,37 @@ function loadChunkByUrl(
   return loadChunkByUrlInternal(SourceType.Parent, this.m.id, chunkUrl)
 }
 browserContextPrototype.L = loadChunkByUrl
+
+const loadedScripts = new Map<string, Promise<void>>()
+
+/**
+ * Load an external script by creating a <script> tag.
+ * This is used for script externals that need to be loaded from CDN or other external sources.
+ */
+function loadScript(
+  this: TurbopackBrowserBaseContext<Module>,
+  scriptUrl: string
+): Promise<void> {
+  // Return cached promise if script is already loading or loaded
+  let promise = loadedScripts.get(scriptUrl)
+  if (promise) {
+    return promise
+  }
+
+  promise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.crossOrigin = CROSS_ORIGIN
+    script.src = scriptUrl
+    script.onload = () => resolve()
+    script.onerror = () =>
+      reject(new Error(`Failed to load script: ${scriptUrl}`))
+    document.head.appendChild(script)
+  })
+
+  loadedScripts.set(scriptUrl, promise)
+  return promise
+}
+browserContextPrototype.S = loadScript
 
 // Do not make this async. React relies on referential equality of the returned Promise.
 function loadChunkByUrlInternal(
@@ -387,7 +426,7 @@ function getChunkRelativeUrl(
   chunkPath: ChunkPath | ChunkListPath,
   basePath: string = CHUNK_BASE_PATH
 ): ChunkUrl {
-  return `${basePath}${chunkPath
+  return `${getRuntimeChunkBasePath(basePath)}${chunkPath
     .split('/')
     .map((p) => encodeURIComponent(p))
     .join('/')}${ASSET_SUFFIX}` as ChunkUrl
@@ -408,9 +447,13 @@ function getPathFromScript(
   }
   const chunkUrl = chunkScript.src!
   const src = decodeURIComponent(chunkUrl.replace(/[?#].*$/, ''))
-  const path = src.startsWith(CHUNK_BASE_PATH)
-    ? src.slice(CHUNK_BASE_PATH.length)
+  const runtimeBasePath = getRuntimeChunkBasePath()
+  let path = src.startsWith(runtimeBasePath)
+    ? src.slice(runtimeBasePath.length)
     : src
+  if (path.startsWith('/')) {
+    path = path.slice(1)
+  }
   return path as ChunkPath | ChunkListPath
 }
 

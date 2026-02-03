@@ -113,15 +113,24 @@ pub async fn resolve_source_map_sources(
 
             let fs_path = if let Ok(original_source_url_obj) = Url::parse(&maybe_file_url) {
                 // We have an absolute URL, try to parse it as a `file://` URL
-                if let Ok(sys_path) = original_source_url_obj.to_file_path() {
-                    if let Some((disk_fs_vc, disk_fs)) = disk_fs {
-                        disk_fs.try_from_sys_path(*disk_fs_vc, &sys_path, Some(origin))
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                {
+                    if let Ok(sys_path) = original_source_url_obj.to_file_path() {
+                        if let Some((disk_fs_vc, disk_fs)) = disk_fs {
+                            disk_fs.try_from_sys_path(*disk_fs_vc, &sys_path, Some(origin))
+                        } else {
+                            None
+                        }
                     } else {
-                        None
+                        // this is an absolute URL with a non-`file://` scheme, just assume it's valid
+                        // and don't modify anything
+                        return Ok(());
                     }
-                } else {
-                    // this is an absolute URL with a non-`file://` scheme, just assume it's valid
-                    // and don't modify anything
+                }
+                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                {
+                    // On WASM targets, to_file_path() is not available,
+                    // just assume it's a valid absolute URL and don't modify anything
                     return Ok(());
                 }
             } else {

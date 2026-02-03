@@ -12,12 +12,14 @@ mod utils;
 use std::path::Path;
 
 use anyhow::Result;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_persistence::{CompactConfig, TurboPersistence};
 
-use crate::database::{
-    noop_kv::NoopKvDb,
-    turbo::{self, TurboKeyValueDatabase},
-};
+use crate::database::noop_kv::NoopKvDb;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::database::turbo::TurboKeyValueDatabase;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::database::turbo::{self};
 pub use crate::{
     backend::{BackendOptions, StorageMode, TurboTasksBackend},
     backing_storage::BackingStorage,
@@ -29,11 +31,16 @@ pub use crate::{
     kv_backing_storage::KeyValueDatabaseBackingStorage,
 };
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub type TurboBackingStorage = KeyValueDatabaseBackingStorage<TurboKeyValueDatabase>;
 
 /// Creates a `BackingStorage` to be passed to [`TurboTasksBackend::new`].
 ///
 /// Information about the state of the on-disk cache is returned using [`StartupCacheState`].
+///
+/// This is the fastest most-tested implementation of `BackingStorage`, and is normally returned by
+/// [`default_backing_storage`].
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn turbo_backing_storage(
     base_path: &Path,
     version_info: &GitVersionInfo,
@@ -62,6 +69,7 @@ pub fn noop_backing_storage() -> NoopBackingStorage {
 ///
 /// The parallel scheduler requires a Tokio runtime. If one is already active (e.g. when called
 /// from a NAPI async function), it is reused. Otherwise a new multi-threaded runtime is created.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn compact_database(
     base_path: &Path,
     version_info: &GitVersionInfo,

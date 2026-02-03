@@ -11,7 +11,7 @@ use turbopack_core::{
 };
 use turbopack_ecmascript::{
     chunk::{EcmascriptChunkContent, EcmascriptChunkContentEntries},
-    minify::minify,
+    minify::{get_compress_options, minify},
     utils::StringifyJs,
 };
 
@@ -81,8 +81,15 @@ impl EcmascriptBuildNodeChunkContent {
 
         let mut code = code.build();
 
-        if let MinifyType::Minify { mangle } = *self.chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } =
+            *self.chunking_context.minify_type().await?
+        {
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options(compress, mangle),
+            )?;
         }
 
         Ok(code.cell())

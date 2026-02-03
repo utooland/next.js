@@ -67,6 +67,7 @@ use turbopack_resolve::{
     typescript::type_resolve,
 };
 use turbopack_static::{css::StaticUrlCssModule, ecma::StaticUrlJsModule};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::{module_asset::WebAssemblyModuleAsset, source::WebAssemblySource};
 
 use crate::{
@@ -282,6 +283,7 @@ async fn apply_module_type(
                 .to_resolved()
                 .await?,
         ),
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         ModuleType::WebAssembly { source_ty } => ResolvedVc::upcast(
             WebAssemblyModuleAsset::new(
                 WebAssemblySource::new(*source, *source_ty),
@@ -1251,7 +1253,9 @@ pub async fn replace_external(
             }
         }
         ExternalType::Global => CachedExternalType::Global,
+        ExternalType::Promise => CachedExternalType::Promise,
         ExternalType::Script => CachedExternalType::Script,
+        ExternalType::Umd => CachedExternalType::Umd,
         ExternalType::Url => {
             // we don't want to wrap url externals.
             return Ok(None);

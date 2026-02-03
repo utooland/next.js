@@ -7,8 +7,13 @@ use anyhow::Result;
 use turbo_rcstr::rcstr;
 use turbo_tasks::Vc;
 use turbopack_core::compile_time_info::CompileTimeInfo;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use url::Url;
 
+#[cfg_attr(
+    all(target_family = "wasm", target_os = "unknown"),
+    allow(unused_imports)
+)]
 use super::{
     ConstantValue, JsValue, JsValueUrlKind, ModuleValue, WellKnownFunctionKind, WellKnownObjectKind,
 };
@@ -527,21 +532,32 @@ fn require_context_require_resolve(
     Ok(m.as_str().into())
 }
 
+#[cfg_attr(
+    all(target_family = "wasm", target_os = "unknown"),
+    allow(unused_variables)
+)]
 fn path_to_file_url(args: Vec<JsValue>) -> JsValue {
     if args.len() == 1 {
         if let Some(path) = args[0].as_str() {
-            Url::from_file_path(path)
-                .map(|url| JsValue::Url(String::from(url).into(), JsValueUrlKind::Absolute))
-                .unwrap_or_else(|_| {
-                    JsValue::unknown(
-                        JsValue::call_from_parts(
-                            JsValue::WellKnownFunction(WellKnownFunctionKind::PathToFileUrl),
-                            args,
-                        ),
-                        true,
-                        rcstr!("url not parseable: path is relative or has an invalid prefix"),
-                    )
-                })
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            {
+                unreachable!()
+            }
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+            {
+                Url::from_file_path(path)
+                    .map(|url| JsValue::Url(String::from(url).into(), JsValueUrlKind::Absolute))
+                    .unwrap_or_else(|_| {
+                        JsValue::unknown(
+                            JsValue::call_from_parts(
+                                JsValue::WellKnownFunction(WellKnownFunctionKind::PathToFileUrl),
+                                args,
+                            ),
+                            true,
+                            rcstr!("url not parseable: path is relative or has an invalid prefix"),
+                        )
+                    })
+            }
         } else {
             JsValue::unknown(
                 JsValue::call_from_parts(

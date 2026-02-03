@@ -9,7 +9,6 @@ use lightningcss::{
     traits::ToCss,
     values::url::Url,
     visit_types,
-    visitor::Visit,
 };
 use rustc_hash::FxHashMap;
 use smallvec::smallvec;
@@ -410,21 +409,19 @@ pub async fn parse_css(
 fn parse_css_stylesheet<'a, 'o>(
     code: &'a str,
     config: ParserOptions<'o, 'a>,
-    ty: CssModuleType,
-    source: ResolvedVc<Box<dyn Source>>,
+    _ty: CssModuleType,
+    _source: ResolvedVc<Box<dyn Source>>,
 ) -> Result<StyleSheet<'a, 'o>, lightningcss::error::Error<lightningcss::error::ParserError<'a>>> {
-    let mut ss = StyleSheet::parse(code, config)?;
+    // if matches!(ty, CssModuleType::Module) {
+    //     let mut validator = CssValidator { errors: Vec::new() };
+    //     ss.visit_mut(&mut validator).unwrap();
 
-    if matches!(ty, CssModuleType::Module) {
-        let mut validator = CssValidator { errors: Vec::new() };
-        ss.visit(&mut validator).unwrap();
-
-        for err in validator.errors {
-            err.report(source);
-        }
-    }
-
-    Ok(ss)
+    //     // TODO: remove pure selector
+    //     // for err in validator.errors {
+    //     //     err.report(source);
+    //     // }
+    // }
+    Ok(StyleSheet::parse(code, config)?)
 }
 
 async fn process_content(
@@ -489,44 +486,39 @@ async fn process_content(
         ) {
             Ok(mut ss) => {
                 for err in warnings.read().unwrap().iter() {
-                    // Unsupported pseudo-classes/elements are common in real-world CSS
-                    // (vendor prefixes, custom frameworks) and do not prevent the
-                    // stylesheet from being used — treat them as recoverable warnings.
-                    // All other previously-ignored parser warnings are also surfaced.
-                    let severity = match err.kind {
-                        lightningcss::error::ParserError::SelectorError(
-                            lightningcss::error::SelectorError::UnsupportedPseudoClass(_)
-                            | lightningcss::error::SelectorError::UnsupportedPseudoElement(_),
-                        ) => IssueSeverity::Warning,
-
+                    match &err.kind {
+                        // Ignore all SelectorError errors
+                        lightningcss::error::ParserError::SelectorError(..) => {
+                            continue;
+                        }
                         lightningcss::error::ParserError::UnexpectedToken(_)
                         | lightningcss::error::ParserError::UnexpectedImportRule
-                        | lightningcss::error::ParserError::SelectorError(..)
-                        | lightningcss::error::ParserError::EndOfInput => IssueSeverity::Error,
+                        | lightningcss::error::ParserError::EndOfInput => {
+                            let source = match &err.loc {
+                                Some(loc) => IssueSource::from_single_line_col(
+                                    source,
+                                    SourcePos {
+                                        // lightningcss::ErrorLocation is 1-based for column only
+                                        line: loc.line,
+                                        column: loc.column - 1,
+                                    },
+                                ),
+                                None => IssueSource::from_source_only(source),
+                            };
+                            ParsingIssue {
+                                severity: IssueSeverity::Warning,
+                                msg: err.kind.to_string().into(),
+                                stage: IssueStage::Parse,
+                                source,
+                            }
+                            .resolved_cell()
+                            .emit();
+                        }
 
-                        _ => IssueSeverity::Warning,
-                    };
-
-                    let issue_source = match &err.loc {
-                        Some(loc) => IssueSource::from_single_line_col(
-                            source,
-                            SourcePos {
-                                // lightningcss::ErrorLocation is 1-based for column only
-                                line: loc.line,
-                                column: loc.column - 1,
-                            },
-                        ),
-                        None => IssueSource::from_source_only(source),
-                    };
-
-                    ParsingIssue {
-                        severity,
-                        msg: err.kind.to_string().into(),
-                        stage: IssueStage::Parse,
-                        source: issue_source,
+                        _ => {
+                            // Ignore other warnings
+                        }
                     }
-                    .resolved_cell()
-                    .emit();
                 }
 
                 let targets = *get_lightningcss_browser_targets(
@@ -584,6 +576,11 @@ async fn process_content(
                 }
             }
             Err(e) => {
+                // Ignore all SelectorError errors
+                if matches!(e.kind, lightningcss::error::ParserError::SelectorError(..)) {
+                    return Ok(ParseCssResult::Unparsable.cell());
+                }
+
                 let issue_source = match &e.loc {
                     Some(loc) => IssueSource::from_single_line_col(
                         source,
@@ -632,16 +629,19 @@ async fn process_content(
 /// ```
 ///
 /// is wrong for a css module because it doesn't have a class name.
+#[allow(dead_code)]
 struct CssValidator {
     errors: Vec<CssError>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
 enum CssError {
     CssSelectorInModuleNotPure { selector: String },
 }
 
 impl CssError {
+    #[allow(unused, dead_code)]
     fn report(self, source: ResolvedVc<Box<dyn Source>>) {
         match self {
             CssError::CssSelectorInModuleNotPure { selector } => {

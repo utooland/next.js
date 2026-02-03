@@ -145,7 +145,7 @@ impl TurboMalloc {
 fn base_alloc() -> &'static impl GlobalAlloc {
     #[cfg(all(feature = "custom_allocator", not(target_family = "wasm")))]
     return &mimalloc::MiMalloc;
-    #[cfg(not(all(feature = "custom_allocator", not(target_family = "wasm"))))]
+    #[cfg(any(not(feature = "custom_allocator"), target_family = "wasm"))]
     return &std::alloc::System;
 }
 
@@ -153,7 +153,7 @@ fn base_alloc() -> &'static impl GlobalAlloc {
 unsafe fn base_alloc_size(ptr: *const u8, layout: Layout) -> usize {
     #[cfg(all(feature = "custom_allocator", not(target_family = "wasm")))]
     return unsafe { mimalloc::MiMalloc.usable_size(ptr) };
-    #[cfg(not(all(feature = "custom_allocator", not(target_family = "wasm"))))]
+    #[cfg(any(not(feature = "custom_allocator"), target_family = "wasm"))]
     return layout.size();
 }
 

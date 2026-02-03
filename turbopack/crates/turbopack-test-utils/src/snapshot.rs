@@ -22,6 +22,12 @@ pub static UPDATE: LazyLock<bool> = LazyLock::new(|| env::var("UPDATE").unwrap_o
 
 static ANSI_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[\d+m").unwrap());
 
+// Matches characters that are not allowed or problematic in filenames
+static INVALID_FILENAME_CHARS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"[/:*?"<>|'\\]+"#).unwrap());
+// Matches multiple spaces or dashes
+static MULTI_SPACE_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\s-]+").unwrap());
+
 pub async fn snapshot_issues<I: IntoIterator<Item = ReadRef<PlainIssue>>>(
     captured_issues: I,
     issues_path: FileSystemPath,
@@ -30,17 +36,15 @@ pub async fn snapshot_issues<I: IntoIterator<Item = ReadRef<PlainIssue>>>(
     let expected_issues = expected(issues_path.clone()).await?;
     let mut seen = FxHashSet::default();
     for plain_issue in captured_issues.into_iter() {
-        let title = styled_string_to_file_safe_string(&plain_issue.title)
-            .replace('/', "__")
-            // We replace "*", "?", and '"' because they're not allowed in filenames on Windows.
-            .replace('*', "__star__")
-            .replace('"', "__quo__")
-            .replace('?', "__q__")
-            .replace(':', "__c__");
+        let title = styled_string_to_file_safe_string(&plain_issue.title);
+        // Replace invalid filename characters with space, then normalize spaces/dashes
+        let title = INVALID_FILENAME_CHARS.replace_all(&title, " ");
+        let title = MULTI_SPACE_DASH.replace_all(&title, "-");
+        let title = title.trim_matches('-');
         let title = if title.len() > 50 {
             &title[0..50]
         } else {
-            &title
+            title
         };
         let hash = encode_hex(plain_issue.internal_hash_ref(true));
 
@@ -203,27 +207,13 @@ async fn diff_paths(
 
 fn styled_string_to_file_safe_string(styled_string: &StyledString) -> String {
     match styled_string {
-        StyledString::Line(parts) => {
-            let mut string = String::new();
-            string += "__l_";
-            for part in parts {
-                string.push_str(&styled_string_to_file_safe_string(part));
-            }
-            string += "__";
-            string
+        StyledString::Line(parts) | StyledString::Stack(parts) => parts
+            .iter()
+            .map(styled_string_to_file_safe_string)
+            .collect::<Vec<_>>()
+            .join(" "),
+        StyledString::Text(string) | StyledString::Code(string) | StyledString::Strong(string) => {
+            string.to_string()
         }
-        StyledString::Stack(parts) => {
-            let mut string = String::new();
-            string += "__s_";
-            for part in parts {
-                string.push_str(&styled_string_to_file_safe_string(part));
-                string.push('_');
-            }
-            string += "__";
-            string
-        }
-        StyledString::Text(string) => string.to_string(),
-        StyledString::Code(string) => format!("__c_{string}__"),
-        StyledString::Strong(string) => format!("__{string}__"),
     }
 }

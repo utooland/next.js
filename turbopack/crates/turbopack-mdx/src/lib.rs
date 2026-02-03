@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use mdxjs::{MdxParseOptions, Options, compile};
 use serde::Deserialize;
 use turbo_rcstr::{RcStr, rcstr};
@@ -128,104 +129,112 @@ impl Asset for MdxTransformedAsset {
 impl MdxTransformedAsset {
     #[turbo_tasks::function]
     async fn process(&self) -> Result<Vc<MdxTransformResult>> {
-        let content = self.source.content().await?;
-        let transform_options = self.options.await?;
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            unreachable!()
+        }
 
-        let AssetContent::File(file) = &*content else {
-            anyhow::bail!("Unexpected mdx asset content");
-        };
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            let content = self.source.content().await?;
+            let transform_options = self.options.await?;
 
-        let FileContent::Content(file) = &*file.await? else {
-            anyhow::bail!("Not able to read mdx file content");
-        };
+            let AssetContent::File(file) = &*content else {
+                anyhow::bail!("Unexpected mdx asset content");
+            };
 
-        let jsx_runtime = if let Some(runtime) = &transform_options.jsx_runtime {
-            match runtime.as_str() {
-                "automatic" => Some(mdxjs::JsxRuntime::Automatic),
-                "classic" => Some(mdxjs::JsxRuntime::Classic),
-                _ => None,
-            }
-        } else {
-            None
-        };
+            let FileContent::Content(file) = &*file.await? else {
+                anyhow::bail!("Not able to read mdx file content");
+            };
 
-        let parse_options = match transform_options.mdx_type {
-            Some(MdxParseConstructs::Gfm) => MdxParseOptions::gfm(),
-            _ => MdxParseOptions::default(),
-        };
+            let jsx_runtime = if let Some(runtime) = &transform_options.jsx_runtime {
+                match runtime.as_str() {
+                    "automatic" => Some(mdxjs::JsxRuntime::Automatic),
+                    "classic" => Some(mdxjs::JsxRuntime::Classic),
+                    _ => None,
+                }
+            } else {
+                None
+            };
 
-        let options = Options {
-            parse: parse_options,
-            development: transform_options.development.unwrap_or(false),
-            provider_import_source: transform_options
-                .provider_import_source
-                .clone()
-                .map(RcStr::into_owned),
-            jsx: transform_options.jsx.unwrap_or(false), // true means 'preserve' jsx syntax.
-            jsx_runtime,
-            jsx_import_source: transform_options
-                .jsx_import_source
-                .clone()
-                .map(RcStr::into_owned),
-            filepath: Some(self.source.ident().await?.path.to_string()),
-            ..Default::default()
-        };
+            let parse_options = match transform_options.mdx_type {
+                Some(MdxParseConstructs::Gfm) => MdxParseOptions::gfm(),
+                _ => MdxParseOptions::default(),
+            };
 
-        let result = compile(&file.content().to_str()?, &options);
+            let options = Options {
+                parse: parse_options,
+                development: transform_options.development.unwrap_or(false),
+                provider_import_source: transform_options
+                    .provider_import_source
+                    .clone()
+                    .map(RcStr::into_owned),
+                jsx: transform_options.jsx.unwrap_or(false), // true means 'preserve' jsx syntax.
+                jsx_runtime,
+                jsx_import_source: transform_options
+                    .jsx_import_source
+                    .clone()
+                    .map(RcStr::into_owned),
+                filepath: Some(self.source.ident().await?.path.to_string()),
+                ..Default::default()
+            };
 
-        match result {
-            Ok(mdx_jsx_component) => Ok(MdxTransformResult {
-                content: AssetContent::file(
-                    FileContent::Content(File::from(Rope::from(mdx_jsx_component))).cell(),
-                )
-                .to_resolved()
-                .await?,
-            }
-            .cell()),
-            Err(err) => {
-                let source = match err.place {
-                    Some(p) => {
-                        let (start, end) = match *p {
-                            // markdown's positions are 1-indexed, SourcePos is 0-indexed.
-                            // Both end positions point to the first character after the range
-                            markdown::message::Place::Position(p) => (
-                                SourcePos {
-                                    line: (p.start.line - 1) as u32,
-                                    column: (p.start.column - 1) as u32,
-                                },
-                                SourcePos {
-                                    line: (p.end.line - 1) as u32,
-                                    column: (p.end.column - 1) as u32,
-                                },
-                            ),
-                            markdown::message::Place::Point(p) => {
-                                let p = SourcePos {
-                                    line: (p.line - 1) as u32,
-                                    column: (p.column - 1) as u32,
-                                };
-                                (p, p)
-                            }
-                        };
+            let result = compile(&file.content().to_str()?, &options);
 
-                        IssueSource::from_line_col(self.source, start, end)
+            match result {
+                Ok(mdx_jsx_component) => Ok(MdxTransformResult {
+                    content: AssetContent::file(
+                        FileContent::Content(File::from(Rope::from(mdx_jsx_component))).cell(),
+                    )
+                    .to_resolved()
+                    .await?,
+                }
+                .cell()),
+                Err(err) => {
+                    let source = match err.place {
+                        Some(p) => {
+                            let (start, end) = match *p {
+                                // markdown's positions are 1-indexed, SourcePos is 0-indexed.
+                                // Both end positions point to the first character after the range
+                                markdown::message::Place::Position(p) => (
+                                    SourcePos {
+                                        line: (p.start.line - 1) as u32,
+                                        column: (p.start.column - 1) as u32,
+                                    },
+                                    SourcePos {
+                                        line: (p.end.line - 1) as u32,
+                                        column: (p.end.column - 1) as u32,
+                                    },
+                                ),
+                                markdown::message::Place::Point(p) => {
+                                    let p = SourcePos {
+                                        line: (p.line - 1) as u32,
+                                        column: (p.column - 1) as u32,
+                                    };
+                                    (p, p)
+                                }
+                            };
+
+                            IssueSource::from_line_col(self.source, start, end)
+                        }
+                        None => IssueSource::from_source_only(self.source),
+                    };
+
+                    MdxIssue {
+                        source,
+                        reason: RcStr::from(err.reason),
+                        mdx_rule_id: RcStr::from(*err.rule_id),
+                        mdx_source: RcStr::from(*err.source),
                     }
-                    None => IssueSource::from_source_only(self.source),
-                };
+                    .resolved_cell()
+                    .emit();
 
-                MdxIssue {
-                    source,
-                    reason: RcStr::from(err.reason),
-                    mdx_rule_id: RcStr::from(*err.rule_id),
-                    mdx_source: RcStr::from(*err.source),
+                    Ok(MdxTransformResult {
+                        content: AssetContent::File(FileContent::NotFound.resolved_cell())
+                            .resolved_cell(),
+                    }
+                    .cell())
                 }
-                .resolved_cell()
-                .emit();
-
-                Ok(MdxTransformResult {
-                    content: AssetContent::File(FileContent::NotFound.resolved_cell())
-                        .resolved_cell(),
-                }
-                .cell())
             }
         }
     }
