@@ -11,6 +11,7 @@ use turbopack_core::{
 };
 use turbopack_css::CssModuleAssetType;
 use turbopack_ecmascript::{EcmascriptInputTransforms, EcmascriptOptions};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
 use crate::module_options::{CustomModuleType, RuleCondition, match_mode::MatchMode};
@@ -150,6 +151,7 @@ pub enum ModuleType {
         tag: Option<RcStr>,
     },
     InlinedBytesJs,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     WebAssembly {
         source_ty: WebAssemblySourceType,
     },
@@ -171,6 +173,7 @@ impl Display for ModuleType {
             ModuleType::StaticUrlJs { .. } => write!(f, "StaticUrlJs"),
             ModuleType::StaticUrlCss { .. } => write!(f, "StaticUrlCss"),
             ModuleType::InlinedBytesJs => write!(f, "InlinedBytesJs"),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleType::WebAssembly { .. } => write!(f, "WebAssembly"),
             ModuleType::Custom(_) => write!(f, "Custom"),
         }
@@ -209,6 +212,7 @@ impl ModuleType {
                 environment,
             },
             "css-module" => ModuleType::CssModule,
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             "wasm" => ModuleType::WebAssembly {
                 source_ty: WebAssemblySourceType::Binary,
             },

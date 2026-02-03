@@ -39,7 +39,7 @@ const chunkResolvers: Map<ChunkUrl, ChunkResolver> = new Map()
   BACKEND = {
     async registerChunk(chunk, params) {
       let chunkPath = getPathFromScript(chunk)
-      let chunkUrl = getUrlFromScript(chunk)
+      let chunkUrl = getUrlFromScript(chunkPath)
 
       const resolver = getOrCreateResolver(chunkUrl)
       resolver.resolve()
