@@ -1221,8 +1221,14 @@ impl EcmascriptModuleContent {
                 .try_join()
                 .await?;
 
-            let (merged_ast, comments, source_maps, original_source_maps, lookup_table) =
-                merge_modules(contents, &entry_points, &globals_merged).await?;
+            let (
+                merged_ast,
+                comments,
+                source_maps,
+                original_source_maps,
+                lookup_table,
+                fallback_import_idents,
+            ) = merge_modules(contents, &entry_points, &globals_merged).await?;
 
             // Use the options from an arbitrary module, since they should all be the same with
             // regards to minify_type and chunking_context.
@@ -1251,22 +1257,35 @@ impl EcmascriptModuleContent {
             };
 
             let first_entry = entry_points.first().unwrap().0;
-            let additional_ids = modules
-                .keys()
-                // Additionally set this module factory for all modules that are exposed. The whole
-                // group might be imported via a different entry import in different chunks (we only
-                // ensure that the modules are in the same order, not that they form a subgraph that
-                // is always imported from the same root module).
-                //
-                // Also skip the first entry, which is the name of the chunk item.
-                .filter(|m| {
-                    **m != first_entry
-                        && *modules.get(*m).unwrap() == MergeableModuleExposure::External
+            let module_ids = modules
+                .iter()
+                .map(async |(module, exposure)| {
+                    Ok((
+                        *module,
+                        *exposure,
+                        module.chunk_item_id(*options.chunking_context).await?,
+                    ))
                 })
-                .map(|m| m.chunk_item_id(*options.chunking_context))
                 .try_join()
-                .await?
-                .into();
+                .await?;
+            let additional_ids = module_ids
+                .into_iter()
+                .filter_map(|(module, exposure, module_id)| {
+                    if module == first_entry {
+                        return None;
+                    }
+                    let fallback_ident: Atom =
+                        crate::magic_identifier::mangle(&format!("imported module {module_id}"))
+                            .into();
+                    if exposure == MergeableModuleExposure::External
+                        || fallback_import_idents.contains(&fallback_ident)
+                    {
+                        Some(module_id)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<SmallVec<[ModuleId; 1]>>();
 
             emit_content(content, additional_ids)
                 .instrument(tracing::info_span!("emit code"))
@@ -1300,6 +1319,7 @@ async fn merge_modules(
     Vec<CodeGenResultSourceMap>,
     SmallVec<[ResolvedVc<Box<dyn GenerateSourceMap>>; 1]>,
     Arc<Mutex<Vec<ModulePosition>>>,
+    FxHashSet<Atom>,
 )> {
     struct SetSyntaxContextVisitor<'a> {
         modules_header_width: u32,
@@ -1599,10 +1619,12 @@ async fn merge_modules(
         merged_ast.visit_mut_with(&mut swc_core::ecma::transforms::base::hygiene::hygiene());
         drop(span);
 
-        Ok((merged_ast, inserted))
+        let fallback_import_idents = inserted_imports.keys().cloned().collect();
+
+        Ok((merged_ast, inserted, fallback_import_idents))
     });
 
-    let (merged_ast, inserted) = match result {
+    let (merged_ast, inserted, fallback_import_idents) = match result {
         Ok(v) => v,
         Err((content_idx, err)) => {
             return Err(
@@ -1651,6 +1673,7 @@ async fn merge_modules(
         source_maps,
         original_source_maps,
         Arc::new(Mutex::new(lookup_table)),
+        fallback_import_idents,
     ))
 }
 

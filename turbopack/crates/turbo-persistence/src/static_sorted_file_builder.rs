@@ -951,7 +951,6 @@ impl<E: Entry> StreamingSstWriter<E> {
             qfilter::Filter::new(actual_count.max(1), AMQF_FALSE_POSITIVE_RATE)
                 .expect("Filter can't be constructed"),
         );
-
         let fp_size = builder.fingerprint_size();
         assert!(fp_size < 32, "fp_size {fp_size} exceeds u32");
         let fp_mask = (1u32 << fp_size) - 1;
