@@ -201,10 +201,7 @@ impl EcmascriptBrowserEvaluateChunk {
                     output_root_to_root_path,
                     source_maps,
                     this.chunking_context.chunk_loading_global(),
-<<<<<<< HEAD
-=======
                     this.chunking_context.entry_root_export(),
->>>>>>> 208f196aa3 (feat(turbopack): apply utoo patches to canary)
                 );
                 code.push_code(&*runtime_code.await?);
             }
