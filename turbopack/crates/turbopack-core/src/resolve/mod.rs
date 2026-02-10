@@ -1936,16 +1936,13 @@ async fn resolve_internal_inline(
                 )
                 .await?;
 
-                let mut pattern_results = Vec::new();
+                let mut pattern_results = Vec::with_capacity(matches.len());
                 for m in matches.iter() {
                     match m {
                         PatternMatch::File(matched_pattern, path) => {
                             let matched_pattern = matched_pattern.clone();
                             let path = path.clone();
                             let lookup_path = lookup_path.clone();
-                            let request = request;
-                            let options_value = options_value;
-                            let options = options;
                             let query = query.clone();
                             let fragment = fragment.clone();
 
@@ -2799,7 +2796,7 @@ async fn resolve_module_request(
     // resolve packages. A request to "foo/bar" might resolve to either
     // "[baseUrl]/foo/bar" or "[baseUrl]/node_modules/foo/bar", and we'll need to
     // try both.
-    let mut package_file_results = Vec::new();
+    let mut package_file_results = Vec::with_capacity(result.packages.len());
 
     for item in &result.packages {
         match item {
@@ -2817,9 +2814,6 @@ async fn resolve_module_request(
             }
             FindPackageItem::PackageFile { name, file } => {
                 if path.is_match("") {
-                    let request = request;
-                    let options = options;
-                    let options_value = options_value;
                     let query = query.clone();
                     let fragment = fragment.clone();
                     let file = file.clone();
