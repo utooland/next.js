@@ -1936,22 +1936,29 @@ async fn resolve_internal_inline(
                 )
                 .await?;
 
+                let mut pattern_results = Vec::new();
                 for m in matches.iter() {
                     match m {
                         PatternMatch::File(matched_pattern, path) => {
-                            results.push(
-                                resolved(
-                                    RequestKey::new(matched_pattern.clone()),
-                                    path.clone(),
-                                    lookup_path.clone(),
-                                    request,
-                                    options_value,
-                                    options,
-                                    query.clone(),
-                                    fragment.clone(),
-                                )
-                                .await?,
-                            );
+                            let matched_pattern = matched_pattern.clone();
+                            let path = path.clone();
+                            let lookup_path = lookup_path.clone();
+                            let request = request;
+                            let options_value = options_value;
+                            let options = options;
+                            let query = query.clone();
+                            let fragment = fragment.clone();
+
+                            pattern_results.push(resolved(
+                                RequestKey::new(matched_pattern),
+                                path,
+                                lookup_path,
+                                request,
+                                options_value,
+                                options,
+                                query,
+                                fragment,
+                            ));
                         }
                         PatternMatch::Directory(matched_pattern, path) => {
                             results.push(
@@ -1961,6 +1968,7 @@ async fn resolve_internal_inline(
                         }
                     }
                 }
+                results.extend(pattern_results.into_iter().try_join().await?);
 
                 merge_results(results)
             }
@@ -2791,6 +2799,8 @@ async fn resolve_module_request(
     // resolve packages. A request to "foo/bar" might resolve to either
     // "[baseUrl]/foo/bar" or "[baseUrl]/node_modules/foo/bar", and we'll need to
     // try both.
+    let mut package_file_results = Vec::new();
+
     for item in &result.packages {
         match item {
             FindPackageItem::PackageDirectory { name, dir } => {
@@ -2807,23 +2817,35 @@ async fn resolve_module_request(
             }
             FindPackageItem::PackageFile { name, file } => {
                 if path.is_match("") {
-                    let resolved = resolved(
-                        RequestKey::new(rcstr!(".")),
-                        file.clone(),
-                        lookup_path.clone(),
-                        request,
-                        options_value,
-                        options,
-                        query.clone(),
-                        fragment.clone(),
-                    )
-                    .await?
-                    .with_replaced_request_key(rcstr!("."), RequestKey::new(name.clone()));
-                    results.push(resolved)
+                    let request = request;
+                    let options = options;
+                    let options_value = options_value;
+                    let query = query.clone();
+                    let fragment = fragment.clone();
+                    let file = file.clone();
+                    let name = name.clone();
+                    let lookup_path = lookup_path.clone();
+
+                    package_file_results.push(async move {
+                        Ok(resolved(
+                            RequestKey::new(rcstr!(".")),
+                            file,
+                            lookup_path,
+                            request,
+                            options_value,
+                            options,
+                            query,
+                            fragment,
+                        )
+                        .await?
+                        .with_replaced_request_key(rcstr!("."), RequestKey::new(name)))
+                    });
                 }
             }
         }
     }
+
+    results.extend(package_file_results.into_iter().try_join().await?);
 
     let module_result =
         merge_results_with_affecting_sources(results, result.affecting_sources.clone());
