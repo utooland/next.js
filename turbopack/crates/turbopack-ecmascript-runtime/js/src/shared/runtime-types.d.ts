@@ -63,6 +63,7 @@ type DynamicExport = (
 
 type LoadChunk = (chunkPath: ChunkPath) => Promise<any> | undefined
 type LoadChunkByUrl = (chunkUrl: ChunkUrl) => Promise<any> | undefined
+type LoadScript = (scriptUrl: string) => Promise<void>
 type LoadWebAssembly = (
   wasmChunkPath: ChunkPath,
   edgeModule: () => WebAssembly.Module,
@@ -147,6 +148,7 @@ interface TurbopackBaseContext<M> {
   M: ModuleFactories
   l: LoadChunk
   L: LoadChunkByUrl
+  S: LoadScript
   w: LoadWebAssembly
   u: LoadWebAssemblyModule
   P: ResolveAbsolutePath
