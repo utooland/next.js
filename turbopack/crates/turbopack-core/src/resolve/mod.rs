@@ -606,11 +606,15 @@ impl ValueToString for ResolveResult {
 }
 
 impl ResolveResult {
-    pub fn unresolvable() -> Self {
+    pub fn unresolvable_ref() -> Self {
         ResolveResult {
             primary: Default::default(),
             affecting_sources: Default::default(),
         }
+    }
+
+    pub fn unresolvable() -> ResolvedVc<Self> {
+        Self::unresolvable_ref().resolved_cell()
     }
 
     pub fn merge(results: Vec<ResolveResult>) -> Self {
@@ -644,7 +648,7 @@ impl ResolveResult {
     pub fn unresolvable_with_affecting_sources(
         affecting_sources: Vec<ResolvedVc<Box<dyn Source>>>,
     ) -> Self {
-        Self::unresolvable().with_affecting_sources_ref(affecting_sources)
+        Self::unresolvable_ref().with_affecting_sources_ref(affecting_sources)
     }
 
     pub fn primary_with_affecting_sources(
@@ -1532,7 +1536,7 @@ async fn find_package(
 
 fn merge_results(results: Vec<Vc<ResolveResult>>) -> Vc<ResolveResult> {
     match results.len() {
-        0 => ResolveResult::unresolvable().cell(),
+        0 => *ResolveResult::unresolvable(),
         1 => results.into_iter().next().unwrap(),
         _ => ResolveResult::alternatives(results),
     }
@@ -1979,7 +1983,7 @@ async fn resolve_internal_inline(
 
         let result = match &*request_value {
             Request::Dynamic => {
-                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable())
+                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable_ref())
             }
             Request::Alternatives { requests } => {
                 let results_internal = requests
@@ -2137,9 +2141,11 @@ async fn resolve_internal_inline(
                     .emit();
                 }
 
-                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable())
+                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable_ref())
             }
-            Request::Empty => InternalResolvedResult::ResolveResult(ResolveResult::unresolvable()),
+            Request::Empty => {
+                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable_ref())
+            }
             Request::PackageInternal { path } => {
                 let (conditions, unspecified_conditions) = options_value
                     .in_package
@@ -2230,7 +2236,7 @@ async fn resolve_internal_inline(
                     .resolved_cell()
                     .emit();
                 }
-                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable())
+                InternalResolvedResult::ResolveResult(ResolveResult::unresolvable_ref())
             }
         };
 
@@ -3424,13 +3430,13 @@ async fn resolve_package_internal_with_imports_field(
         }
         .resolved_cell()
         .emit();
-        return Ok(ResolveResult::unresolvable());
+        return Ok(ResolveResult::unresolvable_ref());
     }
 
     let imports_result = imports_field(file_path).await?;
     let (imports, package_json_path) = match &*imports_result {
         ImportsFieldResult::Some(i, p) => (i, p.clone()),
-        ImportsFieldResult::None => return Ok(ResolveResult::unresolvable()),
+        ImportsFieldResult::None => return Ok(ResolveResult::unresolvable_ref()),
     };
 
     handle_exports_imports_field(
@@ -3526,7 +3532,7 @@ pub async fn handle_resolve_source_error(
                 source,
             )
             .await?;
-            let r: ResolveResult = ResolveResult::unresolvable();
+            let r: ResolveResult = ResolveResult::unresolvable_ref();
             let vc: Vc<ResolveResult> = r.cell();
             vc
         }
