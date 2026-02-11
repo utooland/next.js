@@ -295,10 +295,9 @@ impl Module for CachedExternalModule {
         // For script externals, simplify the path by using variable name
         // instead of the full url to avoid long filenames
         let path_str = if self.external_type == CachedExternalType::Script
-            && let Some(at_index) = self.request.find('@')
+            && let Some(at_index) = self.request.rfind('@').filter(|&i| i > 0)
         {
-            let variable_name = &self.request[..at_index];
-            variable_name.to_string()
+            self.request[..at_index].to_string()
         } else {
             self.request.to_string()
         };
