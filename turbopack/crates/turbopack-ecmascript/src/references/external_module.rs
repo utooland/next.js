@@ -292,7 +292,16 @@ fn externals_fs_root() -> Vc<FileSystemPath> {
 impl Module for CachedExternalModule {
     #[turbo_tasks::function]
     async fn ident(&self) -> Result<Vc<AssetIdent>> {
-        let mut ident = AssetIdent::from_path(externals_fs_root().await?.join(&self.request)?)
+        // For script externals, simplify the path by using variable name
+        // instead of the full url to avoid long filenames
+        let path_str = if self.external_type == CachedExternalType::Script
+            && let Some(at_index) = self.request.rfind('@').filter(|&i| i > 0)
+        {
+            self.request[..at_index].to_string()
+        } else {
+            self.request.to_string()
+        };
+        let mut ident = AssetIdent::from_path(externals_fs_root().await?.join(&path_str)?)
             .with_layer(Layer::new(rcstr!("external")))
             .with_modifier(self.request.clone())
             .with_modifier(self.external_type.to_string().into());
