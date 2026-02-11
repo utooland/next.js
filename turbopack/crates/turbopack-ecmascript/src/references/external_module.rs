@@ -36,7 +36,7 @@ use crate::{
     references::async_module::{AsyncModule, OptionAsyncModule},
     runtime_functions::{
         TURBOPACK_EXPORT_NAMESPACE, TURBOPACK_EXPORT_VALUE, TURBOPACK_EXTERNAL_IMPORT,
-        TURBOPACK_EXTERNAL_REQUIRE, TURBOPACK_LOAD_BY_URL,
+        TURBOPACK_EXTERNAL_REQUIRE, TURBOPACK_LOAD_SCRIPT,
     },
     utils::StringifyJs,
 };
@@ -210,42 +210,54 @@ impl CachedExternalModule {
                     let variable_name = &self.request[..at_index];
                     let url = &self.request[at_index + 1..];
 
-                    // Wrap the loading and variable access in a try-catch block
-                    writeln!(code, "let mod;")?;
-                    writeln!(code, "try {{")?;
+                    // Similar to webpack's approach: wrap in a promise that checks variable before
+                    // and after loading
+                    writeln!(code, "const mod = await (async () => {{")?;
 
-                    // First load the URL
+                    // First check if variable already exists (avoid redundant loading)
                     writeln!(
                         code,
-                        "  await {TURBOPACK_LOAD_BY_URL}({});",
-                        StringifyJs(url)
-                    )?;
-
-                    // Then get the variable from global with existence check
-                    writeln!(
-                        code,
-                        "  if (typeof global[{}] === 'undefined') {{",
+                        "  if (typeof globalThis[{}] !== 'undefined') {{",
                         StringifyJs(variable_name)
                     )?;
                     writeln!(
                         code,
-                        "    throw new Error('Variable {} is not available on global object after \
-                         loading {}');",
-                        StringifyJs(variable_name),
-                        StringifyJs(url)
+                        "    return globalThis[{}];",
+                        StringifyJs(variable_name)
                     )?;
                     writeln!(code, "  }}")?;
-                    writeln!(code, "  mod = global[{}];", StringifyJs(variable_name))?;
 
-                    // Catch and re-throw errors with more context
-                    writeln!(code, "}} catch (error) {{")?;
+                    // Load the script if variable doesn't exist
                     writeln!(
                         code,
-                        "  throw new Error('Failed to load external URL module {}: ' + \
-                         (error.message || error));",
-                        StringifyJs(&self.request)
+                        "  await {TURBOPACK_LOAD_SCRIPT}({});",
+                        StringifyJs(url)
                     )?;
-                    writeln!(code, "}}")?;
+
+                    // After loading, check again if the variable is available
+                    writeln!(
+                        code,
+                        "  if (typeof globalThis[{}] !== 'undefined') {{",
+                        StringifyJs(variable_name)
+                    )?;
+                    writeln!(
+                        code,
+                        "    return globalThis[{}];",
+                        StringifyJs(variable_name)
+                    )?;
+                    writeln!(code, "  }}")?;
+
+                    // Variable not found after loading - throw error
+                    writeln!(
+                        code,
+                        "  const error = new Error('Loading script failed.\\n(missing: {})');",
+                        StringifyJs(url)
+                    )?;
+                    writeln!(code, "  error.name = 'ScriptExternalLoadError';")?;
+                    writeln!(code, "  error.type = 'missing';")?;
+                    writeln!(code, "  error.request = {};", StringifyJs(url))?;
+                    writeln!(code, "  throw error;")?;
+                    writeln!(code, "}})();")?;
                 } else {
                     // Invalid format - throw error
                     writeln!(
