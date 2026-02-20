@@ -646,13 +646,14 @@ export function printCustomRoutes({
   redirects,
   rewrites,
   headers,
+  onMatchHeaders,
 }: CustomRoutes) {
   const printRoutes = (
     routes: Redirect[] | Rewrite[] | Header[],
-    type: 'Redirects' | 'Rewrites' | 'Headers'
+    type: 'Redirects' | 'Rewrites' | 'Headers' | 'On Match Headers'
   ) => {
     const isRedirects = type === 'Redirects'
-    const isHeaders = type === 'Headers'
+    const isHeaders = type === 'Headers' || type === 'On Match Headers'
     print(underline(type))
 
     /*
@@ -705,6 +706,9 @@ export function printCustomRoutes({
   if (headers.length) {
     printRoutes(headers, 'Headers')
   }
+  if (onMatchHeaders.length) {
+    printRoutes(onMatchHeaders, 'On Match Headers')
+  }
 
   const combinedRewrites = [
     ...rewrites.beforeFiles,
@@ -753,6 +757,7 @@ export async function isPageStatic({
   cacheLifeProfiles,
   pprConfig,
   buildId,
+  deploymentId,
   sriEnabled,
 }: {
   dir: string
@@ -779,6 +784,7 @@ export async function isPageStatic({
   nextConfigOutput: 'standalone' | 'export' | undefined
   pprConfig: ExperimentalPPRConfig | undefined
   buildId: string
+  deploymentId: string
   sriEnabled: boolean
 }): Promise<PageIsStaticResult> {
   // Skip page data collection for synthetic _global-error routes
@@ -832,6 +838,7 @@ export async function isPageStatic({
           name: edgeInfo.name,
           useCache: true,
           distDir,
+          deploymentId,
         })
         const mod = (
           await runtime.context._ENTRIES[`middleware_${edgeInfo.name}`]

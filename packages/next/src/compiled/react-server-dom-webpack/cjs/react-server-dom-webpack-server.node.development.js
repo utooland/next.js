@@ -1089,6 +1089,7 @@
       onFatalError,
       identifierPrefix,
       temporaryReferences,
+      debugStartTime,
       environmentName,
       filterStackFrame,
       keepDebugAlive
@@ -1106,7 +1107,7 @@
         pingedTasks = [],
         hints = new Set();
       this.type = type;
-      this.status = 10;
+      this.status = OPENING;
       this.flushScheduled = !1;
       this.destination = this.fatalError = null;
       this.bundlerConfig = bundlerConfig;
@@ -1153,7 +1154,10 @@
       this.deferredDebugObjects = keepDebugAlive
         ? { retained: new Map(), existing: new Map() }
         : null;
-      type = this.timeOrigin = performance.now();
+      type =
+        "number" === typeof debugStartTime
+          ? (this.timeOrigin = debugStartTime - performance.timeOrigin)
+          : (this.timeOrigin = performance.now());
       emitTimeOriginChunk(this, type + performance.timeOrigin);
       this.abortTime = -0;
       model = createTask(
@@ -1176,6 +1180,7 @@
       onError,
       identifierPrefix,
       temporaryReferences,
+      debugStartTime,
       environmentName,
       filterStackFrame,
       keepDebugAlive
@@ -1190,6 +1195,7 @@
         noop,
         identifierPrefix,
         temporaryReferences,
+        debugStartTime,
         environmentName,
         filterStackFrame,
         keepDebugAlive
@@ -1203,13 +1209,14 @@
       onError,
       identifierPrefix,
       temporaryReferences,
+      debugStartTime,
       environmentName,
       filterStackFrame,
       keepDebugAlive
     ) {
       resetOwnerStackLimit();
       return new RequestInstance(
-        21,
+        PRERENDER,
         model,
         bundlerConfig,
         onError,
@@ -1217,6 +1224,7 @@
         onFatalError,
         identifierPrefix,
         temporaryReferences,
+        debugStartTime,
         environmentName,
         filterStackFrame,
         keepDebugAlive
@@ -1356,7 +1364,7 @@
           if (request.status === ABORTING)
             return (
               request.abortableTasks.delete(newTask),
-              21 === request.type
+              request.type === PRERENDER
                 ? (haltTask(newTask), finishHaltedTask(newTask, request))
                 : ((task = request.fatalError),
                   abortTask(newTask),
@@ -1384,7 +1392,7 @@
           pingTask(request, newTask);
         },
         function (reason) {
-          0 === newTask.status &&
+          newTask.status === PENDING$1 &&
             ((newTask.timed = !0),
             erroredTask(request, newTask, reason),
             enqueueFlush(request));
@@ -1394,9 +1402,9 @@
     }
     function serializeReadableStream(request, task, stream) {
       function progress(entry) {
-        if (0 === streamTask.status)
+        if (streamTask.status === PENDING$1)
           if (entry.done)
-            (streamTask.status = 1),
+            (streamTask.status = COMPLETED),
               (entry = streamTask.id.toString(16) + ":C\n"),
               request.completedRegularChunks.push(entry),
               request.abortableTasks.delete(streamTask),
@@ -1426,7 +1434,7 @@
             }
       }
       function error(reason) {
-        0 === streamTask.status &&
+        streamTask.status === PENDING$1 &&
           (request.cacheController.signal.removeEventListener(
             "abort",
             abortStream
@@ -1436,11 +1444,11 @@
           reader.cancel(reason).then(error, error));
       }
       function abortStream() {
-        if (0 === streamTask.status) {
+        if (streamTask.status === PENDING$1) {
           var signal = request.cacheController.signal;
           signal.removeEventListener("abort", abortStream);
           signal = signal.reason;
-          21 === request.type
+          request.type === PRERENDER
             ? (request.abortableTasks.delete(streamTask),
               haltTask(streamTask),
               finishHaltedTask(streamTask, request))
@@ -1479,9 +1487,9 @@
     }
     function serializeAsyncIterable(request, task, iterable, iterator) {
       function progress(entry) {
-        if (0 === streamTask.status)
+        if (streamTask.status === PENDING$1)
           if (entry.done) {
-            streamTask.status = 1;
+            streamTask.status = COMPLETED;
             if (void 0 === entry.value)
               var endStreamRow = streamTask.id.toString(16) + ":C\n";
             else
@@ -1516,7 +1524,7 @@
             }
       }
       function error(reason) {
-        0 === streamTask.status &&
+        streamTask.status === PENDING$1 &&
           (request.cacheController.signal.removeEventListener(
             "abort",
             abortIterable
@@ -1527,11 +1535,11 @@
             iterator.throw(reason).then(error, error));
       }
       function abortIterable() {
-        if (0 === streamTask.status) {
+        if (streamTask.status === PENDING$1) {
           var signal = request.cacheController.signal;
           signal.removeEventListener("abort", abortIterable);
           var reason = signal.reason;
-          21 === request.type
+          request.type === PRERENDER
             ? (request.abortableTasks.delete(streamTask),
               haltTask(streamTask),
               finishHaltedTask(streamTask, request))
@@ -1909,7 +1917,7 @@
         task.debugTask
       );
       retryTask(request, task);
-      return 1 === task.status
+      return task.status === COMPLETED
         ? serializeByValueID(task.id)
         : serializeLazyID(task.id);
     }
@@ -2054,147 +2062,161 @@
       task = task.implicitSlot && null !== key ? [request] : request;
       return task;
     }
-    function visitAsyncNode(request, task, node, visited, cutOff) {
-      if (visited.has(node)) return visited.get(node);
-      visited.set(node, null);
-      a: if (0 <= node.end && node.end <= request.timeOrigin) request = null;
-      else {
-        var previousIONode = null;
-        if (
-          null !== node.previous &&
-          ((previousIONode = visitAsyncNode(
-            request,
-            task,
-            node.previous,
-            visited,
-            cutOff
-          )),
-          void 0 === previousIONode)
-        ) {
-          request = void 0;
-          break a;
-        }
-        switch (node.tag) {
-          case 0:
-            request = node;
-            break;
-          case 3:
-            request = previousIONode;
-            break;
-          case 1:
-            var awaited = node.awaited,
-              promise = node.promise.deref();
-            if (null !== awaited)
-              if (
-                ((cutOff = visitAsyncNode(
-                  request,
-                  task,
-                  awaited,
-                  visited,
-                  cutOff
-                )),
-                void 0 === cutOff)
-              ) {
-                request = void 0;
-                break;
-              } else
-                null !== cutOff
-                  ? (previousIONode =
-                      1 === cutOff.tag
-                        ? cutOff
-                        : (null !== node.stack &&
-                              hasUnfilteredFrame(request, node.stack)) ||
-                            (void 0 !== promise &&
-                              "string" === typeof promise.displayName &&
-                              (null === cutOff.stack ||
-                                !hasUnfilteredFrame(request, cutOff.stack)))
-                          ? node
-                          : cutOff)
-                  : request.status === ABORTING &&
-                    node.start < request.abortTime &&
-                    node.end > request.abortTime &&
-                    ((null !== node.stack &&
-                      hasUnfilteredFrame(request, node.stack)) ||
-                      (void 0 !== promise &&
-                        "string" === typeof promise.displayName)) &&
-                    (previousIONode = node);
-            void 0 !== promise &&
-              ((cutOff = promise._debugInfo),
-              null == cutOff ||
-                visited.has(cutOff) ||
-                (visited.set(cutOff, null),
-                forwardDebugInfo(request, task, cutOff)));
-            request = previousIONode;
-            break;
-          case 4:
-            request = previousIONode;
-            break;
-          case 2:
-            awaited = node.awaited;
-            if (null !== awaited)
-              if (
-                ((promise = visitAsyncNode(
-                  request,
-                  task,
-                  awaited,
-                  visited,
-                  cutOff
-                )),
-                void 0 === promise)
-              ) {
-                request = void 0;
-                break;
-              } else if (null !== promise) {
-                var startTime = node.start,
-                  endTime = node.end;
-                startTime < cutOff
-                  ? ((previousIONode = promise),
-                    null !== node.stack &&
-                      isAwaitInUserspace(request, node.stack) &&
-                      void 0 !==
-                        (null === awaited.promise
-                          ? void 0
-                          : awaited.promise.deref()) &&
-                      serializeIONode(request, promise, awaited.promise))
-                  : null !== node.stack &&
-                      isAwaitInUserspace(request, node.stack)
-                    ? (request.status === ABORTING &&
-                        startTime > request.abortTime) ||
-                      (serializeIONode(request, promise, awaited.promise),
-                      visited.set(promise, null),
-                      null != node.owner &&
-                        outlineComponentInfo(request, node.owner),
-                      (cutOff = (0, request.environmentName)()),
-                      advanceTaskTime(request, task, startTime),
-                      request.pendingChunks++,
-                      emitDebugChunk(request, task.id, {
-                        awaited: promise,
-                        env: cutOff,
-                        owner: node.owner,
-                        stack:
-                          null === node.stack
-                            ? null
-                            : filterStackTrace(request, node.stack)
-                      }),
-                      markOperationEndTime(request, task, endTime),
-                      request.status === ABORTING && (previousIONode = void 0))
-                    : (previousIONode = promise);
-              }
-            cutOff = node.promise.deref();
-            void 0 !== cutOff &&
-              ((cutOff = cutOff._debugInfo),
-              null == cutOff ||
-                visited.has(cutOff) ||
-                (visited.set(cutOff, null),
-                forwardDebugInfo(request, task, cutOff)));
-            request = previousIONode;
-            break;
-          default:
-            throw Error("Unknown AsyncSequence tag. This is a bug in React.");
-        }
+    function visitAsyncNode(
+      request,
+      task$jscomp$0,
+      node$jscomp$0,
+      visited,
+      cutOff
+    ) {
+      for (
+        var chain = [];
+        null !== node$jscomp$0 && !visited.has(node$jscomp$0);
+
+      )
+        chain.push(node$jscomp$0), (node$jscomp$0 = node$jscomp$0.previous);
+      var previousIONode =
+        null !== node$jscomp$0 ? visited.get(node$jscomp$0) : null;
+      for (
+        node$jscomp$0 = chain.length - 1;
+        0 <= node$jscomp$0;
+        node$jscomp$0--
+      ) {
+        var n = chain[node$jscomp$0];
+        visited.set(n, null);
+        var result = request;
+        var task = task$jscomp$0,
+          node = n,
+          visited$jscomp$0 = visited,
+          cutOff$jscomp$0 = cutOff;
+        if (0 <= node.end && node.end <= result.timeOrigin) result = null;
+        else
+          switch (node.tag) {
+            case 0:
+              result = node;
+              break;
+            case 3:
+              result = previousIONode;
+              break;
+            case 1:
+              var awaited = node.awaited,
+                promise = node.promise.deref();
+              if (null !== awaited)
+                if (
+                  ((cutOff$jscomp$0 = visitAsyncNode(
+                    result,
+                    task,
+                    awaited,
+                    visited$jscomp$0,
+                    cutOff$jscomp$0
+                  )),
+                  void 0 === cutOff$jscomp$0)
+                ) {
+                  result = void 0;
+                  break;
+                } else
+                  null !== cutOff$jscomp$0
+                    ? (previousIONode =
+                        1 === cutOff$jscomp$0.tag
+                          ? cutOff$jscomp$0
+                          : (null !== node.stack &&
+                                hasUnfilteredFrame(result, node.stack)) ||
+                              (void 0 !== promise &&
+                                "string" === typeof promise.displayName &&
+                                (null === cutOff$jscomp$0.stack ||
+                                  !hasUnfilteredFrame(
+                                    result,
+                                    cutOff$jscomp$0.stack
+                                  )))
+                            ? node
+                            : cutOff$jscomp$0)
+                    : result.status === ABORTING &&
+                      node.start < result.abortTime &&
+                      node.end > result.abortTime &&
+                      ((null !== node.stack &&
+                        hasUnfilteredFrame(result, node.stack)) ||
+                        (void 0 !== promise &&
+                          "string" === typeof promise.displayName)) &&
+                      (previousIONode = node);
+              void 0 !== promise &&
+                ((node = promise._debugInfo),
+                null == node ||
+                  visited$jscomp$0.has(node) ||
+                  (visited$jscomp$0.set(node, null),
+                  forwardDebugInfo(result, task, node)));
+              result = previousIONode;
+              break;
+            case 4:
+              result = previousIONode;
+              break;
+            case 2:
+              awaited = node.awaited;
+              if (null !== awaited)
+                if (
+                  ((promise = visitAsyncNode(
+                    result,
+                    task,
+                    awaited,
+                    visited$jscomp$0,
+                    cutOff$jscomp$0
+                  )),
+                  void 0 === promise)
+                ) {
+                  result = void 0;
+                  break;
+                } else if (null !== promise) {
+                  var startTime = node.start,
+                    endTime = node.end;
+                  startTime < cutOff$jscomp$0
+                    ? ((previousIONode = promise),
+                      null !== node.stack &&
+                        isAwaitInUserspace(result, node.stack) &&
+                        void 0 !==
+                          (null === awaited.promise
+                            ? void 0
+                            : awaited.promise.deref()) &&
+                        serializeIONode(result, promise, awaited.promise))
+                    : null !== node.stack &&
+                        isAwaitInUserspace(result, node.stack)
+                      ? (result.status === ABORTING &&
+                          startTime > result.abortTime) ||
+                        (serializeIONode(result, promise, awaited.promise),
+                        visited$jscomp$0.set(promise, null),
+                        null != node.owner &&
+                          outlineComponentInfo(result, node.owner),
+                        (cutOff$jscomp$0 = (0, result.environmentName)()),
+                        advanceTaskTime(result, task, startTime),
+                        result.pendingChunks++,
+                        emitDebugChunk(result, task.id, {
+                          awaited: promise,
+                          env: cutOff$jscomp$0,
+                          owner: node.owner,
+                          stack:
+                            null === node.stack
+                              ? null
+                              : filterStackTrace(result, node.stack)
+                        }),
+                        markOperationEndTime(result, task, endTime),
+                        result.status === ABORTING && (previousIONode = void 0))
+                      : (previousIONode = promise);
+                }
+              node = node.promise.deref();
+              void 0 !== node &&
+                ((node = node._debugInfo),
+                null == node ||
+                  visited$jscomp$0.has(node) ||
+                  (visited$jscomp$0.set(node, null),
+                  forwardDebugInfo(result, task, node)));
+              result = previousIONode;
+              break;
+            default:
+              throw Error("Unknown AsyncSequence tag. This is a bug in React.");
+          }
+        null !== result && visited.set(n, result);
+        if (void 0 === result) return;
+        previousIONode = result;
       }
-      null !== request && visited.set(node, request);
-      return request;
+      return previousIONode;
     }
     function emitAsyncSequence(
       request,
@@ -2240,7 +2262,7 @@
       pingedTasks.push(task);
       1 === pingedTasks.length &&
         ((request.flushScheduled = null !== request.destination),
-        21 === request.type || 10 === request.status
+        request.type === PRERENDER || request.status === OPENING
           ? scheduleMicrotask(function () {
               return performWork(request);
             })
@@ -2269,7 +2291,7 @@
         request.writtenObjects.set(model, serializeByValueID(id));
       var task = {
         id: id,
-        status: 0,
+        status: PENDING$1,
         model: model,
         keyPath: keyPath,
         implicitSlot: implicitSlot,
@@ -2529,7 +2551,7 @@
     }
     function serializeBlob(request, blob) {
       function progress(entry) {
-        if (0 === newTask.status)
+        if (newTask.status === PENDING$1)
           if (entry.done)
             request.cacheController.signal.removeEventListener(
               "abort",
@@ -2542,7 +2564,7 @@
             );
       }
       function error(reason) {
-        0 === newTask.status &&
+        newTask.status === PENDING$1 &&
           (request.cacheController.signal.removeEventListener(
             "abort",
             abortBlob
@@ -2552,11 +2574,11 @@
           reader.cancel(reason).then(error, error));
       }
       function abortBlob() {
-        if (0 === newTask.status) {
+        if (newTask.status === PENDING$1) {
           var signal = request.cacheController.signal;
           signal.removeEventListener("abort", abortBlob);
           signal = signal.reason;
-          21 === request.type
+          request.type === PRERENDER
             ? (request.abortableTasks.delete(newTask),
               haltTask(newTask),
               finishHaltedTask(newTask, request))
@@ -2596,8 +2618,8 @@
           (parent.$$typeof === REACT_ELEMENT_TYPE ||
             parent.$$typeof === REACT_LAZY_TYPE);
         if (request.status === ABORTING) {
-          task.status = 3;
-          if (21 === request.type)
+          task.status = ABORTED;
+          if (request.type === PRERENDER)
             return (
               (task = request.nextChunkId++),
               (task = parent
@@ -2665,7 +2687,7 @@
       value
     ) {
       task.model = value;
-      "__proto__" === parentPropertyName &&
+      parentPropertyName === __PROTO__$1 &&
         callWithDebugContextInDEV(request, task, function () {
           console.error(
             "Expected not to serialize an object with own property `__proto__`. When parsed this property will be omitted.%s",
@@ -3022,7 +3044,7 @@
       onFatalError(error);
       null !== request.destination
         ? ((request.status = CLOSED), request.destination.destroy(error))
-        : ((request.status = 13), (request.fatalError = error));
+        : ((request.status = CLOSING), (request.fatalError = error));
       request.cacheController.abort(
         Error("The render was aborted due to a fatal error.", { cause: error })
       );
@@ -3041,19 +3063,16 @@
           "An error occurred but serializing the error message failed."),
           (stack = []);
       }
-      return (
-        "$Z" +
-        outlineModel(request, {
-          name: name,
-          message: message,
-          stack: stack,
-          env: env
-        }).toString(16)
-      );
+      name = { name: name, message: message, stack: stack, env: env };
+      "cause" in error &&
+        ((error = outlineModel(request, error.cause)),
+        (name.cause = serializeByValueID(error)));
+      return "$Z" + outlineModel(request, name).toString(16);
     }
     function emitErrorChunk(request, id, digest, error, debug, owner) {
       var name = "Error",
-        env = (0, request.environmentName)();
+        env = (0, request.environmentName)(),
+        causeReference = null;
       try {
         if (error instanceof Error) {
           name = error.name;
@@ -3061,6 +3080,13 @@
           var stack = filterStackTrace(request, parseStackTrace(error, 0));
           var errorEnv = error.environmentName;
           "string" === typeof errorEnv && (env = errorEnv);
+          if ("cause" in error) {
+            var cause = error.cause,
+              causeId = debug
+                ? outlineDebugModel(request, { objectLimit: 5 }, cause)
+                : outlineModel(request, cause);
+            causeReference = serializeByValueID(causeId);
+          }
         } else
           (message =
             "object" === typeof error && null !== error
@@ -3081,6 +3107,7 @@
         env: env,
         owner: error
       };
+      null !== causeReference && (digest.cause = causeReference);
       id = id.toString(16) + ":E" + stringify(digest) + "\n";
       debug
         ? request.completedDebugChunks.push(id)
@@ -3493,25 +3520,30 @@
               ).toString(16)
           );
         if (value instanceof Error) {
-          counter = "Error";
-          var env = (0, request.environmentName)();
+          var name = "Error";
+          parent = (0, request.environmentName)();
           try {
-            (counter = value.name),
-              (ref = String(value.message)),
-              (key = filterStackTrace(request, parseStackTrace(value, 0))),
+            (name = value.name),
+              (key = String(value.message)),
+              (ref = filterStackTrace(request, parseStackTrace(value, 0))),
               (entry = value.environmentName),
-              "string" === typeof entry && (env = entry);
+              "string" === typeof entry && (parent = entry);
           } catch (x) {
-            (ref =
+            (key =
               "An error occurred but serializing the error message failed."),
-              (key = []);
+              (ref = []);
           }
+          key = { name: name, message: key, stack: ref, env: parent };
+          "cause" in value &&
+            (counter.objectLimit--,
+            (value = outlineDebugModel(request, counter, value.cause)),
+            (key.cause = serializeByValueID(value)));
           request =
             "$Z" +
             outlineDebugModel(
               request,
-              { objectLimit: 2 * key.length + 1 },
-              { name: counter, message: ref, stack: key, env: env }
+              { objectLimit: 2 * ref.length + 1 },
+              key
             ).toString(16);
           return request;
         }
@@ -3547,9 +3579,9 @@
         request = getPrototypeOf(value);
         if (request !== ObjectPrototype$1 && null !== request) {
           counter = Object.create(null);
-          for (env in value)
-            if (hasOwnProperty.call(value, env) || isGetter(request, env))
-              counter[env] = value[env];
+          for (name in value)
+            if (hasOwnProperty.call(value, name) || isGetter(request, name))
+              counter[name] = value[name];
           ref = request.constructor;
           "function" !== typeof ref ||
             ref.prototype !== request ||
@@ -3904,16 +3936,16 @@
     }
     function erroredTask(request, task, error) {
       task.timed && markOperationEndTime(request, task, performance.now());
-      task.status = 4;
+      task.status = ERRORED$1;
       var digest = logRecoverableError(request, error, task);
       emitErrorChunk(request, task.id, digest, error, !1, task.debugOwner);
       request.abortableTasks.delete(task);
       callOnAllReadyIfReady(request);
     }
     function retryTask(request, task) {
-      if (0 === task.status) {
+      if (task.status === PENDING$1) {
         var prevCanEmitDebugInfo = canEmitDebugInfo;
-        task.status = 5;
+        task.status = RENDERING;
         var parentSerializedSize = serializedSize;
         try {
           modelRoot = task.model;
@@ -3945,15 +3977,15 @@
               processedChunk = task.id.toString(16) + ":" + json + "\n";
             request.completedRegularChunks.push(processedChunk);
           }
-          task.status = 1;
+          task.status = COMPLETED;
           request.abortableTasks.delete(task);
           callOnAllReadyIfReady(request);
         } catch (thrownValue) {
           if (request.status === ABORTING)
             if (
               (request.abortableTasks.delete(task),
-              (task.status = 0),
-              21 === request.type)
+              (task.status = PENDING$1),
+              request.type === PRERENDER)
             )
               haltTask(task), finishHaltedTask(task, request);
             else {
@@ -3971,7 +4003,7 @@
               null !== x &&
               "function" === typeof x.then
             ) {
-              task.status = 0;
+              task.status = PENDING$1;
               task.thenableState = getThenableStateAfterSuspending();
               var ping = task.ping;
               x.then(ping, ping);
@@ -4015,10 +4047,10 @@
       }
     }
     function abortTask(task) {
-      0 === task.status && (task.status = 3);
+      task.status === PENDING$1 && (task.status = ABORTED);
     }
     function finishAbortedTask(task, request, errorId) {
-      3 === task.status &&
+      task.status === ABORTED &&
         (forwardDebugInfoFromAbortedTask(request, task),
         task.timed && markOperationEndTime(request, task, request.abortTime),
         (errorId = serializeByValueID(errorId)),
@@ -4026,10 +4058,10 @@
         request.completedErrorChunks.push(task));
     }
     function haltTask(task) {
-      0 === task.status && (task.status = 3);
+      task.status === PENDING$1 && (task.status = ABORTED);
     }
     function finishHaltedTask(task, request) {
-      3 === task.status &&
+      task.status === ABORTED &&
         (forwardDebugInfoFromAbortedTask(request, task),
         request.pendingChunks--);
     }
@@ -4171,7 +4203,7 @@
         requestStorage.run(request, performWork, request);
       });
       setImmediate(function () {
-        10 === request.status && (request.status = 11);
+        request.status === OPENING && (request.status = 11);
       });
     }
     function enqueueFlush(request) {
@@ -4189,7 +4221,7 @@
         ((request = request.onAllReady), request());
     }
     function startFlowing(request, destination) {
-      if (13 === request.status)
+      if (request.status === CLOSING)
         (request.status = CLOSED), destination.destroy(request.fatalError);
       else if (request.status !== CLOSED && null === request.destination) {
         request.destination = destination;
@@ -4201,7 +4233,7 @@
       }
     }
     function startFlowingDebug(request, debugDestination) {
-      if (13 === request.status)
+      if (request.status === CLOSING)
         (request.status = CLOSED), debugDestination.destroy(request.fatalError);
       else if (request.status !== CLOSED && null === request.debugDestination) {
         request.debugDestination = debugDestination;
@@ -4244,7 +4276,7 @@
           request.cacheController.abort(reason);
           var abortableTasks = request.abortableTasks;
           if (0 < abortableTasks.size)
-            if (21 === request.type)
+            if (request.type === PRERENDER)
               abortableTasks.forEach(function (task) {
                 return haltTask(task, request);
               }),
@@ -5737,7 +5769,7 @@
       },
       PROMISE_PROTOTYPE = Promise.prototype,
       deepProxyHandlers = {
-        get: function (target, name) {
+        get: function (target, name, receiver) {
           switch (name) {
             case "$$typeof":
               return target.$$typeof;
@@ -5760,9 +5792,7 @@
             case Symbol.toStringTag:
               return Object.prototype[Symbol.toStringTag];
             case "Provider":
-              throw Error(
-                "Cannot render a Client Context Provider on the Server. Instead, you can export a Client Component wrapper that itself renders a Client Context Provider."
-              );
+              return receiver;
             case "then":
               throw Error(
                 "Cannot await or return from a thenable. You cannot await a client module from a server component."
@@ -5904,7 +5934,7 @@
       componentStorage = new async_hooks.AsyncLocalStorage(),
       TEMPORARY_REFERENCE_TAG = Symbol.for("react.temporary.reference"),
       proxyHandlers = {
-        get: function (target, name) {
+        get: function (target, name, receiver) {
           switch (name) {
             case "$$typeof":
               return target.$$typeof;
@@ -5923,9 +5953,7 @@
             case Symbol.toStringTag:
               return Object.prototype[Symbol.toStringTag];
             case "Provider":
-              throw Error(
-                "Cannot render a Client Context Provider on the Server. Instead, you can export a Client Component wrapper that itself renders a Client Context Provider."
-              );
+              return receiver;
             case "then":
               return;
           }
@@ -6288,8 +6316,17 @@
       patchConsole(console, "warn"));
     var ObjectPrototype$1 = Object.prototype,
       stringify = JSON.stringify,
+      PENDING$1 = 0,
+      COMPLETED = 1,
+      ABORTED = 3,
+      ERRORED$1 = 4,
+      RENDERING = 5,
+      __PROTO__$1 = "__proto__",
+      OPENING = 10,
       ABORTING = 12,
+      CLOSING = 13,
       CLOSED = 14,
+      PRERENDER = 21,
       currentRequest = null,
       canEmitDebugInfo = !1,
       serializedSize = 0,
@@ -6494,13 +6531,13 @@
           );
         else {
           pendingFiles++;
-          var JSCompiler_object_inline_chunks_281 = [];
+          var JSCompiler_object_inline_chunks_284 = [];
           value.on("data", function (chunk) {
-            JSCompiler_object_inline_chunks_281.push(chunk);
+            JSCompiler_object_inline_chunks_284.push(chunk);
           });
           value.on("end", function () {
             try {
-              var blob = new Blob(JSCompiler_object_inline_chunks_281, {
+              var blob = new Blob(JSCompiler_object_inline_chunks_284, {
                 type: mimeType
               });
               response._formData.append(name, blob, filename);
@@ -6560,6 +6597,7 @@
           options ? options.onError : void 0,
           options ? options.identifierPrefix : void 0,
           options ? options.temporaryReferences : void 0,
+          options ? options.startTime : void 0,
           options ? options.environmentName : void 0,
           options ? options.filterStackFrame : void 0,
           !1
@@ -6596,6 +6634,7 @@
           options ? options.onError : void 0,
           options ? options.identifierPrefix : void 0,
           options ? options.temporaryReferences : void 0,
+          options ? options.startTime : void 0,
           options ? options.environmentName : void 0,
           options ? options.filterStackFrame : void 0,
           !1
@@ -6660,6 +6699,7 @@
           options ? options.onError : void 0,
           options ? options.identifierPrefix : void 0,
           options ? options.temporaryReferences : void 0,
+          options ? options.startTime : void 0,
           options ? options.environmentName : void 0,
           options ? options.filterStackFrame : void 0,
           void 0 !== debugChannelReadable
@@ -6715,6 +6755,7 @@
           options ? options.onError : void 0,
           options ? options.identifierPrefix : void 0,
           options ? options.temporaryReferences : void 0,
+          options ? options.startTime : void 0,
           options ? options.environmentName : void 0,
           options ? options.filterStackFrame : void 0,
           void 0 !== debugChannelReadable

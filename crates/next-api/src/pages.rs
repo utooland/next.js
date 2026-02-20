@@ -75,7 +75,7 @@ use crate::{
     module_graph::{NextDynamicGraphs, validate_pages_css_imports},
     nft_json::NftJsonAsset,
     paths::{
-        all_paths_in_root, all_server_paths, get_asset_paths_from_root, get_js_paths_from_root,
+        all_asset_paths, all_paths_in_root, get_asset_paths_from_root, get_js_paths_from_root,
         get_wasm_paths_from_root, paths_to_bindings, wasm_paths_to_bindings,
     },
     project::Project,
@@ -661,11 +661,11 @@ impl PageEndpoint {
         if matches!(
             *this.pages_project.project().next_mode().await?,
             NextMode::Development
-        ) && let Some(chunkable) = Vc::try_resolve_downcast(page_loader).await?
+        ) && let Some(chunkable) = ResolvedVc::try_downcast(page_loader.to_resolved().await?)
         {
             return Ok(Vc::upcast(HmrEntryModule::new(
                 AssetIdent::from_path(this.page.await?.base_path.clone()),
-                chunkable,
+                *chunkable,
             )));
         }
         Ok(page_loader)
@@ -678,23 +678,23 @@ impl PageEndpoint {
         let client_module = self.client_module();
         let client_main_module = this.pages_project.client_main_module();
 
-        let Some(client_module) =
-            Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(client_module).await?
-        else {
+        let Some(client_module) = ResolvedVc::try_sidecast::<Box<dyn EvaluatableAsset>>(
+            client_module.to_resolved().await?,
+        ) else {
             bail!("expected an evaluateable asset");
         };
 
-        let Some(client_main_module) =
-            Vc::try_resolve_sidecast::<Box<dyn EvaluatableAsset>>(client_main_module).await?
-        else {
+        let Some(client_main_module) = ResolvedVc::try_sidecast::<Box<dyn EvaluatableAsset>>(
+            client_main_module.to_resolved().await?,
+        ) else {
             bail!("expected an evaluateable asset");
         };
 
         let evaluatable_assets = this
             .pages_project
             .client_runtime_entries()
-            .with_entry(client_main_module)
-            .with_entry(client_module);
+            .with_entry(*client_main_module)
+            .with_entry(*client_module);
         Ok(evaluatable_assets)
     }
 
@@ -1601,26 +1601,15 @@ impl Endpoint for PageEndpoint {
             }
         };
         async move {
-            let output = self.output().await?;
-            let output_assets = self.output().output_assets();
+            let output = self.output();
+            let project = this.pages_project.project();
+            let node_root = project.node_root().owned().await?;
+            let client_relative_root = project.client_relative_path().owned().await?;
 
-            let node_root = this.pages_project.project().node_root().owned().await?;
+            let output_assets = output.output_assets();
 
-            let (server_paths, client_paths) = if this
-                .pages_project
-                .project()
-                .next_mode()
-                .await?
-                .is_development()
-            {
-                let server_paths = all_server_paths(output_assets, node_root.clone())
-                    .owned()
-                    .await?;
-
-                let client_relative_root = this
-                    .pages_project
-                    .project()
-                    .client_relative_path()
+            let (server_paths, client_paths) = if project.next_mode().await?.is_development() {
+                let server_paths = all_asset_paths(output_assets, node_root.clone(), None)
                     .owned()
                     .await?;
                 let client_paths = all_paths_in_root(output_assets, client_relative_root)
@@ -1631,8 +1620,7 @@ impl Endpoint for PageEndpoint {
                 (vec![], vec![])
             };
 
-            let node_root = node_root.clone();
-            let written_endpoint = match *output {
+            let written_endpoint = match *output.await? {
                 PageEndpointOutput::NodeJs { entry_chunk, .. } => {
                     // Only set server_entry_path if pages should be created
                     let pages_structure = this.pages_structure.await?;
@@ -1661,7 +1649,7 @@ impl Endpoint for PageEndpoint {
                 EndpointOutput {
                     output_assets: output_assets.to_resolved().await?,
                     output_paths: written_endpoint.resolved_cell(),
-                    project: this.pages_project.project().to_resolved().await?,
+                    project: project.to_resolved().await?,
                 }
                 .cell(),
             )
@@ -1733,6 +1721,11 @@ impl Endpoint for PageEndpoint {
         } else {
             vec![ssr_module_graph]
         }))
+    }
+
+    #[turbo_tasks::function]
+    async fn project(self: Vc<Self>) -> Result<Vc<Project>> {
+        Ok(self.await?.pages_project.project())
     }
 }
 

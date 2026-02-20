@@ -36,7 +36,7 @@ import { workAsyncStorage } from './work-async-storage.external'
 // Contains metadata about the route tree. The client must fetch this before
 // it can fetch any actual segment data.
 export type RootTreePrefetch = {
-  buildId: string
+  buildId?: string
   tree: TreePrefetch
   staleTime: number
 }
@@ -66,19 +66,12 @@ export type TreePrefetch = {
     [parallelRouteKey: string]: TreePrefetch
   }
 
-  /** Whether this segment should be fetched using a runtime prefetch */
-  hasRuntimePrefetch: boolean
-
-  // Extra fields that only exist so we can reconstruct a FlightRouterState on
-  // the client. We may be able to unify TreePrefetch and FlightRouterState
-  // after some refactoring, but in the meantime it would be wasteful to add a
-  // bunch of new prefetch-only fields to FlightRouterState. So think of
-  // TreePrefetch as a superset of FlightRouterState.
-  isRootLayout: boolean
+  /** Bitmask of PrefetchHint flags for this segment and its subtree */
+  prefetchHints: number
 }
 
 export type SegmentPrefetch = {
-  buildId: string
+  buildId?: string
   rsc: React.ReactNode | null
   isPartial: boolean
   staleTime: number
@@ -293,9 +286,11 @@ async function PrefetchTreeData({
 
   // Render the route tree to a special `/_tree` segment.
   const treePrefetch: RootTreePrefetch = {
-    buildId,
     tree,
     staleTime,
+  }
+  if (buildId) {
+    treePrefetch.buildId = buildId
   }
   return treePrefetch
 }
@@ -303,7 +298,7 @@ async function PrefetchTreeData({
 function collectSegmentDataImpl(
   isClientParamParsingEnabled: boolean,
   route: FlightRouterState,
-  buildId: string,
+  buildId: string | undefined,
   staleTime: number,
   seedData: CacheNodeSeedData | null,
   clientModules: ManifestNode,
@@ -343,14 +338,14 @@ function collectSegmentDataImpl(
     slotMetadata[parallelRouteKey] = childTree
   }
 
-  const hasRuntimePrefetch = seedData !== null ? seedData[4] : false
+  const prefetchHints = route[4] ?? 0
 
   // Determine which params this segment varies on.
   // Read the vary params thenable directly from the seed data. By the time
   // collectSegmentData runs, the thenable should be fulfilled. If it's not
   // fulfilled or null, treat as unknown (null means we can't share cache
   // entries across param values).
-  const varyParamsThenable = seedData !== null ? seedData[5] : null
+  const varyParamsThenable = seedData !== null ? seedData[4] : null
   const varyParams =
     varyParamsThenable !== null ? readVaryParams(varyParamsThenable) : null
 
@@ -400,14 +395,13 @@ function collectSegmentDataImpl(
   return {
     name,
     param,
-    hasRuntimePrefetch,
+    prefetchHints,
     slots: slotMetadata,
-    isRootLayout: route[4] === true,
   }
 }
 
 async function renderSegmentPrefetch(
-  buildId: string,
+  buildId: string | undefined,
   staleTime: number,
   rsc: React.ReactNode,
   requestKey: SegmentRequestKey,
@@ -416,11 +410,13 @@ async function renderSegmentPrefetch(
 ): Promise<[SegmentRequestKey, Buffer]> {
   // Render the segment data to a stream.
   const segmentPrefetch: SegmentPrefetch = {
-    buildId,
     rsc,
     isPartial: await isPartialRSCData(rsc, clientModules),
     staleTime,
     varyParams,
+  }
+  if (buildId) {
+    segmentPrefetch.buildId = buildId
   }
   // Since all we're doing is decoding and re-encoding a cached prerender, if
   // it takes longer than a microtask, it must because of hanging promises

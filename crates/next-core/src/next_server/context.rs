@@ -21,7 +21,7 @@ use turbopack_core::{
     compile_time_defines,
     compile_time_info::{CompileTimeDefines, CompileTimeInfo, FreeVarReferences},
     environment::{Environment, ExecutionEnvironment, NodeJsEnvironment, NodeJsVersion},
-    free_var_references,
+    issue::IssueSeverity,
     module_graph::binding_usage_info::OptionBindingUsageInfo,
     target::CompileTarget,
 };
@@ -53,8 +53,7 @@ use crate::{
     next_shared::{
         resolve::{
             ModuleFeatureReportResolvePlugin, NextExternalResolvePlugin,
-            NextNodeSharedRuntimeResolvePlugin, get_invalid_client_only_resolve_plugin,
-            get_invalid_styled_jsx_resolve_plugin,
+            NextNodeSharedRuntimeResolvePlugin,
         },
         transforms::{
             EcmascriptTransformStage, emotion::get_emotion_transform_rule, get_ecma_transform_rule,
@@ -73,8 +72,9 @@ use crate::{
     },
     util::{
         NextRuntime, OptionEnvMap, defines, foreign_code_context_condition,
-        get_transpiled_packages, internal_assets_conditions, load_next_js_jsonc_file,
-        module_styles_rule_condition,
+        free_var_references_with_vercel_system_env_warnings, get_transpiled_packages,
+        internal_assets_conditions, load_next_js_jsonc_file, module_styles_rule_condition,
+        worker_forwarded_globals,
     },
 };
 
@@ -150,14 +150,6 @@ pub async fn get_server_resolve_options_context(
     let root_dir = project_path.root().owned().await?;
     let module_feature_report_resolve_plugin =
         ModuleFeatureReportResolvePlugin::new(project_path.clone())
-            .to_resolved()
-            .await?;
-    let invalid_client_only_resolve_plugin =
-        get_invalid_client_only_resolve_plugin(project_path.clone())
-            .to_resolved()
-            .await?;
-    let invalid_styled_jsx_client_only_resolve_plugin =
-        get_invalid_styled_jsx_resolve_plugin(project_path.clone())
             .to_resolved()
             .await?;
 
@@ -240,7 +232,7 @@ pub async fn get_server_resolve_options_context(
             .to_resolved()
             .await?;
 
-    let mut before_resolve_plugins = match &ty {
+    let before_resolve_plugins = match &ty {
         ServerContextType::Pages { .. }
         | ServerContextType::AppSSR { .. }
         | ServerContextType::AppRSC { .. } => {
@@ -287,32 +279,6 @@ pub async fn get_server_resolve_options_context(
         }
     };
 
-    // Inject resolve plugin to assert incorrect import to client|server-only for
-    // the corresponding context. Refer https://github.com/vercel/next.js/blob/ad15817f0368ba154bed6d85320335d4b67b7348/packages/next/src/build/webpack-config.ts#L1205-L1235
-    // how it is applied in the webpack config.
-    // Unlike webpack which alias client-only -> runtime code -> build-time error
-    // code, we use resolve plugin to detect original import directly. This
-    // means each resolve plugin must be injected only for the context where the
-    // alias resolves into the error. The alias lives in here: https://github.com/vercel/next.js/blob/0060de1c4905593ea875fa7250d4b5d5ce10897d/packages/next-swc/crates/next-core/src/next_import_map.rs#L534
-    match ty {
-        ServerContextType::Pages { .. } | ServerContextType::PagesApi { .. } => {
-            //noop
-        }
-        ServerContextType::AppRSC { .. }
-        | ServerContextType::AppRoute { .. }
-        | ServerContextType::Middleware { .. }
-        | ServerContextType::Instrumentation { .. } => {
-            before_resolve_plugins.push(ResolvedVc::upcast(invalid_client_only_resolve_plugin));
-            before_resolve_plugins.push(ResolvedVc::upcast(
-                invalid_styled_jsx_client_only_resolve_plugin,
-            ));
-        }
-        ServerContextType::AppSSR { .. } => {
-            //[TODO] Build error in this context makes rsc-build-error.ts fail which expects runtime error code
-            // looks like webpack and turbopack have different order, webpack runs rsc transform first, turbopack triggers resolve plugin first.
-        }
-    }
-
     let resolve_options_context = ResolveOptionsContext {
         enable_node_modules: Some(root_dir.clone()),
         enable_node_externals: true,
@@ -356,8 +322,15 @@ async fn next_server_defines(define_env: Vc<OptionEnvMap>) -> Result<Vc<CompileT
 }
 
 #[turbo_tasks::function]
-async fn next_server_free_vars(define_env: Vc<OptionEnvMap>) -> Result<Vc<FreeVarReferences>> {
-    Ok(free_var_references!(..defines(&*define_env.await?).into_iter()).cell())
+async fn next_server_free_vars(
+    define_env: Vc<OptionEnvMap>,
+    report_system_env_inlining: Vc<IssueSeverity>,
+) -> Result<Vc<FreeVarReferences>> {
+    Ok(free_var_references_with_vercel_system_env_warnings(
+        defines(&*define_env.await?),
+        *report_system_env_inlining.await?,
+    )
+    .cell())
 }
 
 #[turbo_tasks::function]
@@ -365,6 +338,7 @@ pub async fn get_server_compile_time_info(
     cwd: Vc<FileSystemPath>,
     define_env: Vc<OptionEnvMap>,
     node_version: ResolvedVc<NodeJsVersion>,
+    report_system_env_inlining: Vc<IssueSeverity>,
 ) -> Result<Vc<CompileTimeInfo>> {
     CompileTimeInfo::builder(
         Environment::new(ExecutionEnvironment::NodeJsLambda(
@@ -379,7 +353,11 @@ pub async fn get_server_compile_time_info(
         .await?,
     )
     .defines(next_server_defines(define_env).to_resolved().await?)
-    .free_var_references(next_server_free_vars(define_env).to_resolved().await?)
+    .free_var_references(
+        next_server_free_vars(define_env, report_system_env_inlining)
+            .to_resolved()
+            .await?,
+    )
     .cell()
     .await
 }
@@ -579,6 +557,7 @@ pub async fn get_server_module_options_context(
         ecmascript: EcmascriptOptionsContext {
             enable_typeof_window_inlining: Some(TypeofWindow::Undefined),
             enable_import_as_bytes: *next_config.turbopack_import_type_bytes().await?,
+            enable_import_as_text: *next_config.turbopack_import_type_text().await?,
             import_externals: *next_config.import_externals().await?,
             ignore_dynamic_requests: true,
             source_maps,
@@ -1021,6 +1000,7 @@ pub struct ServerChunkingContextOptions {
     pub debug_ids: Vc<bool>,
     pub client_root: FileSystemPath,
     pub asset_prefix: RcStr,
+    pub css_url_suffix: Vc<Option<RcStr>>,
 }
 
 /// Like `get_server_chunking_context` but all assets are emitted as client assets (so `/_next`)
@@ -1045,7 +1025,9 @@ pub async fn get_server_chunking_context_with_client_assets(
         debug_ids,
         client_root,
         asset_prefix,
+        css_url_suffix,
     } = options;
+    let css_url_suffix = css_url_suffix.to_resolved().await?;
 
     let next_mode = mode.await?;
     // TODO(alexkirsz) This should return a trait that can be implemented by the
@@ -1066,8 +1048,13 @@ pub async fn get_server_chunking_context_with_client_assets(
         rcstr!("client"),
         UrlBehavior {
             suffix: AssetSuffix::FromGlobal(rcstr!("NEXT_CLIENT_ASSET_SUFFIX")),
+            static_suffix: css_url_suffix,
         },
     )
+    .default_url_behavior(UrlBehavior {
+        suffix: AssetSuffix::Inferred,
+        static_suffix: ResolvedVc::cell(None),
+    })
     .minify_type(if *minify.await? {
         MinifyType::Minify {
             // React needs deterministic function names to work correctly.
@@ -1082,7 +1069,8 @@ pub async fn get_server_chunking_context_with_client_assets(
     .unused_references(unused_references.to_resolved().await?)
     .file_tracing(next_mode.is_production())
     .debug_ids(*debug_ids.await?)
-    .nested_async_availability(*nested_async_chunking.await?);
+    .nested_async_availability(*nested_async_chunking.await?)
+    .worker_forwarded_globals(worker_forwarded_globals());
 
     builder = builder.source_map_source_type(if next_mode.is_development() {
         SourceMapSourceType::AbsoluteFileUri
@@ -1135,7 +1123,9 @@ pub async fn get_server_chunking_context(
         debug_ids,
         client_root,
         asset_prefix,
+        css_url_suffix,
     } = options;
+    let css_url_suffix = css_url_suffix.to_resolved().await?;
     let next_mode = mode.await?;
     // TODO(alexkirsz) This should return a trait that can be implemented by the
     // different server chunking contexts. OR the build chunking context should
@@ -1157,8 +1147,13 @@ pub async fn get_server_chunking_context(
         rcstr!("client"),
         UrlBehavior {
             suffix: AssetSuffix::FromGlobal(rcstr!("NEXT_CLIENT_ASSET_SUFFIX")),
+            static_suffix: css_url_suffix,
         },
     )
+    .default_url_behavior(UrlBehavior {
+        suffix: AssetSuffix::Inferred,
+        static_suffix: ResolvedVc::cell(None),
+    })
     .minify_type(if *minify.await? {
         MinifyType::Minify {
             mangle: (!*no_mangling.await?).then_some(MangleType::OptimalSize),
@@ -1172,7 +1167,8 @@ pub async fn get_server_chunking_context(
     .unused_references(unused_references.to_resolved().await?)
     .file_tracing(next_mode.is_production())
     .debug_ids(*debug_ids.await?)
-    .nested_async_availability(*nested_async_chunking.await?);
+    .nested_async_availability(*nested_async_chunking.await?)
+    .worker_forwarded_globals(worker_forwarded_globals());
 
     if next_mode.is_development() {
         builder = builder.source_map_source_type(SourceMapSourceType::AbsoluteFileUri);

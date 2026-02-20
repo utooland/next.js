@@ -36,6 +36,8 @@ import { getIsPossibleServerAction } from '../../server/lib/server-action-reques
 import {
   RSC_HEADER,
   NEXT_ROUTER_PREFETCH_HEADER,
+  NEXT_INSTANT_PREFETCH_HEADER,
+  NEXT_INSTANT_TEST_COOKIE,
   NEXT_IS_PRERENDER_HEADER,
   NEXT_DID_POSTPONE_HEADER,
   RSC_CONTENT_TYPE_HEADER,
@@ -52,9 +54,10 @@ import {
 import { FallbackMode, parseFallbackField } from '../../lib/fallback'
 import RenderResult from '../../server/render-result'
 import {
-  CACHE_ONE_YEAR,
+  CACHE_ONE_YEAR_SECONDS,
   HTML_CONTENT_TYPE_HEADER,
   NEXT_CACHE_TAGS_HEADER,
+  NEXT_NAV_DEPLOYMENT_ID_HEADER,
   NEXT_RESUME_HEADER,
   NEXT_RESUME_STATE_LENGTH_HEADER,
 } from '../../lib/constants'
@@ -62,10 +65,12 @@ import type { CacheControl } from '../../server/lib/cache-control'
 import { ENCODED_TAGS } from '../../server/stream-utils/encoded-tags'
 import { sendRenderResult } from '../../server/send-payload'
 import { NoFallbackError } from '../../shared/lib/no-fallback-error.external'
+import { parseMaxPostponedStateSize } from '../../shared/lib/size-limit'
 import {
-  DEFAULT_MAX_POSTPONED_STATE_SIZE,
-  parseMaxPostponedStateSize,
-} from '../../shared/lib/size-limit'
+  getMaxPostponedStateSize,
+  getPostponedStateExceededErrorMessage,
+  readBodyWithSizeLimit,
+} from '../../server/lib/postponed-request-body'
 
 // These are injected by the loader afterwards.
 
@@ -240,23 +245,13 @@ export async function handler(
     typeof resumeStateLengthHeader === 'string'
   ) {
     const stateLength = parseInt(resumeStateLengthHeader, 10)
-    const maxPostponedStateSize =
-      nextConfig.experimental.maxPostponedStateSize ??
-      DEFAULT_MAX_POSTPONED_STATE_SIZE
-    const maxPostponedStateSizeBytes = parseMaxPostponedStateSize(
-      nextConfig.experimental.maxPostponedStateSize
-    )
+    const { maxPostponedStateSize, maxPostponedStateSizeBytes } =
+      getMaxPostponedStateSize(nextConfig.experimental.maxPostponedStateSize)
 
     if (!isNaN(stateLength) && stateLength > 0) {
-      if (
-        maxPostponedStateSizeBytes === undefined ||
-        stateLength > maxPostponedStateSizeBytes
-      ) {
+      if (stateLength > maxPostponedStateSizeBytes) {
         res.statusCode = 413
-        res.end(
-          `Postponed state exceeded ${maxPostponedStateSize} limit. ` +
-            `To configure the limit, see: https://nextjs.org/docs/app/api-reference/config/next-config-js/max-postponed-state-size`
-        )
+        res.end(getPostponedStateExceededErrorMessage(maxPostponedStateSize))
         ctx.waitUntil?.(Promise.resolve())
         return null
       }
@@ -277,24 +272,16 @@ export async function handler(
           : 1024 * 1024 // 1 MB
       const maxTotalBodySize = stateLength + actionBodySizeLimitBytes
 
-      // Read the entire body, checking size as we go.
-      const bodyChunks: Array<Buffer> = []
-      let size = 0
-      for await (const chunk of req) {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-        size += buffer.byteLength
-        if (size > maxTotalBodySize) {
-          res.statusCode = 413
-          res.end(
-            `Request body exceeded limit. ` +
-              `To configure the body size limit for Server Actions, see: https://nextjs.org/docs/app/api-reference/next-config-js/serverActions#bodysizelimit`
-          )
-          ctx.waitUntil?.(Promise.resolve())
-          return null
-        }
-        bodyChunks.push(buffer)
+      const fullBody = await readBodyWithSizeLimit(req, maxTotalBodySize)
+      if (fullBody === null) {
+        res.statusCode = 413
+        res.end(
+          `Request body exceeded limit. ` +
+            `To configure the body size limit for Server Actions, see: https://nextjs.org/docs/app/api-reference/next-config-js/serverActions#bodysizelimit`
+        )
+        ctx.waitUntil?.(Promise.resolve())
+        return null
       }
-      const fullBody = Buffer.concat(bodyChunks)
 
       if (fullBody.length >= stateLength) {
         // Extract postponed state from the beginning
@@ -320,15 +307,20 @@ export async function handler(
     req.headers[NEXT_RESUME_HEADER] === '1' &&
     req.method === 'POST'
   ) {
+    const { maxPostponedStateSize, maxPostponedStateSizeBytes } =
+      getMaxPostponedStateSize(nextConfig.experimental.maxPostponedStateSize)
+
     // Decode the postponed state from the request body, it will come as
     // an array of buffers, so collect them and then concat them to form
     // the string.
-
-    const body: Array<Buffer> = []
-    for await (const chunk of req) {
-      body.push(chunk)
+    const body = await readBodyWithSizeLimit(req, maxPostponedStateSizeBytes)
+    if (body === null) {
+      res.statusCode = 413
+      res.end(getPostponedStateExceededErrorMessage(maxPostponedStateSize))
+      ctx.waitUntil?.(Promise.resolve())
+      return null
     }
-    const postponed = Buffer.concat(body).toString('utf8')
+    const postponed = body.toString('utf8')
 
     addRequestMeta(req, 'postponed', postponed)
   }
@@ -345,6 +337,27 @@ export async function handler(
   const hasDebugFallbackShellQuery =
     hasDebugStaticShellQuery && query.__nextppronly === 'fallback'
 
+  // Whether the testing API is exposed (dev mode or explicit flag)
+  const exposeTestingApi =
+    routeModule.isDev === true ||
+    nextConfig.experimental.exposeTestingApiInProductionBuild === true
+
+  // Enable the Instant Navigation Testing API. Renders only the prefetched
+  // portion of the page, excluding dynamic content. This allows tests to
+  // assert on the prefetched UI state deterministically.
+  // - Header: Used for client-side navigations where we can set request headers
+  // - Cookie: Used for MPA navigations (page reload, full page load) where we
+  //   can't set request headers. Only applies to document requests (no RSC
+  //   header) - RSC requests should proceed normally even during a locked scope,
+  //   with blocking happening on the client side.
+  const isInstantNavigationTest =
+    exposeTestingApi &&
+    couldSupportPPR &&
+    (req.headers[NEXT_INSTANT_PREFETCH_HEADER] === '1' ||
+      (req.headers[RSC_HEADER] === undefined &&
+        typeof req.headers.cookie === 'string' &&
+        req.headers.cookie.includes(NEXT_INSTANT_TEST_COOKIE + '=')))
+
   // This page supports PPR if it is marked as being `PARTIALLY_STATIC` in the
   // prerender manifest and this is an app page.
   const isRoutePPREnabled: boolean =
@@ -356,13 +369,13 @@ export async function handler(
       // Ideally we'd want to check the appConfig to see if this page has PPR
       // enabled or not, but that would require plumbing the appConfig through
       // to the server during development. We assume that the page supports it
-      // but only during development.
-      (hasDebugStaticShellQuery &&
-        (routeModule.isDev === true ||
+      // but only during development or when the testing API is exposed.
+      ((hasDebugStaticShellQuery || isInstantNavigationTest) &&
+        (exposeTestingApi ||
           routerServerContext?.experimentalTestProxy === true)))
 
   const isDebugStaticShell: boolean =
-    hasDebugStaticShellQuery && isRoutePPREnabled
+    (hasDebugStaticShellQuery || isInstantNavigationTest) && isRoutePPREnabled
 
   // We should enable debugging dynamic accesses when the static shell
   // debugging has been enabled and we're also in development mode.
@@ -514,6 +527,9 @@ export async function handler(
   const method = req.method || 'GET'
   const tracer = getTracer()
   const activeSpan = tracer.getActiveScopeSpan()
+  const isWrappedByNextServer = Boolean(
+    routerServerContext?.isWrappedByNextServer
+  )
 
   const render404 = async () => {
     // TODO: should route-module itself handle rendering the 404
@@ -738,7 +754,6 @@ export async function handler(
               routerServerContext
             ),
           err: getRequestMeta(req, 'invokeError'),
-          dev: routeModule.isDev,
         },
       }
 
@@ -1145,6 +1160,15 @@ export async function handler(
 
       const didPostpone = typeof cacheEntry.value.postponed === 'string'
 
+      // Set the build ID header for RSC navigation requests when deploymentId is configured. This
+      // corresponds with maybeAppendBuildIdToRSCPayload in app-render.tsx which omits the build ID
+      // from the RSC payload when deploymentId is set (relying on this header instead). Server
+      // actions are excluded because the client doesn't check the build ID for action responses.
+      // For static prerenders served from CDN, routes-manifest.json adds a header.
+      if (isRSCRequest && !isPossibleServerAction && deploymentId) {
+        res.setHeader(NEXT_NAV_DEPLOYMENT_ID_HEADER, deploymentId)
+      }
+
       if (
         isSSG &&
         // We don't want to send a cache header for requests that contain dynamic
@@ -1217,7 +1241,10 @@ export async function handler(
           // Otherwise if the revalidate value is false, then we should use the
           // cache time of one year.
           else {
-            cacheControl = { revalidate: CACHE_ONE_YEAR, expire: undefined }
+            cacheControl = {
+              revalidate: CACHE_ONE_YEAR_SECONDS,
+              expire: undefined,
+            }
           }
         }
       }
@@ -1443,6 +1470,15 @@ export async function handler(
         body.push(
           new ReadableStream({
             start(controller) {
+              if (isInstantNavigationTest) {
+                // Inject a global so the client can detect that this response
+                // is a partial static shell, independent of document.cookie
+                // (which may be empty on the new page in some browsers).
+                const encoder = new TextEncoder()
+                controller.enqueue(
+                  encoder.encode('<script>self.__next_instant_test=1</script>')
+                )
+              }
               controller.enqueue(ENCODED_TAGS.CLOSED.BODY_AND_HTML)
               controller.close()
             },
@@ -1520,22 +1556,26 @@ export async function handler(
 
     // TODO: activeSpan code path is for when wrapped by
     // next-server can be removed when this is no longer used
-    if (activeSpan) {
+    if (isWrappedByNextServer && activeSpan) {
       await handleResponse(activeSpan)
     } else {
-      return await tracer.withPropagatedContext(req.headers, () =>
-        tracer.trace(
-          BaseServerSpan.handleRequest,
-          {
-            spanName: `${method} ${srcPage}`,
-            kind: SpanKind.SERVER,
-            attributes: {
-              'http.method': method,
-              'http.target': req.url,
+      return await tracer.withPropagatedContext(
+        req.headers,
+        () =>
+          tracer.trace(
+            BaseServerSpan.handleRequest,
+            {
+              spanName: `${method} ${srcPage}`,
+              kind: SpanKind.SERVER,
+              attributes: {
+                'http.method': method,
+                'http.target': req.url,
+              },
             },
-          },
-          handleResponse
-        )
+            handleResponse
+          ),
+        undefined,
+        !isWrappedByNextServer
       )
     }
   } catch (err) {

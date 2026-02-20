@@ -6,6 +6,7 @@ import type {
 } from '../../../shared/lib/app-router-types'
 import type { CacheNode } from '../../../shared/lib/app-router-types'
 import type { HeadData } from '../../../shared/lib/app-router-types'
+import { PrefetchHint } from '../../../shared/lib/app-router-types'
 import {
   PAGE_SEGMENT_KEY,
   DEFAULT_SEGMENT_KEY,
@@ -315,7 +316,9 @@ function updateCacheNodeOnNavigation(
   // We're currently traversing the part of the tree that was also part of
   // the previous route. If we discover a root layout, then we don't need to
   // trigger an MPA navigation.
-  const childDidFindRootLayout = didFindRootLayout || newRouteTree.isRootLayout
+  const childDidFindRootLayout =
+    didFindRootLayout ||
+    (newRouteTree.prefetchHints & PrefetchHint.IsRootLayout) !== 0
 
   let shouldRefreshDynamicData: boolean = false
   switch (freshness) {
@@ -534,7 +537,7 @@ function updateCacheNodeOnNavigation(
       ? [refreshState.canonicalUrl, refreshState.renderedSearch]
       : null,
     null,
-    newRouteTree.isRootLayout,
+    newRouteTree.prefetchHints,
   ]
 
   return {
@@ -670,7 +673,7 @@ function createCacheNodeOnNavigation(
     patchedRouterStateChildren,
     null,
     null,
-    newRouteTree.isRootLayout,
+    newRouteTree.prefetchHints,
   ]
 
   return {
@@ -1531,6 +1534,14 @@ async function fetchMissingDynamicData(
       result.flightData,
       result.renderedSearch
     )
+
+    // If the navigation lock is active, wait for it to be released before
+    // writing the dynamic data. This allows tests to assert on the prefetched
+    // UI state.
+    if (process.env.__NEXT_EXPOSE_TESTING_API) {
+      await waitForNavigationLock()
+    }
+
     const didReceiveUnknownParallelRoute = writeDynamicDataIntoNavigationTask(
       task,
       seed.routeTree,
@@ -1869,4 +1880,19 @@ function createDeferredRsc<
   pendingRsc._debugInfo = debugInfo
 
   return pendingRsc
+}
+
+/**
+ * Helper for the Instant Navigation Testing API. Waits for the navigation lock
+ * to be released before returning. The network request has already completed by
+ * the time this is called, so this only delays writing the dynamic data.
+ *
+ * Not exposed in production builds by default.
+ */
+async function waitForNavigationLock(): Promise<void> {
+  if (process.env.__NEXT_EXPOSE_TESTING_API) {
+    const { waitForNavigationLockIfActive } =
+      require('../segment-cache/navigation-testing-lock') as typeof import('../segment-cache/navigation-testing-lock')
+    await waitForNavigationLockIfActive()
+  }
 }
