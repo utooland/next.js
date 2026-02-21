@@ -93,7 +93,12 @@ impl WorkerThreadPool {
         {
             let mut idle = self.state.idle_workers.lock();
             if let Some(worker_id) = idle.pop() {
-                return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
+                return Ok((
+                    worker_id,
+                    AcquiredPermits::Idle {
+                        _concurrency_permit: concurrency_permit,
+                    },
+                ));
             }
         }
 
@@ -102,7 +107,12 @@ impl WorkerThreadPool {
             let mut waiters = self.state.waiters.lock();
             let mut idle = self.state.idle_workers.lock();
             if let Some(worker_id) = idle.pop() {
-                return Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }));
+                return Ok((
+                    worker_id,
+                    AcquiredPermits::Idle {
+                        _concurrency_permit: concurrency_permit,
+                    },
+                ));
             }
             waiters.push(tx);
         }
@@ -117,7 +127,7 @@ impl WorkerThreadPool {
         select! {
             worker_id = rx => {
                 let worker_id = worker_id?;
-                Ok((worker_id, AcquiredPermits::Idle { concurrency_permit }))
+                Ok((worker_id, AcquiredPermits::Idle { _concurrency_permit: concurrency_permit }))
             }
             bootup_permit = bootup => {
                 let bootup_permit = bootup_permit.context("acquiring bootup permit")?;
@@ -132,7 +142,7 @@ impl WorkerThreadPool {
                 }
 
                 self.bootup_semaphore.add_permits(1);
-                Ok((worker_id, AcquiredPermits::Fresh { concurrency_permit, bootup_permit }))
+                Ok((worker_id, AcquiredPermits::Fresh { _concurrency_permit: concurrency_permit, _bootup_permit: bootup_permit }))
             }
         }
     }
@@ -185,7 +195,7 @@ impl EvaluateOperation for WorkerThreadPool {
                         }
                     }
                 })),
-                permits,
+                _permits: permits,
                 channels,
             }
         };

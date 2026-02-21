@@ -7,16 +7,16 @@ function getPoolId(cwd: string, filename: string) {
 }
 
 export async function runLoaderWorkerPool(
-  binding: typeof import('./generated-native'),
+  bindings: typeof import('./generated-native'),
   bindingPath: string
 ) {
-  binding.registerWorkerScheduler(
+  bindings.registerWorkerScheduler(
     (creation) => {
       const {
         options: { filename, cwd },
       } = creation
 
-      let poolId = getPoolId(cwd, filename)
+      const poolId = getPoolId(cwd, filename)
 
       const worker = new Worker(/* turbopackIgnore: true*/ filename, {
         workerData: {
@@ -39,12 +39,9 @@ export async function runLoaderWorkerPool(
         workerId,
       } = termination
 
-      let poolId = getPoolId(cwd, filename)
-
+      const poolId = getPoolId(cwd, filename)
       const workers = loaderWorkers[poolId]
-
       workers.get(workerId)?.terminate()
-
       workers.delete(workerId)
     }
   )

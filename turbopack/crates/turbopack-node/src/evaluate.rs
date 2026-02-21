@@ -419,11 +419,11 @@ pub async fn get_evaluate_entries(
     asset_context: ResolvedVc<Box<dyn AssetContext>>,
     runtime_entries: Option<ResolvedVc<EvaluatableAssets>>,
 ) -> Result<Vc<EvaluateEntries>> {
-    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
-    #[allow(unused_variables)]
-    let runtime_module_path = rcstr!("child_process/evaluate.ts");
-    #[cfg(feature = "worker_pool")]
-    let runtime_module_path = rcstr!("worker_thread/evaluate.ts");
+    let runtime_module_path = if cfg!(all(feature = "process_pool", not(feature = "worker_pool"))) {
+        rcstr!("child_process/evaluate.ts")
+    } else {
+        rcstr!("worker_thread/evaluate.ts")
+    };
 
     let runtime_asset = asset_context
         .process(
@@ -458,17 +458,18 @@ pub async fn get_evaluate_entries(
 
     let runtime_entries = {
         let mut entries = vec![];
-
-        #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
-        #[allow(unused_variables)]
-        let global_module_path = embed_file_path(rcstr!("child_process/globals.ts"));
-
-        #[cfg(feature = "worker_pool")]
-        let global_module_path = embed_file_path(rcstr!("worker_thread/globals.ts"));
+        let global_module_path =
+            if cfg!(all(feature = "process_pool", not(feature = "worker_pool"))) {
+                rcstr!("child_process/globals.ts")
+            } else {
+                rcstr!("worker_thread/globals.ts")
+            };
 
         let globals_module = asset_context
             .process(
-                Vc::upcast(FileSource::new(global_module_path.owned().await?)),
+                Vc::upcast(FileSource::new(
+                    embed_file_path(global_module_path).owned().await?,
+                )),
                 ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
             )
             .module();

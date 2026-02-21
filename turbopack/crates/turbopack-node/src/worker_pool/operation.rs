@@ -259,8 +259,7 @@ pub(crate) struct WorkerOperation {
     pub(crate) worker_id: u32,
     pub(crate) state: Arc<PoolState>,
     pub(crate) on_drop: Option<Box<dyn FnOnce(u32) + Send + Sync>>,
-    #[allow(dead_code)]
-    pub(crate) permits: AcquiredPermits,
+    pub(crate) _permits: AcquiredPermits,
     /// Pre-allocated channels for this task
     pub(crate) channels: TaskChannels,
 }

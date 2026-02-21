@@ -603,7 +603,7 @@ impl ChildProcessPool {
         select! {
             idle_process_result = self.idle_processes.pop(&ACTIVE_POOLS) => {
                 let process = idle_process_result.context("acquiring idle process permit")?;
-                Ok((process, AcquiredPermits::Idle { concurrency_permit }))
+                Ok((process, AcquiredPermits::Idle { _concurrency_permit: concurrency_permit }))
             },
             bootup_permit = bootup => {
                 let bootup_permit = bootup_permit.context("acquiring bootup permit")?;
@@ -619,7 +619,7 @@ impl ChildProcessPool {
                 }
                 // Increase the allowed booting up processes
                 self.bootup_semaphore.add_permits(1);
-                Ok((process, AcquiredPermits::Fresh { concurrency_permit, bootup_permit }))
+                Ok((process, AcquiredPermits::Fresh { _concurrency_permit: concurrency_permit, _bootup_permit: bootup_permit }))
             }
         }
     }

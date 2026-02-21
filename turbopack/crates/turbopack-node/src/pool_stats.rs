@@ -5,16 +5,13 @@ use tokio::sync::OwnedSemaphorePermit;
 pub enum AcquiredPermits {
     Idle {
         // This is used for drop
-        #[allow(dead_code)]
-        concurrency_permit: OwnedSemaphorePermit,
+        _concurrency_permit: OwnedSemaphorePermit,
     },
     Fresh {
         // This is used for drop
-        #[allow(dead_code)]
-        concurrency_permit: OwnedSemaphorePermit,
+        _concurrency_permit: OwnedSemaphorePermit,
         // This is used for drop
-        #[allow(dead_code)]
-        bootup_permit: OwnedSemaphorePermit,
+        _bootup_permit: OwnedSemaphorePermit,
     },
 }
 

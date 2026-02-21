@@ -1468,9 +1468,8 @@ function loadNative(importPath?: string) {
   const customBindingsPath = !!__INTERNAL_CUSTOM_TURBOPACK_BINDINGS
     ? require.resolve(__INTERNAL_CUSTOM_TURBOPACK_BINDINGS)
     : null
-  const customBindings: RawBindings = !!__INTERNAL_CUSTOM_TURBOPACK_BINDINGS
-    ? require(__INTERNAL_CUSTOM_TURBOPACK_BINDINGS)
-    : null
+  const customBindings: RawBindings =
+    customBindingsPath != null ? require(customBindingsPath!) : null
   let bindings: RawBindings = customBindings
   let bindingsPath = customBindingsPath
   let attempts: any[] = []
@@ -1481,8 +1480,8 @@ function loadNative(importPath?: string) {
       try {
         const bindingForTest = `${NEXT_TEST_NATIVE_DIR}/next-swc.${triple.platformArchABI}.node`
         // Use the binary directly to skip `pnpm pack` for testing as it's slow because of the large native binary.
-        bindings = require(bindingForTest)
         bindingsPath = require.resolve(bindingForTest)
+        bindings = require(bindingsPath)
         infoLog(
           'next-swc build: local built @next/swc from NEXT_TEST_NATIVE_DIR'
         )
