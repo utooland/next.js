@@ -158,7 +158,7 @@ import "__TURBOPACK_PART__" assert {
 import Stream from 'node:stream';
 const streamDestructionSupported = 'destroy' in Stream.Readable.prototype;
 function fetch() {}
-const __TURBOPACK__default__export__ = fetch;
+var __TURBOPACK__default__export__ = fetch;
 export { __TURBOPACK__default__export__ as default };
 export { streamDestructionSupported as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -187,7 +187,7 @@ import "__TURBOPACK_PART__" assert {
 import Stream from 'node:stream';
 const streamDestructionSupported = 'destroy' in Stream.Readable.prototype;
 function fetch() {}
-const __TURBOPACK__default__export__ = fetch;
+var __TURBOPACK__default__export__ = fetch;
 export { __TURBOPACK__default__export__ as default };
 export { streamDestructionSupported as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -235,7 +235,7 @@ import "__TURBOPACK_PART__" assert {
 import Stream from 'node:stream';
 const streamDestructionSupported = 'destroy' in Stream.Readable.prototype;
 function fetch() {}
-const __TURBOPACK__default__export__ = fetch;
+var __TURBOPACK__default__export__ = fetch;
 export { __TURBOPACK__default__export__ as default };
 export { streamDestructionSupported as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -264,7 +264,7 @@ import "__TURBOPACK_PART__" assert {
 import Stream from 'node:stream';
 const streamDestructionSupported = 'destroy' in Stream.Readable.prototype;
 function fetch() {}
-const __TURBOPACK__default__export__ = fetch;
+var __TURBOPACK__default__export__ = fetch;
 export { __TURBOPACK__default__export__ as default };
 export { streamDestructionSupported as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true

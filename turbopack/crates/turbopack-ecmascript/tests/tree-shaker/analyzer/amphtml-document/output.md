@@ -440,7 +440,7 @@ class MyDocument extends Document {
         });
     }
 }
-const __TURBOPACK__default__export__ = MyDocument;
+var __TURBOPACK__default__export__ = MyDocument;
 export { __TURBOPACK__default__export__ as default };
 export { MyDocument as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -505,7 +505,7 @@ class MyDocument extends Document {
         });
     }
 }
-const __TURBOPACK__default__export__ = MyDocument;
+var __TURBOPACK__default__export__ = MyDocument;
 export { __TURBOPACK__default__export__ as default };
 export { MyDocument as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -667,7 +667,7 @@ class MyDocument extends Document {
         });
     }
 }
-const __TURBOPACK__default__export__ = MyDocument;
+var __TURBOPACK__default__export__ = MyDocument;
 export { __TURBOPACK__default__export__ as default };
 export { MyDocument as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -732,7 +732,7 @@ class MyDocument extends Document {
         });
     }
 }
-const __TURBOPACK__default__export__ = MyDocument;
+var __TURBOPACK__default__export__ = MyDocument;
 export { __TURBOPACK__default__export__ as default };
 export { MyDocument as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true

@@ -1493,7 +1493,7 @@ import { l as gridArea } from "__TURBOPACK_PART__" assert {
     __turbopack_part__: -28
 };
 const grid = compose(gap, columnGap, rowGap, gridColumn, gridRow, gridAutoFlow, gridAutoColumns, gridAutoRows, gridTemplateColumns, gridTemplateRows, gridTemplateAreas, gridArea);
-const __TURBOPACK__default__export__ = grid;
+var __TURBOPACK__default__export__ = grid;
 export { __TURBOPACK__default__export__ as default };
 export { grid as m } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -1654,7 +1654,7 @@ import { l as gridArea } from "__TURBOPACK_PART__" assert {
     __turbopack_part__: -28
 };
 const grid = compose(gap, columnGap, rowGap, gridColumn, gridRow, gridAutoFlow, gridAutoColumns, gridAutoRows, gridTemplateColumns, gridTemplateRows, gridTemplateAreas, gridArea);
-const __TURBOPACK__default__export__ = grid;
+var __TURBOPACK__default__export__ = grid;
 export { __TURBOPACK__default__export__ as default };
 export { grid as m } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -2171,7 +2171,7 @@ import { l as gridArea } from "__TURBOPACK_PART__" assert {
     __turbopack_part__: -28
 };
 const grid = compose(gap, columnGap, rowGap, gridColumn, gridRow, gridAutoFlow, gridAutoColumns, gridAutoRows, gridTemplateColumns, gridTemplateRows, gridTemplateAreas, gridArea);
-const __TURBOPACK__default__export__ = grid;
+var __TURBOPACK__default__export__ = grid;
 export { __TURBOPACK__default__export__ as default };
 export { grid as m } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
@@ -2332,7 +2332,7 @@ import { l as gridArea } from "__TURBOPACK_PART__" assert {
     __turbopack_part__: -28
 };
 const grid = compose(gap, columnGap, rowGap, gridColumn, gridRow, gridAutoFlow, gridAutoColumns, gridAutoRows, gridTemplateColumns, gridTemplateRows, gridTemplateAreas, gridArea);
-const __TURBOPACK__default__export__ = grid;
+var __TURBOPACK__default__export__ = grid;
 export { __TURBOPACK__default__export__ as default };
 export { grid as m } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true

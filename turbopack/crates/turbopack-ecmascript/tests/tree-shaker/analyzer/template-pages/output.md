@@ -907,7 +907,7 @@ import * as userland from 'VAR_USERLAND';
 import "__TURBOPACK_PART__" assert {
     __turbopack_part__: 10
 };
-const __TURBOPACK__default__export__ = hoist(userland, 'default');
+var __TURBOPACK__default__export__ = hoist(userland, 'default');
 export { __TURBOPACK__default__export__ as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
 };
@@ -1470,7 +1470,7 @@ import * as userland from 'VAR_USERLAND';
 import "__TURBOPACK_PART__" assert {
     __turbopack_part__: 10
 };
-const __TURBOPACK__default__export__ = hoist(userland, 'default');
+var __TURBOPACK__default__export__ = hoist(userland, 'default');
 export { __TURBOPACK__default__export__ as a } from "__TURBOPACK_VAR__" assert {
     __turbopack_var__: true
 };

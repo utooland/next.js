@@ -710,10 +710,10 @@ impl DepGraph {
                 }
             }
 
-            if chunk.body.is_empty() {
-                continue;
-            }
-
+            // Always push the chunk even if body is empty to maintain index alignment
+            // between group indices (used in `outputs`/`part_deps`) and `modules` indices.
+            // Skipping empty chunks causes `part_id` lookups from `outputs` to index into
+            // the wrong position in `modules`, leading to "part_id is out of range" errors.
             modules.push(chunk);
         }
 
