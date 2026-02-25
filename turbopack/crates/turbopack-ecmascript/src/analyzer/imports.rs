@@ -264,6 +264,7 @@ pub(crate) struct ImportMapReference {
     pub imported_symbol: ImportedSymbol,
     pub annotations: ImportAnnotations,
     pub issue_source: Option<IssueSource>,
+    pub is_reexport_evaluation: bool,
 }
 
 impl ImportMap {
@@ -459,6 +460,33 @@ impl Analyzer<'_> {
             imported_symbol,
             issue_source,
             annotations,
+            is_reexport_evaluation: false,
+        };
+        if let Some(i) = self.data.references.get_index_of(&r) {
+            Some(i)
+        } else {
+            let i = self.data.references.len();
+            self.data.references.insert(r);
+            Some(i)
+        }
+    }
+
+    fn ensure_reexport_evaluation_reference(
+        &mut self,
+        span: Span,
+        module_path: Wtf8Atom,
+        annotations: ImportAnnotations,
+    ) -> Option<usize> {
+        let issue_source = self
+            .source
+            .map(|s| IssueSource::from_swc_offsets(s, span.lo.to_u32(), span.hi.to_u32()));
+
+        let r = ImportMapReference {
+            module_path,
+            imported_symbol: ImportedSymbol::ModuleEvaluation,
+            issue_source,
+            annotations,
+            is_reexport_evaluation: true,
         };
         if let Some(i) = self.data.references.get_index_of(&r) {
             Some(i)
@@ -535,10 +563,9 @@ impl Visit for Analyzer<'_> {
 
         let annotations = ImportAnnotations::parse(export.with.as_deref());
 
-        self.ensure_reference(
+        self.ensure_reexport_evaluation_reference(
             export.span,
             export.src.value.clone(),
-            ImportedSymbol::ModuleEvaluation,
             annotations.clone(),
         );
         let symbol = parse_with(export.with.as_deref());
@@ -567,10 +594,9 @@ impl Visit for Analyzer<'_> {
         let internal_symbol = parse_with(export.with.as_deref());
 
         if internal_symbol.is_none() || export.specifiers.is_empty() {
-            self.ensure_reference(
+            self.ensure_reexport_evaluation_reference(
                 export.span,
                 src.value.clone(),
-                ImportedSymbol::ModuleEvaluation,
                 annotations.clone(),
             );
         }

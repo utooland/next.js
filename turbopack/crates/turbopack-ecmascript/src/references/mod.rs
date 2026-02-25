@@ -95,7 +95,7 @@ use turbopack_swc_utils::emitter::IssueEmitter;
 use unreachable::Unreachable;
 use worker::WorkerAssetReference;
 
-pub use crate::references::esm::export::{FollowExportsResult, follow_reexports};
+pub use crate::references::esm::export::{FoundExportType, FollowExportsResult, follow_reexports};
 use crate::{
     AnalyzeMode, EcmascriptInputTransforms, EcmascriptModuleAsset, EcmascriptModuleAssetType,
     EcmascriptParsable, ModuleTypeResult, SpecifiedModuleType, TreeShakingMode, TypeofWindow,
@@ -287,6 +287,10 @@ impl AnalyzeEcmascriptModuleResultBuilder {
     pub fn add_esm_evaluation_reference(&mut self, idx: usize) {
         self.esm_references.insert(idx);
         self.esm_local_references.insert(idx);
+    }
+
+    pub fn add_esm_reexport_evaluation_reference(&mut self, idx: usize) {
+        self.esm_references.insert(idx);
     }
 
     /// Adds a codegen to the analysis result.
@@ -849,7 +853,17 @@ async fn analyze_ecmascript_module_internal(
 
             import_references.push(reference);
             if should_add_evaluation {
-                analysis.add_esm_evaluation_reference(i);
+                if r.is_reexport_evaluation {
+                    // This ModuleEvaluation comes from a re-export statement
+                    // (export { X } from './y' or export * from './y').
+                    // The <facade> split-module is responsible for evaluating
+                    // re-exported modules, so we must NOT add this to
+                    // esm_local_references.  Doing so would cause <locals> to
+                    // eagerly import those modules, breaking dependency cycles.
+                    analysis.add_esm_reexport_evaluation_reference(i);
+                } else {
+                    analysis.add_esm_evaluation_reference(i);
+                }
             }
         }
         anyhow::Ok(import_references)
