@@ -1,7 +1,7 @@
 import { workerData } from 'worker_threads'
 
-// This is needed for hijack process.cwd in worker, it's safe because
-// process in worker thread is isolated to schedule thread.
+// We override the `cwd` in workers. Every worker thread gets an isolated
+// `process` object, so this mutation is safe.
 if (!workerData.hasOwnProperty('cwd')) {
   throw new Error('cwd not set in loader worker thread')
 }
