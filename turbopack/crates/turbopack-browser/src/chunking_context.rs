@@ -33,6 +33,7 @@ use turbopack_core::{
     },
     output::{OutputAsset, OutputAssets},
 };
+use turbopack_css::chunk::{CssChunk, source_map::CssChunkSourceMapAsset};
 use turbopack_ecmascript::{
     async_chunk::module::AsyncLoaderModule,
     chunk::EcmascriptChunk,
@@ -257,6 +258,21 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn css_filename(mut self, css_filename: RcStr) -> Self {
+        self.chunking_context.css_filename = Some(css_filename);
+        self
+    }
+
+    pub fn css_chunk_filename(mut self, css_chunk_filename: RcStr) -> Self {
+        self.chunking_context.css_chunk_filename = Some(css_chunk_filename);
+        self
+    }
+
+    pub fn asset_module_filename(mut self, asset_module_filename: RcStr) -> Self {
+        self.chunking_context.asset_module_filename = Some(asset_module_filename);
+        self
+    }
+
     pub fn chunk_loading_global(mut self, chunk_loading_global: RcStr) -> Self {
         self.chunking_context.chunk_loading_global = Some(chunk_loading_global);
         self
@@ -360,6 +376,12 @@ pub struct BrowserChunkingContext {
     filename: Option<RcStr>,
     /// Non evaluate chunk filename template
     chunk_filename: Option<RcStr>,
+    /// Initial css chunk filename template
+    css_filename: Option<RcStr>,
+    /// Non initial css chunk filename template
+    css_chunk_filename: Option<RcStr>,
+    /// Asset module filename template
+    asset_module_filename: Option<RcStr>,
     /// Expose entry module exports to global scope with the specified name.
     /// When set, all named exports from the entry module will be available on
     /// `window`/`globalThis` under the specified name.
@@ -418,6 +440,9 @@ impl BrowserChunkingContext {
                 chunk_loading_global: Default::default(),
                 filename: Default::default(),
                 chunk_filename: Default::default(),
+                css_filename: Default::default(),
+                css_chunk_filename: Default::default(),
+                asset_module_filename: Default::default(),
                 entry_root_export: None,
             },
         }
@@ -630,10 +655,21 @@ impl ChunkingContext for BrowserChunkingContext {
                     query.get("name").unwrap_or(output_name.as_str())
                 };
 
+                let this = self.await?;
                 let filename_template = if evaluate {
-                    self.await?.filename.clone()
+                    this.filename.clone()
                 } else {
-                    self.await?.chunk_filename.clone()
+                    let resolved_asset = asset.to_resolved().await?;
+                    if ResolvedVc::try_downcast_type::<CssChunk>(resolved_asset).is_some()
+                        || ResolvedVc::try_downcast_type::<CssChunkSourceMapAsset>(resolved_asset)
+                            .is_some()
+                    {
+                        // TODO: distinguash initial or non-initial css chunk, the non-initial css
+                        // chunk should use css_chunk_filename for template
+                        this.css_filename.clone()
+                    } else {
+                        this.chunk_filename.clone()
+                    }
                 };
 
                 match filename_template {
@@ -730,16 +766,39 @@ impl ChunkingContext for BrowserChunkingContext {
     ) -> Result<Vc<FileSystemPath>> {
         let source_path = original_asset_ident.path().await?;
         let basename = source_path.file_name();
-        let asset_path = match source_path.extension_ref() {
-            Some(ext) => format!(
-                "{basename}.{content_hash}.{ext}",
-                basename = &basename[..basename.len() - ext.len() - 1],
-                content_hash = &content_hash[..8]
-            ),
-            None => format!(
-                "{basename}.{content_hash}",
-                content_hash = &content_hash[..8]
-            ),
+
+        let asset_path = match &self.asset_module_filename {
+            Some(filename_template) => {
+                let mut filename = filename_template.to_string();
+
+                if match_name_placeholder(&filename) {
+                    filename = replace_name_placeholder(&filename, basename);
+                }
+
+                if match_content_hash_placeholder(&filename) {
+                    filename = replace_content_hash_placeholder(&filename, &content_hash);
+                };
+
+                if let Some(ext) = source_path.extension_ref() {
+                    if let Some((stem, _)) = filename.rsplit_once(".") {
+                        filename = stem.to_string();
+                    }
+                    filename = format!("{filename}.{ext}");
+                }
+
+                filename
+            }
+            None => match source_path.extension_ref() {
+                Some(ext) => format!(
+                    "{basename}.{content_hash}.{ext}",
+                    basename = &basename[..basename.len() - ext.len() - 1],
+                    content_hash = &content_hash[..8]
+                ),
+                None => format!(
+                    "{basename}.{content_hash}",
+                    content_hash = &content_hash[..8]
+                ),
+            },
         };
 
         let asset_root_path = tag
