@@ -1571,7 +1571,7 @@ impl FileSystemPath {
     /// 1. The parent directory, if any;
     /// 2. The file stem;
     /// 3. The extension, if any.
-    fn split_file_stem_extension(&self) -> (Option<&str>, &str, Option<&str>) {
+    pub fn split_file_stem_extension(&self) -> (Option<&str>, &str, Option<&str>) {
         let (path_before_extension, extension) = self.split_extension();
 
         if let Some((parent, file_stem)) = path_before_extension.rsplit_once('/') {
