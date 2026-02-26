@@ -89,16 +89,15 @@ export function createSearchParamsFromClient(
 }
 
 // generateMetadata always runs in RSC context so it is equivalent to a Server Page Component
-// TODO: metadata should inherit the runtime prefetchability of the page segment
-const metadataIsRuntimePrefetchable = false
 export function createServerSearchParamsForMetadata(
-  underlyingSearchParams: SearchParams
+  underlyingSearchParams: SearchParams,
+  isRuntimePrefetchable: boolean
 ): Promise<SearchParams> {
   const metadataVaryParamsAccumulator = getMetadataVaryParamsAccumulator()
   return createServerSearchParamsForServerPage(
     underlyingSearchParams,
     metadataVaryParamsAccumulator,
-    metadataIsRuntimePrefetchable
+    isRuntimePrefetchable
   )
 }
 
@@ -266,6 +265,12 @@ function createRenderSearchParams(
         requestStore,
         isRuntimePrefetchable
       )
+    } else if (requestStore.asyncApiPromises) {
+      return (
+        isRuntimePrefetchable
+          ? requestStore.asyncApiPromises.earlySharedSearchParamsParent
+          : requestStore.asyncApiPromises.sharedSearchParamsParent
+      ).then(() => underlyingSearchParams)
     } else {
       return makeUntrackedSearchParams(underlyingSearchParams)
     }
