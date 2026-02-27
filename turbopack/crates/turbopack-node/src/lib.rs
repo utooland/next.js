@@ -21,7 +21,7 @@ mod format;
 mod pool_stats;
 // When both features are enabled, worker_pool takes priority
 #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
-mod process_pool;
+pub mod process_pool;
 pub mod source_map;
 pub mod transforms;
 #[cfg(feature = "worker_pool")]

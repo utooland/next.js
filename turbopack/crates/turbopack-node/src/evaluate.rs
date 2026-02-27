@@ -41,7 +41,8 @@ use crate::process_pool::ChildProcessPool;
 use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping, embed_js::embed_file_path, emit, emit_package_json,
-    format::FormattingMode, internal_assets_for_source_mapping, source_map::StructuredError,
+    format::FormattingMode, internal_assets_for_source_mapping, pool_stats::PoolStatsSnapshot,
+    source_map::StructuredError,
 };
 
 #[derive(Serialize)]
@@ -75,12 +76,6 @@ pub struct EvaluatePool {
 }
 
 impl EvaluatePool {
-    pub async fn operation(&self) -> Result<Box<dyn Operation>> {
-        self.pool.operation().await
-    }
-}
-
-impl EvaluatePool {
     pub(crate) fn new(
         pool: Box<dyn EvaluateOperation>,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
@@ -94,11 +89,27 @@ impl EvaluatePool {
             project_dir,
         }
     }
+
+    pub async fn operation(&self) -> Result<Box<dyn Operation>> {
+        self.pool.operation().await
+    }
+
+    pub fn stats(&self) -> PoolStatsSnapshot {
+        self.pool.stats()
+    }
+
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    pub fn pre_warm(&self) {
+        self.pool.pre_warm()
+    }
 }
 
 #[async_trait::async_trait]
 pub trait EvaluateOperation: Send + Sync {
     async fn operation(&self) -> Result<Box<dyn Operation>>;
+    fn stats(&self) -> PoolStatsSnapshot;
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    fn pre_warm(&self);
 }
 
 #[async_trait::async_trait]
@@ -266,6 +277,8 @@ pub async fn get_evaluate_pool(
         debug,
     )
     .await;
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    pool.pre_warm();
     additional_invalidation.await?;
     Ok(pool.cell())
 }

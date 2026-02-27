@@ -53,3 +53,8 @@ turbopack-ecmascript = { workspace = true }
 turbopack-resolve = { workspace = true }
 napi = { workspace = true, features = ["error_anyhow"], optional = true }
 napi-derive = { workspace = true, optional = true }
+
+[dev-dependencies]
+rustc-hash = { workspace = true }
+turbo-tasks-backend = { workspace = true }
+turbo-tasks-testing = { workspace = true }

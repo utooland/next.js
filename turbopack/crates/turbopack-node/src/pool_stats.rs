@@ -144,6 +144,16 @@ impl NodeJsPoolStats {
             warm_process_time * self.queued_tasks / workers
         }
     }
+
+    pub fn snapshot(&self) -> PoolStatsSnapshot {
+        PoolStatsSnapshot {
+            bootup_count: self.bootup_count,
+            warm_operation_count: self.warm_process_count,
+            cold_operation_count: self.cold_process_count,
+            workers: self.workers,
+            booting_workers: self.booting_workers,
+        }
+    }
 }
 
 impl Debug for NodeJsPoolStats {
@@ -164,4 +174,19 @@ impl Debug for NodeJsPoolStats {
             .field("warm_process_count", &self.warm_process_count)
             .finish()
     }
+}
+
+/// A snapshot of pool statistics, useful for testing and diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PoolStatsSnapshot {
+    /// Total number of processes ever successfully booted.
+    pub bootup_count: u32,
+    /// Number of completed operations that reused an idle process.
+    pub warm_operation_count: u32,
+    /// Number of completed operations that spawned a fresh process.
+    pub cold_operation_count: u32,
+    /// Current number of tracked workers (booting + idle + in-use).
+    pub workers: u32,
+    /// Current number of workers still booting.
+    pub booting_workers: u32,
 }

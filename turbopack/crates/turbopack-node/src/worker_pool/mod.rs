@@ -20,7 +20,7 @@ use turbo_tasks_fs::FileSystemPath;
 use crate::{
     AssetsForSourceMapping,
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
-    pool_stats::AcquiredPermits,
+    pool_stats::{AcquiredPermits, PoolStatsSnapshot},
     worker_pool::{
         operation::{
             PoolState, TaskChannels, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions,
@@ -201,5 +201,10 @@ impl EvaluateOperation for WorkerThreadPool {
         };
 
         Ok(Box::new(operation))
+    }
+
+    /// Returns a snapshot of the pool's internal statistics.
+    fn stats(&self) -> PoolStatsSnapshot {
+        self.state.stats.lock().snapshot()
     }
 }
