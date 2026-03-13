@@ -1124,7 +1124,22 @@ pub fn match_name_placeholder(s: &str) -> bool {
 }
 
 pub fn replace_name_placeholder(s: &str, name: &str) -> String {
-    NAME_PLACEHOLDER_REGEX.replace_all(s, name).to_string()
+    NAME_PLACEHOLDER_REGEX
+        .replace_all(s, |caps: &regex::Captures| {
+            let m = caps.get(0).unwrap();
+            let after = &s[m.end()..];
+            // If the name already ends with an extension (e.g. "foo.js") and the template
+            // text right after [name] starts with that same extension (e.g. ".js"), strip
+            // the extension from the name to avoid duplication like "foo.js.js".
+            if let Some(dot_pos) = name.rfind('.') {
+                let ext = &name[dot_pos..]; // e.g. ".js"
+                if after.starts_with(ext) {
+                    return name[..dot_pos].to_string();
+                }
+            }
+            name.to_string()
+        })
+        .to_string()
 }
 
 static CONTENT_HASH_PLACEHOLDER_REGEX: LazyLock<Regex> =
