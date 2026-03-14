@@ -1,5 +1,6 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use bytes::Bytes;
 use napi::{
     Env,
     threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode},
@@ -152,7 +153,7 @@ impl From<NapiTaskMessage> for TaskMessage {
         let NapiTaskMessage { task_id, data } = message;
         TaskMessage {
             task_id,
-            data: bytes::Bytes::from_owner(data),
+            data: Bytes::from_owner(data),
         }
     }
 }
