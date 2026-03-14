@@ -152,7 +152,7 @@ impl From<NapiTaskMessage> for TaskMessage {
         let NapiTaskMessage { task_id, data } = message;
         TaskMessage {
             task_id,
-            data: data.into(),
+            data: bytes::Bytes::from_owner(data),
         }
     }
 }
@@ -166,7 +166,7 @@ pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTas
         .await?;
     Ok(NapiTaskMessage {
         task_id,
-        data: message.into(),
+        data: Vec::from(message).into(),
     })
 }
 

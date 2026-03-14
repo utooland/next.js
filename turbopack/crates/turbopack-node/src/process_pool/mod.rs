@@ -799,18 +799,18 @@ pub struct ChildProcessOperation {
 
 #[async_trait::async_trait]
 impl Operation for ChildProcessOperation {
-    async fn recv(&mut self) -> Result<Vec<u8>> {
+    async fn recv(&mut self) -> Result<bytes::Bytes> {
         let vec = self
             .with_process(|process| async move {
                 process.recv().await.context("failed to receive message")
             })
             .await?;
-        Ok(vec)
+        Ok(bytes::Bytes::from(vec))
     }
 
-    async fn send(&mut self, message: Vec<u8>) -> Result<()> {
+    async fn send(&mut self, message: bytes::Bytes) -> Result<()> {
         self.with_process(|process| async move {
-            timeout(Duration::from_secs(30), process.send(message))
+            timeout(Duration::from_secs(30), process.send(message.to_vec()))
                 .await
                 .context("timeout while sending message")?
                 .context("failed to send message")?;

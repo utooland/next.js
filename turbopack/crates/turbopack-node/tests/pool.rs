@@ -73,7 +73,9 @@ struct Echo {
 
 /// Helper: send a message and return the echo response.
 async fn send_recv(op: &mut Box<dyn Operation>, msg: serde_json::Value) -> Echo {
-    op.send(serde_json::to_vec(&msg).unwrap()).await.unwrap();
+    op.send(bytes::Bytes::from(serde_json::to_vec(&msg).unwrap()))
+        .await
+        .unwrap();
     serde_json::from_slice(&op.recv().await.unwrap()).unwrap()
 }
 
