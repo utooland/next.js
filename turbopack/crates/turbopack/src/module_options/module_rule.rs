@@ -281,7 +281,10 @@ impl ConfiguredModuleType {
             }),
             #[cfg(all(target_family = "wasm", target_os = "unknown"))]
             ConfiguredModuleType::Wasm => {
-                bail!("WebAssembly module type is not supported when the bundler itself runs in a WASM environment")
+                bail!(
+                    "WebAssembly module type is not supported when the bundler itself runs in a \
+                     WASM environment"
+                )
             }
             ConfiguredModuleType::Raw => ModuleRuleEffect::ModuleType(ModuleType::Raw),
             ConfiguredModuleType::Node => ModuleRuleEffect::ModuleType(ModuleType::NodeAddon),
