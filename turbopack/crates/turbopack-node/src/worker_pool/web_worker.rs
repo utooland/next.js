@@ -1,5 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
+use bytes::Bytes;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::info;
 use wasm_bindgen::{JsCast, prelude::*};
@@ -160,7 +161,7 @@ pub async fn send_task_message(message: JsValue) -> Result<(), JsError> {
     let data_js = js_sys::Reflect::get(&message, &"data".into())
         .map_err(|_| JsError::new("Failed to get data"))?;
 
-    let data = js_sys::Uint8Array::new(&data_js).to_vec();
+    let data = Bytes::from(js_sys::Uint8Array::new(&data_js).to_vec());
 
     WORKER_POOL_OPERATION
         .send_task_message(TaskMessage { task_id, data })

@@ -10318,16 +10318,14 @@ dependencies = [
  "async-trait",
  "base64 0.21.4",
  "bincode 2.0.1",
+ "bytes",
  "const_format",
  "dashmap 6.1.0",
  "either",
  "futures",
  "futures-retry",
  "indoc",
-<<<<<<< HEAD
-=======
  "js-sys",
->>>>>>> b12c0636e8 (feat(turbopack): apply utoo patches to canary)
  "parking_lot",
  "regex",
  "rustc-hash 2.1.1",
@@ -11149,7 +11147,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
 name = "wasm-encoder"
 version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11169,7 +11166,9 @@ dependencies = [
  "indexmap 2.13.0",
  "wasm-encoder 0.244.0",
  "wasmparser 0.244.0",
-=======
+]
+
+[[package]]
 name = "wasm_thread"
 version = "0.3.3"
 source = "git+https://github.com/utooland/wasm_thread.git#fd53c2f5a20e9f899d9216dee045472f50d97219"
@@ -11178,7 +11177,6 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
  "web-sys",
->>>>>>> b12c0636e8 (feat(turbopack): apply utoo patches to canary)
 ]
 
 [[package]]
@@ -11529,7 +11527,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
 name = "wasmparser"
 version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11539,7 +11536,9 @@ dependencies = [
  "hashbrown 0.15.4",
  "indexmap 2.13.0",
  "semver",
-=======
+]
+
+[[package]]
 name = "wasmtimer"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11551,7 +11550,6 @@ dependencies = [
  "pin-utils",
  "slab",
  "wasm-bindgen",
->>>>>>> b12c0636e8 (feat(turbopack): apply utoo patches to canary)
 ]
 
 [[package]]

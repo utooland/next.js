@@ -8,6 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
+use bytes::Bytes;
 use futures::join;
 use once_cell::sync::Lazy;
 use owo_colors::OwoColorize;
@@ -799,18 +800,18 @@ pub struct ChildProcessOperation {
 
 #[async_trait::async_trait]
 impl Operation for ChildProcessOperation {
-    async fn recv(&mut self) -> Result<Vec<u8>> {
+    async fn recv(&mut self) -> Result<Bytes> {
         let vec = self
             .with_process(|process| async move {
                 process.recv().await.context("failed to receive message")
             })
             .await?;
-        Ok(vec)
+        Ok(Bytes::from(vec))
     }
 
-    async fn send(&mut self, message: Vec<u8>) -> Result<()> {
+    async fn send(&mut self, message: Bytes) -> Result<()> {
         self.with_process(|process| async move {
-            timeout(Duration::from_secs(30), process.send(message))
+            timeout(Duration::from_secs(30), process.send(message.to_vec()))
                 .await
                 .context("timeout while sending message")?
                 .context("failed to send message")?;
