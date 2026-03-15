@@ -286,7 +286,6 @@ impl EcmascriptInputTransform {
                     legacy: *is_legacy,
                     emit_metadata: *emit_decorators_metadata,
                     use_define_for_class_fields: *use_define_for_class_fields,
-                    ..Default::default()
                 };
 
                 apply_transform(program, helpers, decorators(config))
