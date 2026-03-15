@@ -461,8 +461,7 @@ impl NodeJsPoolProcess {
         stderr.context("unable to handle stderr from the Node.js process in a structured way")?;
         Ok(result)
     }
-
-    async fn send(&mut self, packet_data: Vec<u8>) -> Result<()> {
+    async fn send(&mut self, packet_data: Bytes) -> Result<()> {
         self.connection
             .write_u32(
                 packet_data
@@ -811,7 +810,7 @@ impl Operation for ChildProcessOperation {
 
     async fn send(&mut self, message: Bytes) -> Result<()> {
         self.with_process(|process| async move {
-            timeout(Duration::from_secs(30), process.send(message.to_vec()))
+            timeout(Duration::from_secs(30), process.send(message))
                 .await
                 .context("timeout while sending message")?
                 .context("failed to send message")?;
