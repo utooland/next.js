@@ -235,6 +235,7 @@ where
     ) {
         // Fast path: no backing storage (e.g. WASM/NoopKvDb) — process inline,
         // skip the Vec allocation needed for batch DB restoration.
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         if !self.backend.should_restore() {
             for (id, category) in task_ids {
                 let mut task = self.backend.storage.access_mut(id);
