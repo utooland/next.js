@@ -233,6 +233,26 @@ where
             StorageWriteGuard<'e>,
         ),
     ) {
+        // Fast path: no backing storage (e.g. WASM/NoopKvDb) — process inline,
+        // skip the Vec allocation needed for batch DB restoration.
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        if !self.backend.should_restore() {
+            for (id, category) in task_ids {
+                let mut task = self.backend.storage.access_mut(id);
+                if !task.flags.is_restored(category) {
+                    task.flags.set_restored(category);
+                }
+                if id.is_transient() {
+                    if call_prepared_task_callback_for_transient_tasks {
+                        prepared_task_callback(self, id, category, task);
+                    }
+                } else {
+                    prepared_task_callback(self, id, category, task);
+                }
+            }
+            return;
+        }
+
         let mut data_count = 0;
         let mut meta_count = 0;
         let mut all_count = 0;
