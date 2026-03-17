@@ -58,6 +58,9 @@ pub enum CurrentChunkMethod {
 pub const CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR: &str =
     "typeof document === \"object\" ? document.currentScript : undefined";
 
+pub const GLOBAL_THIS_FALLBACK_EXPR: &str =
+    "typeof globalThis !== \"undefined\" ? globalThis : (typeof self !== \"undefined\" ? self : (typeof window !== \"undefined\" ? window : (typeof global !== \"undefined\" ? global : {})))";
+
 #[derive(
     Debug,
     TaskInput,
