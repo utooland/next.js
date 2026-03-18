@@ -865,6 +865,7 @@ impl ModuleOptions {
                                 config_tracing_module_context(*execution_context),
                                 *execution_context,
                                 options.config_location,
+                                options.inline_config.clone(),
                                 matches!(css_source_maps, SourceMapsType::Full),
                             )
                             .to_resolved()
