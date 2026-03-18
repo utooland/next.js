@@ -39,7 +39,6 @@ import type {
   UpdateMessage,
   WrittenEndpoint,
 } from './types'
-import { runLoaderWorkerPool } from './loaderWorkerPool'
 import { throwTurbopackInternalError } from '../../shared/lib/turbopack/internal-error'
 import { runLoaderWorkerPool } from './loaderWorkerPool'
 
