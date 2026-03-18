@@ -70,6 +70,7 @@ pub enum PostCssConfigLocation {
 pub struct PostCssTransformOptions {
     pub postcss_package: Option<ResolvedVc<ImportMapping>>,
     pub config_location: PostCssConfigLocation,
+    pub inline_config: Option<RcStr>,
     pub placeholder_for_future_extensions: u8,
 }
 
@@ -117,6 +118,7 @@ pub struct PostCssTransform {
     config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
+    inline_config: Option<RcStr>,
     source_maps: bool,
 }
 
@@ -128,6 +130,7 @@ impl PostCssTransform {
         config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
         execution_context: ResolvedVc<ExecutionContext>,
         config_location: PostCssConfigLocation,
+        inline_config: Option<RcStr>,
         source_maps: bool,
     ) -> Vc<Self> {
         PostCssTransform {
@@ -135,6 +138,7 @@ impl PostCssTransform {
             config_tracing_context,
             execution_context,
             config_location,
+            inline_config,
             source_maps,
         }
         .cell()
@@ -151,6 +155,7 @@ impl SourceTransform for PostCssTransform {
                 config_tracing_context: self.config_tracing_context,
                 execution_context: self.execution_context,
                 config_location: self.config_location,
+                inline_config: self.inline_config.clone(),
                 source,
                 source_map: self.source_maps,
             }
@@ -165,8 +170,17 @@ struct PostCssTransformedAsset {
     config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
+    inline_config: Option<RcStr>,
     source: ResolvedVc<Box<dyn Source>>,
     source_map: bool,
+}
+
+#[derive(
+    Clone, PartialEq, Eq, Hash, Debug, TraceRawVcs, TaskInput, NonLocalValue, Encode, Decode,
+)]
+enum PostCssConfigSource {
+    Inline(RcStr),
+    Path(FileSystemPath),
 }
 
 #[turbo_tasks::value_impl]
@@ -331,8 +345,20 @@ impl Asset for JsonSource {
 #[turbo_tasks::function]
 pub(crate) async fn config_loader_source(
     project_path: FileSystemPath,
-    postcss_config_path: FileSystemPath,
+    config_source: PostCssConfigSource,
 ) -> Result<Vc<Box<dyn Source>>> {
+    let postcss_config_path = match config_source {
+        PostCssConfigSource::Inline(inline_config) => {
+            let code = format!("export default {inline_config};\n");
+
+            return Ok(Vc::upcast(VirtualSource::new(
+                project_path.join(".utoo.inline.postcss.config.mjs")?,
+                AssetContent::file(FileContent::Content(File::from(code)).cell()),
+            )));
+        }
+        PostCssConfigSource::Path(postcss_config_path) => postcss_config_path,
+    };
+
     let postcss_config_path_value = postcss_config_path.clone();
     let postcss_config_path_filename = postcss_config_path_value.file_name();
 
@@ -406,11 +432,11 @@ pub(crate) async fn config_loader_source(
 async fn postcss_executor(
     asset_context: Vc<Box<dyn AssetContext>>,
     project_path: FileSystemPath,
-    postcss_config_path: FileSystemPath,
+    config_source: PostCssConfigSource,
 ) -> Result<Vc<ProcessResult>> {
     let config_asset = asset_context
         .process(
-            config_loader_source(project_path, postcss_config_path),
+            config_loader_source(project_path, config_source),
             ReferenceType::Entry(EntryReferenceSubType::Undefined),
         )
         .module()
@@ -489,17 +515,6 @@ impl PostCssTransformedAsset {
         //     - pkg1/(postcss.config.js) // The actual config we're looking for
         //
         // We look for the config in the project path first, then the source path
-        let Some(config_path) =
-            find_config_in_location(project_path.clone(), self.config_location, *self.source)
-                .await?
-        else {
-            return Ok(ProcessPostCssResult {
-                content: self.source.content().to_resolved().await?,
-                assets: Vec::new(),
-            }
-            .cell());
-        };
-
         let source_content = self.source.content();
         let AssetContent::File(file) = *source_content.await? else {
             bail!("PostCSS transform only support transforming files");
@@ -515,13 +530,32 @@ impl PostCssTransformedAsset {
         let evaluate_context = self.evaluate_context;
         let source_map = self.source_map;
 
-        // This invalidates the transform when the config changes.
-        let config_changed = config_changed(*self.config_tracing_context, config_path.clone())
-            .to_resolved()
-            .await?;
+        let (config_source, additional_invalidation) =
+            if let Some(inline_config) = self.inline_config.as_ref() {
+                (
+                    PostCssConfigSource::Inline(inline_config.clone()),
+                    Completion::immutable().to_resolved().await?,
+                )
+            } else if let Some(config_path) =
+                find_config_in_location(project_path.clone(), self.config_location, *self.source)
+                    .await?
+            {
+                (
+                    PostCssConfigSource::Path(config_path.clone()),
+                    config_changed(*self.config_tracing_context, config_path)
+                        .to_resolved()
+                        .await?,
+                )
+            } else {
+                return Ok(ProcessPostCssResult {
+                    content: self.source.content().to_resolved().await?,
+                    assets: Vec::new(),
+                }
+                .cell());
+            };
 
         let postcss_executor =
-            postcss_executor(*evaluate_context, project_path.clone(), config_path).module();
+            postcss_executor(*evaluate_context, project_path.clone(), config_source).module();
 
         let entries =
             get_evaluate_entries(postcss_executor, *evaluate_context, **node_backend, None)
@@ -563,7 +597,7 @@ impl PostCssTransformedAsset {
                 ResolvedVc::cell(css_path.into()),
                 ResolvedVc::cell(source_map.into()),
             ],
-            additional_invalidation: config_changed,
+            additional_invalidation,
         })
         .await?;
 
