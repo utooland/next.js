@@ -352,7 +352,7 @@ pub(crate) async fn config_loader_source(
             let code = format!("export default {config_content};\n");
 
             return Ok(Vc::upcast(VirtualSource::new(
-                project_path.join(".utoo.inline.postcss.config.mjs")?,
+                project_path.join(".postcss.config.mjs")?,
                 AssetContent::file(FileContent::Content(File::from(code)).cell()),
             )));
         }
