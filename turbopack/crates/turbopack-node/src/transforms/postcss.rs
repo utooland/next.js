@@ -70,7 +70,7 @@ pub enum PostCssConfigLocation {
 pub struct PostCssTransformOptions {
     pub postcss_package: Option<ResolvedVc<ImportMapping>>,
     pub config_location: PostCssConfigLocation,
-    pub inline_config: Option<RcStr>,
+    pub config_content: Option<RcStr>,
     pub placeholder_for_future_extensions: u8,
 }
 
@@ -118,7 +118,7 @@ pub struct PostCssTransform {
     config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
-    inline_config: Option<RcStr>,
+    config_content: Option<RcStr>,
     source_maps: bool,
 }
 
@@ -130,7 +130,7 @@ impl PostCssTransform {
         config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
         execution_context: ResolvedVc<ExecutionContext>,
         config_location: PostCssConfigLocation,
-        inline_config: Option<RcStr>,
+        config_content: Option<RcStr>,
         source_maps: bool,
     ) -> Vc<Self> {
         PostCssTransform {
@@ -138,7 +138,7 @@ impl PostCssTransform {
             config_tracing_context,
             execution_context,
             config_location,
-            inline_config,
+            config_content,
             source_maps,
         }
         .cell()
@@ -155,7 +155,7 @@ impl SourceTransform for PostCssTransform {
                 config_tracing_context: self.config_tracing_context,
                 execution_context: self.execution_context,
                 config_location: self.config_location,
-                inline_config: self.inline_config.clone(),
+                config_content: self.config_content.clone(),
                 source,
                 source_map: self.source_maps,
             }
@@ -170,7 +170,7 @@ struct PostCssTransformedAsset {
     config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
-    inline_config: Option<RcStr>,
+    config_content: Option<RcStr>,
     source: ResolvedVc<Box<dyn Source>>,
     source_map: bool,
 }
@@ -348,8 +348,8 @@ pub(crate) async fn config_loader_source(
     config_source: PostCssConfigSource,
 ) -> Result<Vc<Box<dyn Source>>> {
     let postcss_config_path = match config_source {
-        PostCssConfigSource::Inline(inline_config) => {
-            let code = format!("export default {inline_config};\n");
+        PostCssConfigSource::Inline(config_content) => {
+            let code = format!("export default {config_content};\n");
 
             return Ok(Vc::upcast(VirtualSource::new(
                 project_path.join(".utoo.inline.postcss.config.mjs")?,
@@ -531,9 +531,9 @@ impl PostCssTransformedAsset {
         let source_map = self.source_map;
 
         let (config_source, additional_invalidation) =
-            if let Some(inline_config) = self.inline_config.as_ref() {
+            if let Some(config_content) = self.config_content.as_ref() {
                 (
-                    PostCssConfigSource::Inline(inline_config.clone()),
+                    PostCssConfigSource::Inline(config_content.clone()),
                     Completion::immutable().to_resolved().await?,
                 )
             } else if let Some(config_path) =
