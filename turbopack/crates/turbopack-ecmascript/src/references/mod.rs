@@ -848,7 +848,27 @@ async fn analyze_ecmascript_module_internal(
 
             import_references.push(reference);
             if should_add_evaluation {
-                analysis.add_esm_evaluation_reference(i);
+                let has_non_evaluation_reference_for_same_module = eval_context
+                    .imports
+                    .references()
+                    .enumerate()
+                    .any(|(j, other)| {
+                        j != i
+                            && other.module_path == r.module_path
+                            && !matches!(
+                                other.imported_symbol,
+                                ImportedSymbol::ModuleEvaluation
+                                    | ImportedSymbol::PartEvaluation(_)
+                            )
+                    });
+
+                // If the same module is already imported for a symbol/namespace,
+                // that import already triggers module evaluation. Adding an extra
+                // evaluation-only reference creates redundant <locals> imports,
+                // which can eagerly pull circular modules.
+                if !has_non_evaluation_reference_for_same_module {
+                    analysis.add_esm_evaluation_reference(i);
+                }
             }
         }
         anyhow::Ok(import_references)

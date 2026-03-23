@@ -80,17 +80,31 @@ impl EcmascriptModuleFacadeModule {
             );
         };
         let result = module.analyze().await?;
+        let exports = self.module.get_exports().await?;
+        let has_local_exports = if let EcmascriptExports::EsmExports(esm_exports) = &*exports {
+            esm_exports
+                .await?
+                .exports
+                .values()
+                .any(|export| matches!(export, EsmExport::LocalBinding(..)))
+        } else {
+            false
+        };
+
         Ok((
-            vec![
-                // TODO skip if side effect free and no local exports
-                EcmascriptModulePartReference::new_part(
-                    *self.module,
-                    ModulePart::locals(),
-                    ExportUsage::all(),
-                )
-                .to_resolved()
-                .await?,
-            ],
+            if has_local_exports {
+                vec![
+                    EcmascriptModulePartReference::new_part(
+                        *self.module,
+                        ModulePart::locals(),
+                        ExportUsage::all(),
+                    )
+                    .to_resolved()
+                    .await?,
+                ]
+            } else {
+                vec![]
+            },
             result.esm_reexport_references,
         ))
     }
@@ -159,7 +173,7 @@ impl EcmascriptAnalyzable for EcmascriptModuleFacadeModule {
         chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
         async_module_info: Option<ResolvedVc<AsyncModuleInfo>>,
     ) -> Result<Vc<EcmascriptModuleContentOptions>> {
-        let (part_references, esm_references) = self.await?.specific_references().await?;
+        let (part_references, _esm_references) = self.await?.specific_references().await?;
 
         Ok(EcmascriptModuleContentOptions {
             parsed: None,
@@ -168,7 +182,9 @@ impl EcmascriptAnalyzable for EcmascriptModuleFacadeModule {
             chunking_context,
             references: self.references().to_resolved().await?,
             part_references,
-            esm_references,
+            // Facade re-export getters import lazily in export codegen, so we avoid
+            // generating hoisted eager ESM reference imports for this synthetic module.
+            esm_references: EsmAssetReferences::empty().to_resolved().await?,
             code_generation: CodeGens::empty().to_resolved().await?,
             async_module: ResolvedVc::cell(Some(self.async_module().to_resolved().await?)),
             // The facade module cannot generate source maps, because the inserted references
