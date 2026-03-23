@@ -4,7 +4,7 @@ use turbo_tasks::{ResolvedVc, Vc};
 use turbopack_core::{
     chunk::{AsyncModuleInfo, ChunkableModule, ChunkingContext, EvaluatableAsset},
     ident::AssetIdent,
-    module::{Module, ModuleSideEffects},
+    module::{Module, ModuleSideEffects, OptionModule},
     module_graph::ModuleGraph,
     reference::{ModuleReference, ModuleReferences, SingleChunkableModuleReference},
     resolve::{ExportUsage, ModulePart},
@@ -343,6 +343,15 @@ impl Module for EcmascriptModulePartAsset {
                 ModuleSideEffects::SideEffectFree.cell()
             }
             _ => self.full_module.side_effects(),
+        }
+    }
+
+    #[turbo_tasks::function]
+    fn original_module(&self) -> Vc<OptionModule> {
+        if matches!(self.part, ModulePart::Facade) {
+            Vc::cell(Some(ResolvedVc::upcast(self.full_module)))
+        } else {
+            Vc::cell(None)
         }
     }
 }

@@ -67,6 +67,12 @@ pub trait Module {
     /// Returns true if the module is marked as side effect free in package.json or by other means.
     #[turbo_tasks::function]
     fn side_effects(self: Vc<Self>) -> Vc<ModuleSideEffects>;
+
+    /// Returns the original source module for synthetic wrappers, if any.
+    #[turbo_tasks::function]
+    fn original_module(self: Vc<Self>) -> Vc<OptionModule> {
+        Vc::cell(None)
+    }
 }
 
 #[turbo_tasks::value_trait]

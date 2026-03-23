@@ -58,8 +58,17 @@ impl BindingUsageInfo {
         &self,
         module: ResolvedVc<Box<dyn Module>>,
     ) -> Result<Vc<ModuleExportUsage>> {
-        let is_circuit_breaker = self.export_circuit_breakers.contains(&module);
-        let Some(exports) = self.used_exports.get(&module) else {
+        let original_module = *module.original_module().await?;
+        let is_circuit_breaker = self.export_circuit_breakers.contains(&module)
+            || original_module
+                .as_ref()
+                .is_some_and(|m| self.export_circuit_breakers.contains(m));
+        let exports = self.used_exports.get(&module).or_else(|| {
+            original_module
+                .as_ref()
+                .and_then(|m| self.used_exports.get(m))
+        });
+        let Some(exports) = exports else {
             // There are some module that are codegened, but not referenced in the module graph,
             let ident = module.ident_string().await?;
             if ident.contains(".wasm_.loader.mjs") || ident.contains("/__nextjs-internal-proxy.") {
