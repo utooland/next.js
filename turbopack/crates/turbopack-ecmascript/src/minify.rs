@@ -100,6 +100,9 @@ pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Resu
                                 passes: 2,
                                 keep_classnames: mangle.is_none(),
                                 keep_fnames: mangle.is_none(),
+                                // TODO @fireairforce: this is a workaround for the issue
+                                sequences: 0,
+                                // join_vars: false,
                                 ..Default::default()
                             }),
                             mangle: mangle.map(|mangle| {
