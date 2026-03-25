@@ -183,9 +183,9 @@ pub async fn get_browser_runtime_code(
         }
     }
 
-    let cross_origin_loading_literal = cross_origin_loading.as_ref().map_or_else(
-        || "null".to_string(),
-        |mode| format!("{}", StringifyJs(mode)),
+    let cross_origin_loading_literal = format!(
+        "{}",
+        StringifyJs(cross_origin_loading.as_deref().unwrap_or(""))
     );
     writedoc!(
         code,
