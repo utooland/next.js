@@ -13,7 +13,11 @@ use turbopack_core::{
     source_map::{GenerateSourceMap, SourceMapAsset},
     version::{MergeableVersionedContent, Version, VersionedContent, VersionedContentMerger},
 };
-use turbopack_ecmascript::{chunk::EcmascriptChunkContent, minify::minify, utils::StringifyJs};
+use turbopack_ecmascript::{
+    chunk::EcmascriptChunkContent,
+    minify::{get_compress_options, minify},
+    utils::StringifyJs,
+};
 
 use super::{
     chunk::EcmascriptBrowserChunk, content_entry::EcmascriptBrowserChunkContentEntries,
@@ -127,8 +131,15 @@ impl EcmascriptBrowserChunkContent {
 
         let mut code = code.build();
 
-        if let MinifyType::Minify { mangle } = *this.chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } =
+            *this.chunking_context.minify_type().await?
+        {
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options(compress, mangle),
+            )?;
         }
 
         Ok(code.cell())
