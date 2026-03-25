@@ -278,6 +278,11 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    pub fn cross_origin_loading(mut self, cross_origin_loading: RcStr) -> Self {
+        self.chunking_context.cross_origin_loading = Some(cross_origin_loading);
+        self
+    }
+
     pub fn build(self) -> Vc<BrowserChunkingContext> {
         BrowserChunkingContext::cell(self.chunking_context)
     }
@@ -372,6 +377,9 @@ pub struct BrowserChunkingContext {
     /// The global variable name used for chunk loading.
     /// Default: "TURBOPACK"
     chunk_loading_global: Option<RcStr>,
+    /// The crossorigin mode for dynamically loaded chunks.
+    /// Supported: "anonymous", "use-credentials".
+    cross_origin_loading: Option<RcStr>,
     /// Evaluate chunk filename template
     filename: Option<RcStr>,
     /// Non evaluate chunk filename template
@@ -438,6 +446,7 @@ impl BrowserChunkingContext {
                 should_use_absolute_url_references: false,
                 worker_forwarded_globals: vec![],
                 chunk_loading_global: Default::default(),
+                cross_origin_loading: Default::default(),
                 filename: Default::default(),
                 chunk_filename: Default::default(),
                 css_filename: Default::default(),
@@ -572,6 +581,12 @@ impl BrowserChunkingContext {
                 .clone()
                 .unwrap_or_else(|| rcstr!("TURBOPACK")),
         )
+    }
+
+    /// Returns the crossorigin mode for dynamically loaded chunks.
+    #[turbo_tasks::function]
+    pub fn cross_origin_loading(&self) -> Vc<Option<RcStr>> {
+        Vc::cell(self.cross_origin_loading.clone())
     }
 }
 
