@@ -176,6 +176,9 @@ const chunkResolvers: Map<ChunkUrl, ChunkResolver> = new Map()
         } else {
           const link = document.createElement('link')
           link.rel = 'stylesheet'
+          if (CROSS_ORIGIN_LOADING) {
+            link.crossOrigin = CROSS_ORIGIN_LOADING
+          }
           link.href = chunkUrl
           link.onerror = () => {
             resolver.reject()
@@ -202,6 +205,9 @@ const chunkResolvers: Map<ChunkUrl, ChunkResolver> = new Map()
           }
         } else {
           const script = document.createElement('script')
+          if (CROSS_ORIGIN_LOADING) {
+            script.crossOrigin = CROSS_ORIGIN_LOADING
+          }
           script.src = chunkUrl
           // We'll only mark the chunk as loaded once the script has been executed,
           // which happens in `registerChunk`. Hence the absence of `resolve()` in

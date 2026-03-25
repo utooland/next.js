@@ -21,6 +21,7 @@ declare var TURBOPACK_NEXT_CHUNK_URLS: ChunkUrl[] | undefined
 // Injected by rust code
 declare var CHUNK_BASE_PATH: string
 declare var ASSET_SUFFIX: string
+declare var CROSS_ORIGIN_LOADING: 'anonymous' | 'use-credentials' | null
 declare var WORKER_FORWARDED_GLOBALS: string[]
 
 // Support runtime public path from window.publicPath
@@ -224,6 +225,9 @@ function loadScript(
 
   promise = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script')
+    if (CROSS_ORIGIN_LOADING) {
+      script.crossOrigin = CROSS_ORIGIN_LOADING
+    }
     script.src = scriptUrl
     script.onload = () => resolve()
     script.onerror = () =>

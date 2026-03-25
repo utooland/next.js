@@ -25,6 +25,7 @@ pub async fn get_browser_runtime_code(
     output_root_to_root_path: RcStr,
     generate_source_map: bool,
     chunk_loading_global: Vc<RcStr>,
+    cross_origin_loading: Vc<Option<RcStr>>,
     entry_root_export: Vc<Option<RcStr>>,
 ) -> Result<Vc<Code>> {
     let asset_context = get_runtime_asset_context(*environment).resolve().await?;
@@ -87,6 +88,7 @@ pub async fn get_browser_runtime_code(
     let chunk_base_path = chunk_base_path.as_ref().map_or_else(|| "", |f| f.as_str());
     let asset_suffix = asset_suffix.await?;
     let chunk_loading_global = chunk_loading_global.await?;
+    let cross_origin_loading = cross_origin_loading.await?;
     let chunk_lists_global = format!("{}_CHUNK_LISTS", &*chunk_loading_global);
     let entry_root_export = entry_root_export.await?;
 
@@ -180,6 +182,18 @@ pub async fn get_browser_runtime_code(
             )?;
         }
     }
+
+    let cross_origin_loading_literal = cross_origin_loading.as_ref().map_or_else(
+        || "null".to_string(),
+        |mode| format!("{}", StringifyJs(mode)),
+    );
+    writedoc!(
+        code,
+        r#"
+            const CROSS_ORIGIN_LOADING = {};
+        "#,
+        cross_origin_loading_literal
+    )?;
 
     // Output the list of global variable names to forward to workers
     let worker_forwarded_globals = worker_forwarded_globals.await?;
