@@ -50,12 +50,59 @@ pub enum MangleType {
     Deterministic,
 }
 
+#[derive(
+    Debug,
+    TaskInput,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Deserialize,
+    TraceRawVcs,
+    DeterministicHash,
+    NonLocalValue,
+    Encode,
+    Decode,
+)]
+#[serde(rename_all = "kebab-case")]
+pub struct CompressOptions {
+    pub passes: Option<u8>,
+    pub sequences: Option<u8>,
+    pub keep_classnames: Option<bool>,
+    pub keep_fnames: Option<bool>,
+}
+
+#[derive(
+    Debug,
+    TaskInput,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Deserialize,
+    TraceRawVcs,
+    DeterministicHash,
+    NonLocalValue,
+    Encode,
+    Decode,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompressType {
+    Default,
+    Options(CompressOptions),
+}
+
 #[turbo_tasks::value(shared)]
 #[derive(Debug, TaskInput, Clone, Copy, Hash, DeterministicHash, Deserialize)]
 pub enum MinifyType {
     // TODO instead of adding a new property here,
     // refactor that to Minify(MinifyOptions) to allow defaults on MinifyOptions
-    Minify { mangle: Option<MangleType> },
+    Minify {
+        mangle: Option<MangleType>,
+        compress: Option<CompressType>,
+    },
     NoMinify,
 }
 
@@ -63,6 +110,7 @@ impl Default for MinifyType {
     fn default() -> Self {
         Self::Minify {
             mangle: Some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     }
 }
