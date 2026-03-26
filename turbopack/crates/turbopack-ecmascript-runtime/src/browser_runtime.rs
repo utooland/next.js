@@ -15,8 +15,9 @@ use turbopack_ecmascript::utils::StringifyJs;
 use crate::{RuntimeType, asset_context::get_runtime_asset_context, embed_js::embed_static_code};
 
 #[turbo_tasks::value(shared)]
-#[derive(Debug, Clone, Copy, Hash, TaskInput)]
+#[derive(Debug, Default, Clone, Copy, Hash, TaskInput)]
 pub enum CrossOriginLoading {
+    #[default]
     None,
     Anonymous,
     UseCredentials,
