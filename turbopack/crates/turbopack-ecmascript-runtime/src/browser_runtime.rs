@@ -218,10 +218,7 @@ pub async fn get_browser_runtime_code(
         }
     }
 
-    let cross_origin_loading_literal = cross_origin_loading
-        .as_str()
-        .map(|mode| StringifyJs(mode).to_string())
-        .unwrap_or_else(|| "".to_string());
+    let cross_origin_loading_literal = StringifyJs(cross_origin_loading.as_str().unwrap_or("")).to_string();
     writedoc!(
         code,
         r#"
