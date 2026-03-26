@@ -39,7 +39,7 @@ use turbopack_ecmascript::{
     chunk::EcmascriptChunk,
     manifest::{chunk_asset::ManifestAsyncModule, loader_module::ManifestLoaderModule},
 };
-use turbopack_ecmascript_runtime::RuntimeType;
+use turbopack_ecmascript_runtime::{CrossOriginLoading, RuntimeType};
 
 use crate::ecmascript::{
     chunk::EcmascriptBrowserChunk,
@@ -278,8 +278,8 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
-    pub fn cross_origin_loading(mut self, cross_origin_loading: RcStr) -> Self {
-        self.chunking_context.cross_origin_loading = Some(cross_origin_loading);
+    pub fn cross_origin_loading(mut self, cross_origin_loading: CrossOriginLoading) -> Self {
+        self.chunking_context.cross_origin_loading = cross_origin_loading;
         self
     }
 
@@ -378,8 +378,8 @@ pub struct BrowserChunkingContext {
     /// Default: "TURBOPACK"
     chunk_loading_global: Option<RcStr>,
     /// The crossorigin mode for dynamically loaded chunks.
-    /// Supported: "anonymous", "use-credentials".
-    cross_origin_loading: Option<RcStr>,
+    /// Supported: anonymous, use-credentials.
+    cross_origin_loading: CrossOriginLoading,
     /// Evaluate chunk filename template
     filename: Option<RcStr>,
     /// Non evaluate chunk filename template
@@ -446,7 +446,7 @@ impl BrowserChunkingContext {
                 should_use_absolute_url_references: false,
                 worker_forwarded_globals: vec![],
                 chunk_loading_global: Default::default(),
-                cross_origin_loading: Default::default(),
+                cross_origin_loading: CrossOriginLoading::None,
                 filename: Default::default(),
                 chunk_filename: Default::default(),
                 css_filename: Default::default(),
@@ -585,8 +585,8 @@ impl BrowserChunkingContext {
 
     /// Returns the crossorigin mode for dynamically loaded chunks.
     #[turbo_tasks::function]
-    pub fn cross_origin_loading(&self) -> Vc<Option<RcStr>> {
-        Vc::cell(self.cross_origin_loading.clone())
+    pub fn cross_origin_loading(&self) -> Vc<CrossOriginLoading> {
+        self.cross_origin_loading.cell()
     }
 }
 
