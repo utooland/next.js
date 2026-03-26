@@ -446,7 +446,7 @@ impl BrowserChunkingContext {
                 should_use_absolute_url_references: false,
                 worker_forwarded_globals: vec![],
                 chunk_loading_global: Default::default(),
-                cross_origin_loading: CrossOriginLoading::None,
+                cross_origin_loading: Default::default(),
                 filename: Default::default(),
                 chunk_filename: Default::default(),
                 css_filename: Default::default(),
