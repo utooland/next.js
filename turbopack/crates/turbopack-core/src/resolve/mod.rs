@@ -20,7 +20,7 @@ use turbo_tasks::{
     FxIndexMap, FxIndexSet, NonLocalValue, ReadRef, ResolvedVc, TaskInput, TryFlatJoinIterExt,
     TryJoinIterExt, ValueToString, Vc, trace::TraceRawVcs,
 };
-use turbo_tasks_fs::{DiskFileSystem, FileSystemEntryType, FileSystemPath};
+use turbo_tasks_fs::{DiskFileSystem, FileSystem, FileSystemEntryType, FileSystemPath};
 use turbo_unix_path::normalize_request;
 
 use crate::{
@@ -2070,19 +2070,33 @@ async fn resolve_internal_inline(
                 if let Some(path_str) = path.as_constant_string() {
                     let sys_path = std::path::Path::new(path_str.as_str());
 
+                    let mut candidate_disk_fses = Vec::new();
+
                     if let Some(disk_fs_vc) =
                         ResolvedVc::try_downcast_type::<DiskFileSystem>(lookup_path.fs)
                     {
-                        let disk_fs = disk_fs_vc.await?;
-                        let root_path = lookup_path.root().owned().await?;
+                        candidate_disk_fses.push(disk_fs_vc);
+                    }
 
-                        // Try to convert the Windows path to a FileSystemPath
+                    for module in &options_value.modules {
+                        let fs = match module {
+                            ResolveModules::Nested(root, _) => root.fs,
+                            ResolveModules::Path { dir, .. } => dir.fs,
+                        };
+                        if let Some(disk_fs_vc) =
+                            ResolvedVc::try_downcast_type::<DiskFileSystem>(fs)
+                        {
+                            candidate_disk_fses.push(disk_fs_vc);
+                        }
+                    }
+
+                    for disk_fs_vc in candidate_disk_fses {
+                        let disk_fs = disk_fs_vc.await?;
                         if let Some(fs_path) = disk_fs.try_from_sys_path(disk_fs_vc, sys_path, None)
                         {
-                            // Successfully converted - resolve as a raw path
                             let mut results = Vec::new();
-                            let unix_path = &fs_path.path;
-                            let pattern = Pattern::Constant(unix_path.clone());
+                            let root_path = disk_fs_vc.root().owned().await?;
+                            let pattern = Pattern::Constant(fs_path.path.clone());
                             let matches = read_matches(
                                 root_path.clone(),
                                 rcstr!(""),
