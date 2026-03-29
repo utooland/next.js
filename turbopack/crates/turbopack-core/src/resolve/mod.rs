@@ -2094,45 +2094,30 @@ async fn resolve_internal_inline(
                         let disk_fs = disk_fs_vc.await?;
                         if let Some(fs_path) = disk_fs.try_from_sys_path(disk_fs_vc, sys_path, None)
                         {
-                            let mut results = Vec::new();
                             let root_path = disk_fs_vc.root().owned().await?;
-                            let pattern = Pattern::Constant(fs_path.path.clone());
-                            let matches = read_matches(
-                                root_path.clone(),
-                                rcstr!(""),
+                            let (relative_lookup_path, relative_path) = if let Some(relative_path) =
+                                lookup_path.get_relative_path_to(&fs_path)
+                            {
+                                (lookup_path.clone(), relative_path)
+                            } else if let Some(relative_path) =
+                                root_path.get_relative_path_to(&fs_path)
+                            {
+                                (root_path.clone(), relative_path)
+                            } else {
+                                continue;
+                            };
+
+                            return resolve_relative_request(
+                                relative_lookup_path,
+                                request,
+                                options,
+                                options_value,
+                                &Pattern::Constant(relative_path),
+                                query.clone(),
                                 false,
-                                Pattern::new(pattern).resolve().await?,
+                                fragment.clone(),
                             )
-                            .await?;
-
-                            for m in matches.iter() {
-                                match m {
-                                    PatternMatch::File(matched_pattern, path) => {
-                                        results.push(
-                                            resolved(
-                                                RequestKey::new(matched_pattern.clone()),
-                                                path.clone(),
-                                                lookup_path.clone(),
-                                                request,
-                                                options_value,
-                                                options,
-                                                query.clone(),
-                                                fragment.clone(),
-                                            )
-                                            .await?
-                                            .into_cell(),
-                                        );
-                                    }
-                                    PatternMatch::Directory(matched_pattern, path) => {
-                                        results.push(
-                                            resolve_into_folder(path.clone(), options)
-                                                .with_request(matched_pattern.clone()),
-                                        );
-                                    }
-                                }
-                            }
-
-                            return Ok(merge_results(results));
+                            .await;
                         }
                     }
                 }
