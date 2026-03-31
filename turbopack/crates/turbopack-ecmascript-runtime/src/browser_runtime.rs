@@ -12,7 +12,14 @@ use turbopack_core::{
 };
 use turbopack_ecmascript::utils::StringifyJs;
 
-use crate::{RuntimeType, asset_context::get_runtime_asset_context, embed_js::embed_static_code};
+use crate::{
+    RuntimeType,
+    asset_context::get_runtime_asset_context,
+    embed_js::embed_static_code,
+};
+
+const GLOBAL_THIS_FALLBACK_EXPR: &str =
+    "typeof globalThis !== \"undefined\" ? globalThis : (typeof self !== \"undefined\" ? self : (typeof window !== \"undefined\" ? window : (typeof global !== \"undefined\" ? global : {})))";
 
 #[turbo_tasks::value(shared)]
 #[derive(Debug, Default, Clone, Copy, Hash, TaskInput)]
@@ -141,40 +148,46 @@ pub async fn get_browser_runtime_code(
                         root[{}] = factory();
                 }}(typeof self !== 'undefined' ? self : this, function() {{
 
-                const __chunk__ = (() => {{
-                if (!Array.isArray(globalThis["{chunk_loading_global}"])) {{
+                var __chunk__ = (function() {{
+                var __turbopack_global__ = {global_this_fallback};
+                var globalThis = __turbopack_global__;
+                if (!Array.isArray(__turbopack_global__["{chunk_loading_global}"])) {{
                     return;
                 }}
 
-                let __entryExports__ = undefined;
+                var __entryExports__ = undefined;
 
-                const CHUNK_BASE_PATH = {};
-                const RELATIVE_ROOT_PATH = {};
-                const RUNTIME_PUBLIC_PATH = {};
+                var CHUNK_BASE_PATH = {};
+                var RELATIVE_ROOT_PATH = {};
+                var RUNTIME_PUBLIC_PATH = {};
             "#,
             StringifyJs(export_name.as_str()),
             StringifyJs(export_name.as_str()),
             StringifyJs(chunk_base_path),
             StringifyJs(relative_root_path.as_str()),
             StringifyJs(chunk_base_path),
+            global_this_fallback = GLOBAL_THIS_FALLBACK_EXPR,
         )?;
     } else {
         writedoc!(
             code,
             r#"
                 (() => {{
-                if (!Array.isArray(globalThis[{}])) {{
+                var __turbopack_global__ = {global_this_fallback};
+                var globalThis = __turbopack_global__;
+                if (!Array.isArray(__turbopack_global__[{}])) {{
                     return;
                 }}
 
-                const CHUNK_BASE_PATH = {};
-                const RELATIVE_ROOT_PATH = {};
-                const RUNTIME_PUBLIC_PATH = {};
+                var CHUNK_BASE_PATH = {};
+                var RELATIVE_ROOT_PATH = {};
+                var RUNTIME_PUBLIC_PATH = {};
             "#,
             StringifyJs(&chunk_loading_global),
             StringifyJs(chunk_base_path),
             StringifyJs(relative_root_path.as_str()),
             StringifyJs(chunk_base_path),
+            global_this_fallback = GLOBAL_THIS_FALLBACK_EXPR,
         )?;
     }
 
@@ -183,7 +196,7 @@ pub async fn get_browser_runtime_code(
             writedoc!(
                 code,
                 r#"
-                    const ASSET_SUFFIX = "";
+                    var ASSET_SUFFIX = "";
                 "#
             )?;
         }
@@ -191,7 +204,7 @@ pub async fn get_browser_runtime_code(
             writedoc!(
                 code,
                 r#"
-                    const ASSET_SUFFIX = {};
+                    var ASSET_SUFFIX = {};
                 "#,
                 StringifyJs(suffix.as_str())
             )?;
@@ -203,7 +216,7 @@ pub async fn get_browser_runtime_code(
             writedoc!(
                 code,
                 r#"
-                    const ASSET_SUFFIX = getAssetSuffixFromScriptSrc();
+                    var ASSET_SUFFIX = getAssetSuffixFromScriptSrc();
                 "#
             )?;
         }
@@ -211,7 +224,7 @@ pub async fn get_browser_runtime_code(
             writedoc!(
                 code,
                 r#"
-                    const ASSET_SUFFIX = globalThis[{}] || "";
+                    var ASSET_SUFFIX = __turbopack_global__[{}] || "";
                 "#,
                 StringifyJs(global_name)
             )?;
@@ -233,11 +246,10 @@ pub async fn get_browser_runtime_code(
     writedoc!(
         code,
         r#"
-            const WORKER_FORWARDED_GLOBALS = {};
+            var WORKER_FORWARDED_GLOBALS = {};
         "#,
         StringifyJs(&*worker_forwarded_globals)
     )?;
-
     code.push_code(&*shared_runtime_utils_code.await?);
     for runtime_code in runtime_base_code {
         code.push_code(
@@ -287,8 +299,8 @@ pub async fn get_browser_runtime_code(
     writedoc!(
         code,
         r#"
-            const chunksToRegister = globalThis[{chunk_loading_global}];
-            globalThis[{chunk_loading_global}] = {{ push: registerChunk }};
+            var chunksToRegister = __turbopack_global__[{chunk_loading_global}] || [];
+            __turbopack_global__[{chunk_loading_global}] = {{ push: registerChunk }};
             chunksToRegister.forEach(registerChunk);
         "#,
         chunk_loading_global = StringifyJs(&chunk_loading_global),
@@ -297,8 +309,8 @@ pub async fn get_browser_runtime_code(
         writedoc!(
             code,
             r#"
-            const chunkListsToRegister = globalThis[{chunk_lists_global}] || [];
-            globalThis[{chunk_lists_global}] = {{ push: registerChunkList }};
+            var chunkListsToRegister = __turbopack_global__[{chunk_lists_global}] || [];
+            __turbopack_global__[{chunk_lists_global}] = {{ push: registerChunkList }};
             chunkListsToRegister.forEach(registerChunkList);
         "#,
             chunk_lists_global = StringifyJs(&chunk_lists_global),
@@ -312,16 +324,17 @@ pub async fn get_browser_runtime_code(
             r#"
 
                 try {{
-                for (const registration of chunksToRegister) {{
-                    const runtimeParams = registration.length === 2 ? registration[1] : null;
+                for (var i = 0; i < chunksToRegister.length; i++) {{
+                    var registration = chunksToRegister[i];
+                    var runtimeParams = registration.length === 2 ? registration[1] : null;
                     if (runtimeParams && runtimeParams.runtimeModuleIds && runtimeParams.runtimeModuleIds.length > 0) {{
-                        const entryModuleId = runtimeParams.runtimeModuleIds[runtimeParams.runtimeModuleIds.length - 1];
-                        const chunkPath = getPathFromScript(registration[0]);
+                        var entryModuleId = runtimeParams.runtimeModuleIds[runtimeParams.runtimeModuleIds.length - 1];
+                        var chunkPath = getPathFromScript(registration[0]);
 
-                        const entryModule = getOrInstantiateRuntimeModule(chunkPath, entryModuleId);
+                        var entryModule = getOrInstantiateRuntimeModule(chunkPath, entryModuleId);
 
                         if (entryModule && entryModule.exports) {{
-                            const moduleExports = entryModule.namespaceObject || entryModule.exports;
+                            var moduleExports = entryModule.namespaceObject || entryModule.exports;
 
                             // Save for return value (will be handled by UMD wrapper)
                             __entryExports__ = moduleExports;

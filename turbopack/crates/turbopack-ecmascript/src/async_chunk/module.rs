@@ -164,8 +164,8 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
         if estimated {
             let code = formatdoc! {
                 r#"
-                    {TURBOPACK_EXPORT_VALUE}((parentImport) => {{
-                        return Promise.all([].map((chunk) => {TURBOPACK_LOAD}(chunk))).then(() => {{}});
+                    {TURBOPACK_EXPORT_VALUE}(function(parentImport) {{
+                        return Promise.all([].map(function(chunk) {{ return {TURBOPACK_LOAD}(chunk); }})).then(function() {{}});
                     }});
                 "#,
             };
@@ -198,8 +198,8 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
             (Some(id), true) => {
                 formatdoc! {
                     r#"
-                        {TURBOPACK_EXPORT_VALUE}((parentImport) => {{
-                            return Promise.resolve().then(() => {{
+                        {TURBOPACK_EXPORT_VALUE}(function(parentImport) {{
+                            return Promise.resolve().then(function() {{
                                 return parentImport({id});
                             }});
                         }});
@@ -210,8 +210,8 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
             (Some(id), false) => {
                 formatdoc! {
                     r#"
-                        {TURBOPACK_EXPORT_VALUE}((parentImport) => {{
-                            return Promise.all({chunks:#}.map((chunk) => {TURBOPACK_LOAD}(chunk))).then(() => {{
+                        {TURBOPACK_EXPORT_VALUE}(function(parentImport) {{
+                            return Promise.all({chunks:#}.map(function(chunk) {{ return {TURBOPACK_LOAD}(chunk); }})).then(function() {{
                                 return parentImport({id});
                             }});
                         }});
@@ -223,7 +223,7 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
             (None, true) => {
                 formatdoc! {
                     r#"
-                        {TURBOPACK_EXPORT_VALUE}((parentImport) => {{
+                        {TURBOPACK_EXPORT_VALUE}(function(parentImport) {{
                             return Promise.resolve();
                         }});
                     "#,
@@ -232,8 +232,8 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
             (None, false) => {
                 formatdoc! {
                     r#"
-                        {TURBOPACK_EXPORT_VALUE}((parentImport) => {{
-                            return Promise.all({chunks:#}.map((chunk) => {TURBOPACK_LOAD}(chunk))).then(() => {{}});
+                        {TURBOPACK_EXPORT_VALUE}(function(parentImport) {{
+                            return Promise.all({chunks:#}.map(function(chunk) {{ return {TURBOPACK_LOAD}(chunk); }})).then(function() {{}});
                         }});
                     "#,
                     chunks = StringifyJs(&chunks_data),

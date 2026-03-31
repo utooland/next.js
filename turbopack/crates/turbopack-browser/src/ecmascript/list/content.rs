@@ -27,7 +27,8 @@ use super::{
     version::EcmascriptDevChunkListVersion,
 };
 use crate::chunking_context::{
-    CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR, CurrentChunkMethod,
+    CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR, GLOBAL_THIS_FALLBACK_EXPR,
+    CurrentChunkMethod,
 };
 
 #[derive(
@@ -167,12 +168,13 @@ impl EcmascriptDevChunkListContent {
             // `||=` would be better but we need to be es2020 compatible
             //`x || (x = default)` is better than `x = x || default` simply because we avoid _writing_ the property in the common case.
             r#"
-                (globalThis[{chunk_lists_global}] || (globalThis[{chunk_lists_global}] = [])).push({{
+                (({global_this})[{chunk_lists_global}] || (({global_this})[{chunk_lists_global}] = [])).push({{
                     script: {script_or_path},
                     chunks: {chunks},
                     source: {source}
                 }});
             "#,
+            global_this = GLOBAL_THIS_FALLBACK_EXPR,
             chunk_lists_global = StringifyJs(&chunk_lists_global),
             chunks = StringifyJs(&chunks),
             source = StringifyJs(&this.source),

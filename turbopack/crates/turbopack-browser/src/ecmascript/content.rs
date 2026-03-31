@@ -25,7 +25,10 @@ use super::{
 };
 use crate::{
     BrowserChunkingContext,
-    chunking_context::{CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR, CurrentChunkMethod},
+    chunking_context::{
+        CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR, GLOBAL_THIS_FALLBACK_EXPR,
+        CurrentChunkMethod,
+    },
 };
 
 #[turbo_tasks::value(serialization = "none")]
@@ -113,7 +116,8 @@ impl EcmascriptBrowserChunkContent {
             code,
             // `||=` would be better but we need to be es2020 compatible
             //`x || (x = default)` is better than `x = x || default` simply because we avoid _writing_ the property in the common case.
-            r#"(globalThis[{chunk_loading_global}] || (globalThis[{chunk_loading_global}] = [])).push([{script_or_path},"#,
+            r#"(({global_this})[{chunk_loading_global}] || (({global_this})[{chunk_loading_global}] = [])).push([{script_or_path},"#,
+            global_this = GLOBAL_THIS_FALLBACK_EXPR,
             chunk_loading_global = StringifyJs(&chunk_loading_global),
         )?;
 

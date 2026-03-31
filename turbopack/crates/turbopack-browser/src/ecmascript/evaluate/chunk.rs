@@ -29,7 +29,10 @@ use turbopack_ecmascript_runtime::RuntimeType;
 
 use crate::{
     BrowserChunkingContext,
-    chunking_context::{CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR, CurrentChunkMethod},
+    chunking_context::{
+        CURRENT_CHUNK_METHOD_DOCUMENT_CURRENT_SCRIPT_EXPR, GLOBAL_THIS_FALLBACK_EXPR,
+        CurrentChunkMethod,
+    },
 };
 
 /// An Ecmascript chunk that:
@@ -182,11 +185,12 @@ impl EcmascriptBrowserEvaluateChunk {
             // `||=` would be better but we need to be es2020 compatible
             //`x || (x = default)` is better than `x = x || default` simply because we avoid _writing_ the property in the common case.
             r#"
-                (globalThis[{chunk_loading_global}] || (globalThis[{chunk_loading_global}] = [])).push([
+                (({global_this})[{chunk_loading_global}] || (({global_this})[{chunk_loading_global}] = [])).push([
                     {script_or_path},
                     {params}
                 ]);
             "#,
+            global_this = GLOBAL_THIS_FALLBACK_EXPR,
             chunk_loading_global = StringifyJs(&chunk_loading_global),
             params = StringifyJs(&params),
         )?;

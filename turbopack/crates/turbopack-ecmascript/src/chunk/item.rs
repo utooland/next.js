@@ -131,9 +131,9 @@ impl EcmascriptChunkItemContent {
             writeln!(code, "{}, ", StringifyJs(&additional_id))?;
         }
         if self.options.module_and_exports {
-            code += "((__turbopack_context__, module, exports) => {\n";
+            code += "(function(__turbopack_context__, module, exports) {\n";
         } else {
-            code += "((__turbopack_context__) => {\n";
+            code += "(function(__turbopack_context__) {\n";
         }
         if self.options.strict {
             code += "\"use strict\";\n\n";

@@ -157,12 +157,12 @@ impl EcmascriptChunkPlaceable for ManifestLoaderModule {
         writedoc!(
             code,
             r#"
-                {TURBOPACK_EXPORT_VALUE}((parentImport) => {{
-                    return Promise.all({chunks_server_data}.map((chunk) => {TURBOPACK_LOAD}(chunk))).then(() => {{
+                {TURBOPACK_EXPORT_VALUE}(function(parentImport) {{
+                    return Promise.all({chunks_server_data}.map(function(chunk) {{ return {TURBOPACK_LOAD}(chunk); }})).then(function() {{
                         return {TURBOPACK_REQUIRE}({item_id});
-                    }}).then((chunks) => {{
-                        return Promise.all(chunks.map((chunk) => {TURBOPACK_LOAD}(chunk)));
-                    }}).then(() => {{
+                    }}).then(function(chunks) {{
+                        return Promise.all(chunks.map(function(chunk) {{ return {TURBOPACK_LOAD}(chunk); }}));
+                    }}).then(function() {{
                         return parentImport({dynamic_id});
                     }});
                 }});
