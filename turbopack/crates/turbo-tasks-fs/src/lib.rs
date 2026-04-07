@@ -1115,6 +1115,7 @@ impl FileSystem for DiskFileSystem {
                     return Ok(());
                 }
 
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
                 match &*self.content {
                     FileContent::Content(..) => {
                         let create_directory = compare == FileComparison::Create;
@@ -1177,6 +1178,37 @@ impl FileSystem for DiskFileSystem {
                                     Err(err)
                                 }
                             })
+                            .with_context(|| format!("removing {full_path:?} failed"))?;
+                    }
+                }
+
+                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                match &*self.content {
+                    FileContent::Content(..) => {
+                        let create_directory = compare == FileComparison::Create;
+                        if create_directory && let Some(parent) = full_path.parent() {
+                            self.inner.create_directory(parent).await.with_context(|| {
+                                format!(
+                                    "failed to create directory {parent:?} for write to \
+                                     {full_path:?}",
+                                )
+                            })?;
+                        }
+                        let content = self.content.clone();
+                        let FileContent::Content(file) = &*content else {
+                            unreachable!()
+                        };
+                        wasm_fs_offload::CLIENT
+                            .write(&full_path, file.content().to_bytes())
+                            .instrument(tracing::info_span!("write file", name = ?full_path))
+                            .await
+                            .with_context(|| format!("failed to write to {full_path:?}"))?;
+                    }
+                    FileContent::NotFound => {
+                        wasm_fs_offload::CLIENT
+                            .remove_file(&full_path)
+                            .instrument(tracing::info_span!("remove file", name = ?full_path))
+                            .await
                             .with_context(|| format!("removing {full_path:?} failed"))?;
                     }
                 }

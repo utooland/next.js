@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow, iter, process::ExitStatus, sync::Arc, thread::available_parallelism,
-    time::Duration,
-};
+use std::{borrow::Cow, iter, process::ExitStatus, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use bincode::{Decode, Encode};
@@ -45,6 +42,7 @@ use crate::process_pool::ChildProcessPool;
 use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping,
+    available_parallelism::available_parallelism,
     backend::{CreatePoolOptions, NodeBackend},
     embed_js::embed_file_path,
     emit, emit_package_json,
@@ -275,7 +273,7 @@ pub async fn get_evaluate_pool(
             assets_for_source_mapping,
             assets_root: output_root.clone(),
             project_dir: chunking_context.root_path().owned().await?,
-            concurrency: available_parallelism().map_or(1, |v| v.get()),
+            concurrency: available_parallelism(),
             debug,
         })
         .await?;
