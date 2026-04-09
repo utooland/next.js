@@ -193,8 +193,7 @@ impl EcmascriptChunkItemContent {
         if self.options.async_module.is_some() {
             write!(code, "return {TURBOPACK_ASYNC_MODULE}")?;
 
-            let needs_generator_runner =
-                self.options.async_module.is_some() && !self.options.supports_async_functions;
+            let needs_generator_runner = !self.options.supports_async_functions;
 
             if needs_generator_runner {
                 // Environment does NOT support async/await. SWC's preset-env transpiles
