@@ -428,6 +428,46 @@ impl RuntimeVersions {
 
         Vc::cell(supported)
     }
+
+    /// Whether the environment supports async functions (async/await).
+    #[turbo_tasks::function]
+    pub fn supports_async_functions(&self) -> Vc<bool> {
+        // https://github.com/nicolo-ribaudo/tc39-proposal-await-to-yield/blob/main/README.md
+        // https://caniuse.com/async-functions
+        // "chrome": "55",
+        // "opera": "42",
+        // "edge": "15",
+        // "firefox": "52",
+        // "safari": "10.1",
+        // "node": "7.6",
+        // "deno": "1",
+        // "ios": "10.3",
+        // "samsung": "6",
+        // "opera_mobile": "42",
+        // "electron": "1.6"
+        let data = &self.0;
+        let supported = data.chrome.is_none_or(|v| v.major >= 55)
+            && data.opera.is_none_or(|v| v.major >= 42)
+            && data.edge.is_none_or(|v| v.major >= 15)
+            && data.firefox.is_none_or(|v| v.major >= 52)
+            && data
+                .safari
+                .is_none_or(|v| v.major > 10 || (v.major == 10 && v.minor >= 1))
+            && data
+                .node
+                .is_none_or(|v| v.major > 7 || (v.major == 7 && v.minor >= 6))
+            && data.deno.is_none_or(|v| v.major >= 1)
+            && data
+                .ios
+                .is_none_or(|v| v.major > 10 || (v.major == 10 && v.minor >= 3))
+            && data.samsung.is_none_or(|v| v.major >= 6)
+            && data.opera_mobile.is_none_or(|v| v.major >= 42)
+            && data
+                .electron
+                .is_none_or(|v| v.major > 1 || (v.major == 1 && v.minor >= 6));
+
+        Vc::cell(supported)
+    }
 }
 
 #[turbo_tasks::function]

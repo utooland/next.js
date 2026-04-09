@@ -49,6 +49,23 @@ pub async fn get_nodejs_runtime_code(
 
     let mut code = CodeBuilder::default();
     code.push_code(&*shared_runtime_utils_code.await?);
+
+    // Include the generator-to-promise bridge when native async/await is not supported.
+    if !*environment
+        .runtime_versions()
+        .supports_async_functions()
+        .await?
+    {
+        code.push_code(
+            &*embed_static_code(
+                asset_context,
+                rcstr!("shared/runtime/async-to-promise.ts"),
+                generate_source_map,
+            )
+            .await?,
+        );
+    }
+
     code.push_code(&*shared_base_external_utils_code.await?);
     code.push_code(&*shared_node_external_utils_code.await?);
     code.push_code(&*shared_node_wasm_utils_code.await?);

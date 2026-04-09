@@ -27,7 +27,7 @@ use crate::{
     EcmascriptModuleContent,
     chunk::{chunk_type::EcmascriptChunkType, placeable::EcmascriptChunkPlaceable},
     references::async_module::{AsyncModuleOptions, OptionAsyncModuleOptions},
-    runtime_functions::TURBOPACK_ASYNC_MODULE,
+    runtime_functions::{TURBOPACK_ASYNC_MODULE, TURBOPACK_ASYNC_TO_PROMISE},
     utils::StringifyJs,
 };
 
@@ -77,6 +77,11 @@ impl EcmascriptChunkItemContent {
             .runtime_versions()
             .supports_arrow_functions()
             .await?;
+        let supports_async_functions = *chunking_context
+            .environment()
+            .runtime_versions()
+            .supports_async_functions()
+            .await?;
         let externals = *chunking_context
             .environment()
             .supports_commonjs_externals()
@@ -109,6 +114,7 @@ impl EcmascriptChunkItemContent {
                     externals,
                     async_module,
                     supports_arrow_functions,
+                    supports_async_functions,
                     ..Default::default()
                 }
             } else {
@@ -120,6 +126,7 @@ impl EcmascriptChunkItemContent {
                     strict,
                     externals,
                     supports_arrow_functions,
+                    supports_async_functions,
                     // These things are not available in ESM
                     module_and_exports: true,
                     ..Default::default()
@@ -162,16 +169,25 @@ impl EcmascriptChunkItemContent {
 
         if self.options.async_module.is_some() {
             write!(code, "return {TURBOPACK_ASYNC_MODULE}")?;
-            if self.options.supports_arrow_functions {
-                code += "(async (";
-            } else {
-                code += "(async function(";
+            match (
+                self.options.supports_async_functions,
+                self.options.supports_arrow_functions,
+            ) {
+                (true, true) => code += "(async (",
+                (true, false) => code += "(async function(",
+                // When async functions are not supported, SWC transpiles the inner
+                // module code (await -> yield), but the outer wrapper string is emitted
+                // directly by Turbopack and is NOT processed by SWC. We wrap with
+                // __turbopack_context__.h() which is a generator-to-promise bridge.
+                (false, _) => write!(code, "({}(function*(", TURBOPACK_ASYNC_TO_PROMISE).unwrap(),
             }
             code += "__turbopack_handle_async_dependencies__, __turbopack_async_result__";
-            if self.options.supports_arrow_functions {
-                code += ") => {";
-            } else {
-                code += "){";
+            match (
+                self.options.supports_async_functions,
+                self.options.supports_arrow_functions,
+            ) {
+                (true, true) => code += ") => {",
+                (true, false) | (false, _) => code += "){",
             }
             code += " try {\n";
         }
@@ -197,7 +213,12 @@ impl EcmascriptChunkItemContent {
             write!(
                 code,
                 "__turbopack_async_result__();\n}} catch(e) {{ __turbopack_async_result__(e); }} \
-                 }}, {});",
+                 }}{}, {});",
+                if self.options.supports_async_functions {
+                    ""
+                } else {
+                    ")"
+                },
                 opts.has_top_level_await
             )?;
         }
@@ -223,6 +244,10 @@ pub struct EcmascriptChunkItemOptions {
     pub async_module: Option<AsyncModuleOptions>,
     /// Whether the environment supports arrow functions (e.g. when targeting modern browsers).
     pub supports_arrow_functions: bool,
+    /// Whether the environment supports async functions (async/await).
+    /// When false, Turbopack wraps async module factories with a generator-to-promise
+    /// bridge (`__turbopack_context__.h`) instead of using native `async function`.
+    pub supports_async_functions: bool,
     pub placeholder_for_future_extensions: (),
 }
 
