@@ -18,7 +18,7 @@ function test() {
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/async_module.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(__turbopack_context__.h(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
 __turbopack_context__.s([
     "a",
     ()=>topValue,
@@ -31,19 +31,19 @@ var topValue = await Promise.resolve('top level async');
 ;
 ;
 __turbopack_async_result__();
-} catch(e) { __turbopack_async_result__(e); } }), true);}),
+} catch(e) { __turbopack_async_result__(e); } }, true);}),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/side-effect.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(__turbopack_context__.h(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
 await Promise.resolve('side effect');
 console.log('side effect executed');
 __turbopack_async_result__();
-} catch(e) { __turbopack_async_result__(e); } }), true);}),
+} catch(e) { __turbopack_async_result__(e); } }, true);}),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/index.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(__turbopack_context__.h(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
 __turbopack_context__.s([]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/util.js [test] (ecmascript) <internal part 0>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/async_module.js [test] (ecmascript) <internal part 0>");
@@ -64,7 +64,7 @@ var value = (0, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$cra
 console.log(value);
 console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["topValue"]);
 __turbopack_async_result__();
-} catch(e) { __turbopack_async_result__(e); } }), false);}),
+} catch(e) { __turbopack_async_result__(e); } }, false);}),
 ]);
 
 //# sourceMappingURL=1do3_crates_turbopack-tests_tests_snapshot_basic_async_promise_compat_input_1zt3g7d._.js.map

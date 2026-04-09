@@ -169,22 +169,6 @@ pub async fn get_browser_runtime_code(
 
     code.push_code(&*shared_runtime_utils_code.await?);
 
-    // Include the generator-to-promise bridge when native async/await is not supported.
-    if !*environment
-        .runtime_versions()
-        .supports_async_functions()
-        .await?
-    {
-        code.push_code(
-            &*embed_static_code(
-                asset_context,
-                rcstr!("shared/runtime/async-to-promise.ts"),
-                generate_source_map,
-            )
-            .await?,
-        );
-    }
-
     for runtime_code in runtime_base_code {
         code.push_code(
             &*embed_static_code(asset_context, runtime_code.into(), generate_source_map).await?,

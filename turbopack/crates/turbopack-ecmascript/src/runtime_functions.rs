@@ -93,11 +93,10 @@ pub const TURBOPACK_REQUIRE_REAL: &TurbopackRuntimeFunctionShortcut = make_short
 pub const TURBOPACK_WASM: &TurbopackRuntimeFunctionShortcut = make_shortcut!("w");
 pub const TURBOPACK_WASM_MODULE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("u");
 pub const TURBOPACK_GLOBAL: &TurbopackRuntimeFunctionShortcut = make_shortcut!("g");
-pub const TURBOPACK_ASYNC_TO_PROMISE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("h");
 
 /// Adding an entry to this list will automatically ensure that `__turbopack_XXX__` can be called
 /// from user code (by inserting a replacement into free_var_references)
-pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 24] = [
+pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 23] = [
     ("__turbopack_require__", TURBOPACK_REQUIRE),
     ("__turbopack_module_context__", TURBOPACK_MODULE_CONTEXT),
     ("__turbopack_import__", TURBOPACK_IMPORT),
@@ -130,5 +129,4 @@ pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctio
     ),
     ("__turbopack_wasm__", TURBOPACK_WASM),
     ("__turbopack_wasm_module__", TURBOPACK_WASM_MODULE),
-    ("__turbopack_async_to_promise__", TURBOPACK_ASYNC_TO_PROMISE),
 ];

@@ -112,10 +112,6 @@ type ExternalImport = (
   id: DependencySpecifier
 ) => Promise<Exports | EsmNamespaceObject>
 
-type AsyncToPromise = (
-  fn: (...args: any[]) => Generator<any, void, any>
-) => (...args: any[]) => void
-
 interface Module {
   exports: Function | Exports | Promise<Exports> | AsyncModulePromise
   error: Error | undefined
@@ -158,5 +154,4 @@ interface TurbopackBaseContext<M> {
   y: ExternalImport
   z: CommonJsRequire
   g: typeof globalThis
-  h: AsyncToPromise
 }

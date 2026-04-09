@@ -27,7 +27,7 @@ use crate::{
     EcmascriptModuleContent,
     chunk::{chunk_type::EcmascriptChunkType, placeable::EcmascriptChunkPlaceable},
     references::async_module::{AsyncModuleOptions, OptionAsyncModuleOptions},
-    runtime_functions::{TURBOPACK_ASYNC_MODULE, TURBOPACK_ASYNC_TO_PROMISE},
+    runtime_functions::TURBOPACK_ASYNC_MODULE,
     utils::StringifyJs,
 };
 
@@ -169,25 +169,29 @@ impl EcmascriptChunkItemContent {
 
         if self.options.async_module.is_some() {
             write!(code, "return {TURBOPACK_ASYNC_MODULE}")?;
+            // When async functions are not supported, do NOT use `async function` in the
+            // wrapper. The inner module code has already been transpiled by SWC's preset-env
+            // (await → yield via _async_to_generator + _ts_generator), so the outer wrapper
+            // just needs to be a regular function call. The asyncModule runtime
+            // (`__turbopack_context__.a`) calls body() synchronously and uses asyncResult()
+            // callback for completion signaling — it does not depend on the wrapper being
+            // an async function.
             match (
                 self.options.supports_async_functions,
                 self.options.supports_arrow_functions,
             ) {
                 (true, true) => code += "(async (",
                 (true, false) => code += "(async function(",
-                // When async functions are not supported, SWC transpiles the inner
-                // module code (await -> yield), but the outer wrapper string is emitted
-                // directly by Turbopack and is NOT processed by SWC. We wrap with
-                // __turbopack_context__.h() which is a generator-to-promise bridge.
-                (false, _) => write!(code, "({}(function*(", TURBOPACK_ASYNC_TO_PROMISE).unwrap(),
+                (false, true) => code += "((",
+                (false, false) => code += "(function(",
             }
             code += "__turbopack_handle_async_dependencies__, __turbopack_async_result__";
             match (
                 self.options.supports_async_functions,
                 self.options.supports_arrow_functions,
             ) {
-                (true, true) => code += ") => {",
-                (true, false) | (false, _) => code += "){",
+                (true, true) | (false, true) => code += ") => {",
+                (true, false) | (false, false) => code += "){",
             }
             code += " try {\n";
         }
@@ -213,12 +217,7 @@ impl EcmascriptChunkItemContent {
             write!(
                 code,
                 "__turbopack_async_result__();\n}} catch(e) {{ __turbopack_async_result__(e); }} \
-                 }}{}, {});",
-                if self.options.supports_async_functions {
-                    ""
-                } else {
-                    ")"
-                },
+                 }}, {});",
                 opts.has_top_level_await
             )?;
         }
