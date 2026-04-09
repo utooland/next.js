@@ -4,7 +4,7 @@ import './side-effect.js'
 
 // This module has top-level await via its async_module dependency,
 // which triggers Turbopack's async module wrapper.
-// The wrapper should use function* + __turbopack_context__.h() when
+// The wrapper should use a regular function (not async function) when
 // targeting environments without native async support (e.g. chrome 41).
 const value = test()
 console.log(value)

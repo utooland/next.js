@@ -244,8 +244,8 @@ pub struct EcmascriptChunkItemOptions {
     /// Whether the environment supports arrow functions (e.g. when targeting modern browsers).
     pub supports_arrow_functions: bool,
     /// Whether the environment supports async functions (async/await).
-    /// When false, Turbopack wraps async module factories with a generator-to-promise
-    /// bridge (`__turbopack_context__.h`) instead of using native `async function`.
+    /// When false, Turbopack emits a regular `function` wrapper instead of
+    /// `async function`. SWC preset-env handles transpiling the inner code.
     pub supports_async_functions: bool,
     pub placeholder_for_future_extensions: (),
 }
