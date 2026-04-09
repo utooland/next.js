@@ -141,11 +141,6 @@ impl EcmascriptChunkPlaceable for StaticUrlJsModule {
                     .runtime_versions()
                     .supports_arrow_functions()
                     .await?,
-                supports_async_functions: *chunking_context
-                    .environment()
-                    .runtime_versions()
-                    .supports_async_functions()
-                    .await?,
                 ..Default::default()
             },
             ..Default::default()

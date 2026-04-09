@@ -168,7 +168,6 @@ pub async fn get_browser_runtime_code(
     )?;
 
     code.push_code(&*shared_runtime_utils_code.await?);
-
     for runtime_code in runtime_base_code {
         code.push_code(
             &*embed_static_code(asset_context, runtime_code.into(), generate_source_map).await?,

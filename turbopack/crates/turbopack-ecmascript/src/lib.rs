@@ -65,8 +65,8 @@ use swc_core::{
     },
     ecma::{
         ast::{
-            self, CallExpr, Callee, Decl, EmptyStmt, Expr, ExprStmt, Id, Ident, ModuleItem,
-            Program, Script, SourceMapperExt, Stmt,
+            self, AwaitExpr, CallExpr, Callee, Decl, EmptyStmt, Expr, ExprStmt, Id, Ident,
+            ModuleItem, Program, Script, SourceMapperExt, Stmt, YieldExpr,
         },
         codegen::{Emitter, text_writer::JsWriter},
         utils::StmtLikeInjector,
@@ -1690,6 +1690,21 @@ async fn process_parse_result(
     options: Option<&EcmascriptModuleContentOptions>,
     scope_hoisting_options: Option<ScopeHoistingOptions<'_>>,
 ) -> Result<CodeGenResult> {
+    // When the target environment doesn't support async/await, we need to convert
+    // all AwaitExpr AST nodes to YieldExpr before emission. This handles both user
+    // TLA and code-gen-injected await (from async_module.rs) at the AST level,
+    // avoiding false positives from naive string replacement on inner_code.
+    let replace_await_with_yield = if let Some(opts) = options {
+        !*opts
+            .chunking_context
+            .environment()
+            .runtime_versions()
+            .supports_async_functions()
+            .await?
+    } else {
+        false
+    };
+
     with_consumed_parse_result(
         parsed,
         async |mut program, source_map, globals, eval_context, comments| -> Result<CodeGenResult> {
@@ -1804,6 +1819,13 @@ async fn process_parse_result(
             };
 
             process_content_with_code_gens(&mut program, globals, &mut code_gens);
+
+            // Convert AwaitExpr → YieldExpr at the AST level for environments
+            // without native async/await. Must run after code gen stmts are merged
+            // (which may inject AwaitExpr nodes from async_module.rs).
+            if replace_await_with_yield {
+                program.visit_mut_with(&mut AwaitToYield);
+            }
 
             for comments in code_gens.iter_mut().flat_map(|cg| cg.comments.as_mut()) {
                 let leading = Arc::unwrap_or_clone(take(&mut comments.leading));
@@ -2133,6 +2155,44 @@ async fn emit_content(
         additional_ids,
     }
     .cell())
+}
+
+/// AST visitor that converts all `AwaitExpr` nodes into `YieldExpr` nodes.
+///
+/// Used for environments that don't support native async/await. The containing
+/// module wrapper is changed from `async function` to `function*` (generator),
+/// so `await` must become `yield`. Operating at the AST level avoids false
+/// positives from string replacement (e.g. `"await "` inside string literals).
+struct AwaitToYield;
+
+impl VisitMut for AwaitToYield {
+    fn visit_mut_expr(&mut self, expr: &mut Expr) {
+        // Recurse first so nested expressions are handled
+        expr.visit_mut_children_with(self);
+
+        if let Expr::Await(AwaitExpr { span, arg }) = expr {
+            *expr = Expr::Yield(YieldExpr {
+                span: *span,
+                delegate: false,
+                arg: Some(arg.take()),
+            });
+        }
+    }
+
+    // Defense-in-depth: don't descend into nested async functions.
+    // At this pipeline stage SWC has already converted their `await` to
+    // `yield`, but guard against edge cases where that doesn't hold.
+    fn visit_mut_function(&mut self, f: &mut ast::Function) {
+        if !f.is_async {
+            f.visit_mut_children_with(self);
+        }
+    }
+
+    fn visit_mut_arrow_expr(&mut self, f: &mut ast::ArrowExpr) {
+        if !f.is_async {
+            f.visit_mut_children_with(self);
+        }
+    }
 }
 
 #[instrument(level = Level::TRACE, skip_all, name = "apply code generation")]

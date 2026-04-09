@@ -203,13 +203,10 @@ impl EcmascriptChunkItemContent {
                 //
                 // Strategy:
                 //   1. Wrap body in `function*` (generator) instead of `async function`
-                //   2. Replace remaining `await` → `yield` in inner code (both 5 bytes, preserving
-                //      source map offsets)
+                //   2. Convert remaining `AwaitExpr` → `YieldExpr` at the AST level (done by the
+                //      `AwaitToYield` visitor in lib.rs, after code gen stmts are merged but before
+                //      emission)
                 //   3. Drive the generator with an inline Promise-based runner
-                //
-                // After SWC processing, the only `await` tokens left are TLA/module-level
-                // — everything inside user `async function` declarations has already been
-                // transpiled to `_async_to_generator(function*() { yield ... })`.
                 code += "(";
                 code += GENERATOR_RUNNER;
                 code += "(function*(";
@@ -244,15 +241,7 @@ impl EcmascriptChunkItemContent {
             RewriteSourcePath::None => self.source_map.clone(),
         };
 
-        if self.options.async_module.is_some() && !self.options.supports_async_functions {
-            // Replace `await` → `yield` in inner code (see comment above for rationale).
-            let inner_str = self.inner_code.to_str()?;
-            let replaced = inner_str.replace("await ", "yield ");
-            let inner_code = Rope::from(replaced);
-            code.push_source(&inner_code, source_map);
-        } else {
-            code.push_source(&self.inner_code, source_map);
-        }
+        code.push_source(&self.inner_code, source_map);
 
         if let Some(opts) = &self.options.async_module {
             write!(

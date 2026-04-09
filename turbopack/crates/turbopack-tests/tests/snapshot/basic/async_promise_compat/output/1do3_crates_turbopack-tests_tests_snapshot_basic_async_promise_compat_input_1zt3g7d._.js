@@ -56,7 +56,7 @@ var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
 ;
 ;
 ;
-// This module has top-level yield via its async_module dependency,
+// This module has top-level await via its async_module dependency,
 // which triggers Turbopack's async module wrapper.
 // The wrapper should use a regular function (not async function) when
 // targeting environments without native async support (e.g. chrome 41).
