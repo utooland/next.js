@@ -31,6 +31,31 @@ use crate::{
     utils::StringifyJs,
 };
 
+/// Inline Promise-based generator runner for environments without native async/await.
+///
+/// Equivalent to the readable form:
+/// ```js
+/// function runner(generatorFn) {
+///   return function() {
+///     var gen = generatorFn.apply(this, arguments);
+///     function step(result) {
+///       if (result.done) return;
+///       return Promise.resolve(result.value).then(
+///         function(value) { return step(gen.next(value)); },
+///         function(error) { return step(gen.throw(error)); }
+///       );
+///     }
+///     return step(gen.next());
+///   };
+/// }
+/// ```
+const GENERATOR_RUNNER: &str = "(function(__gf){return function(){var __g=\
+    __gf.apply(this,arguments);function __s(__r){\
+    if(__r.done)return;return Promise.resolve(__r.value).then(\
+    function(__v){return __s(__g.next(__v))},\
+    function(__e){return __s(__g.throw(__e))})\
+    }return __s(__g.next())}})";
+
 #[derive(
     Debug,
     Clone,
@@ -169,29 +194,40 @@ impl EcmascriptChunkItemContent {
 
         if self.options.async_module.is_some() {
             write!(code, "return {TURBOPACK_ASYNC_MODULE}")?;
-            // When async functions are not supported, do NOT use `async function` in the
-            // wrapper. The inner module code has already been transpiled by SWC's preset-env
-            // (await → yield via _async_to_generator + _ts_generator), so the outer wrapper
-            // just needs to be a regular function call. The asyncModule runtime
-            // (`__turbopack_context__.a`) calls body() synchronously and uses asyncResult()
-            // callback for completion signaling — it does not depend on the wrapper being
-            // an async function.
-            match (
-                self.options.supports_async_functions,
-                self.options.supports_arrow_functions,
-            ) {
-                (true, true) => code += "(async (",
-                (true, false) => code += "(async function(",
-                (false, true) => code += "((",
-                (false, false) => code += "(function(",
+
+            let needs_generator_runner =
+                self.options.async_module.is_some() && !self.options.supports_async_functions;
+
+            if needs_generator_runner {
+                // Environment does NOT support async/await. SWC's preset-env transpiles
+                // `await` inside `async function` declarations, but NOT top-level await
+                // (TLA) or await injected by Turbopack's async_module code generation
+                // (these are module-level, not inside an `async function`).
+                //
+                // Strategy:
+                //   1. Wrap body in `function*` (generator) instead of `async function`
+                //   2. Replace remaining `await` → `yield` in inner code (both 5 bytes,
+                //      preserving source map offsets)
+                //   3. Drive the generator with an inline Promise-based runner
+                //
+                // After SWC processing, the only `await` tokens left are TLA/module-level
+                // — everything inside user `async function` declarations has already been
+                // transpiled to `_async_to_generator(function*() { yield ... })`.
+                code += "(";
+                code += GENERATOR_RUNNER;
+                code += "(function*(";
+            } else if self.options.supports_arrow_functions {
+                code += "(async (";
+            } else {
+                code += "(async function(";
             }
+
             code += "__turbopack_handle_async_dependencies__, __turbopack_async_result__";
-            match (
-                self.options.supports_async_functions,
-                self.options.supports_arrow_functions,
-            ) {
-                (true, true) | (false, true) => code += ") => {",
-                (true, false) | (false, false) => code += "){",
+
+            if !needs_generator_runner && self.options.supports_arrow_functions {
+                code += ") => {";
+            } else {
+                code += "){";
             }
             code += " try {\n";
         }
@@ -211,7 +247,15 @@ impl EcmascriptChunkItemContent {
             RewriteSourcePath::None => self.source_map.clone(),
         };
 
-        code.push_source(&self.inner_code, source_map);
+        if self.options.async_module.is_some() && !self.options.supports_async_functions {
+            // Replace `await` → `yield` in inner code (see comment above for rationale).
+            let inner_str = self.inner_code.to_str()?;
+            let replaced = inner_str.replace("await ", "yield ");
+            let inner_code = Rope::from(replaced);
+            code.push_source(&inner_code, source_map);
+        } else {
+            code.push_source(&self.inner_code, source_map);
+        }
 
         if let Some(opts) = &self.options.async_module {
             write!(
@@ -244,8 +288,10 @@ pub struct EcmascriptChunkItemOptions {
     /// Whether the environment supports arrow functions (e.g. when targeting modern browsers).
     pub supports_arrow_functions: bool,
     /// Whether the environment supports async functions (async/await).
-    /// When false, Turbopack emits a regular `function` wrapper instead of
-    /// `async function`. SWC preset-env handles transpiling the inner code.
+    /// When false, Turbopack emits a `function*` wrapper with an inline generator runner
+    /// and replaces remaining `await` with `yield` in the inner code. SWC preset-env
+    /// handles transpiling `await` inside `async function` declarations, but NOT top-level
+    /// await or Turbopack's async_module code generation await.
     pub supports_async_functions: bool,
     pub placeholder_for_future_extensions: (),
 }

@@ -18,7 +18,7 @@ function test() {
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/async_module.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
+return __turbopack_context__.a((function(__gf){return function(){var __g=__gf.apply(this,arguments);function __s(__r){if(__r.done)return;return Promise.resolve(__r.value).then(function(__v){return __s(__g.next(__v))},function(__e){return __s(__g.throw(__e))})}return __s(__g.next())}})(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
 __turbopack_context__.s([
     "a",
     ()=>topValue,
@@ -26,7 +26,7 @@ __turbopack_context__.s([
     "topValue",
     ()=>topValue
 ]);
-var topValue = await Promise.resolve('top level async');
+var topValue = yield Promise.resolve('top level async');
 ;
 ;
 ;
@@ -35,15 +35,15 @@ __turbopack_async_result__();
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/side-effect.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
-await Promise.resolve('side effect');
+return __turbopack_context__.a((function(__gf){return function(){var __g=__gf.apply(this,arguments);function __s(__r){if(__r.done)return;return Promise.resolve(__r.value).then(function(__v){return __s(__g.next(__v))},function(__e){return __s(__g.throw(__e))})}return __s(__g.next())}})(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
+yield Promise.resolve('side effect');
 console.log('side effect executed');
 __turbopack_async_result__();
 } catch(e) { __turbopack_async_result__(e); } }, true);}),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/index.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
+return __turbopack_context__.a((function(__gf){return function(){var __g=__gf.apply(this,arguments);function __s(__r){if(__r.done)return;return Promise.resolve(__r.value).then(function(__v){return __s(__g.next(__v))},function(__e){return __s(__g.throw(__e))})}return __s(__g.next())}})(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__){ try {
 __turbopack_context__.s([]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/util.js [test] (ecmascript) <internal part 0>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/async_module.js [test] (ecmascript) <internal part 0>");
@@ -52,13 +52,13 @@ var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
     __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__,
     __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__
 ]);
-[__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__] = __turbopack_async_dependencies__.then ? (await __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
+[__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
 ;
 ;
 ;
-// This module has top-level await via its async_module dependency,
+// This module has top-level yield via its async_module dependency,
 // which triggers Turbopack's async module wrapper.
-// The wrapper should use function* + __turbopack_context__.h() when
+// The wrapper should use a regular function (not async function) when
 // targeting environments without native async support (e.g. chrome 41).
 var value = (0, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_promise_compat$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["test"])();
 console.log(value);
