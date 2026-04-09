@@ -49,12 +49,10 @@ use crate::{
 ///   };
 /// }
 /// ```
-const GENERATOR_RUNNER: &str = "(function(__gf){return function(){var __g=\
-    __gf.apply(this,arguments);function __s(__r){\
-    if(__r.done)return;return Promise.resolve(__r.value).then(\
-    function(__v){return __s(__g.next(__v))},\
-    function(__e){return __s(__g.throw(__e))})\
-    }return __s(__g.next())}})";
+const GENERATOR_RUNNER: &str =
+    "(function(__gf){return function(){var __g=__gf.apply(this,arguments);function \
+     __s(__r){if(__r.done)return;return Promise.resolve(__r.value).then(function(__v){return \
+     __s(__g.next(__v))},function(__e){return __s(__g.throw(__e))})}return __s(__g.next())}})";
 
 #[derive(
     Debug,
@@ -206,8 +204,8 @@ impl EcmascriptChunkItemContent {
                 //
                 // Strategy:
                 //   1. Wrap body in `function*` (generator) instead of `async function`
-                //   2. Replace remaining `await` → `yield` in inner code (both 5 bytes,
-                //      preserving source map offsets)
+                //   2. Replace remaining `await` → `yield` in inner code (both 5 bytes, preserving
+                //      source map offsets)
                 //   3. Drive the generator with an inline Promise-based runner
                 //
                 // After SWC processing, the only `await` tokens left are TLA/module-level
