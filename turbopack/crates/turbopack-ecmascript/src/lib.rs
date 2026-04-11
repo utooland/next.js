@@ -48,6 +48,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use await_to_yield::AwaitToYield;
 use bincode::{Decode, Encode};
 use either::Either;
 use itertools::Itertools;
@@ -2157,8 +2158,6 @@ async fn emit_content(
     }
     .cell())
 }
-
-use await_to_yield::AwaitToYield;
 
 #[instrument(level = Level::TRACE, skip_all, name = "apply code generation")]
 fn process_content_with_code_gens(
