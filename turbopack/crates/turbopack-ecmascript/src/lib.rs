@@ -10,6 +10,7 @@
 pub mod analyzer;
 pub mod annotations;
 pub mod async_chunk;
+mod await_to_yield;
 pub mod bytes_source_transform;
 pub mod chunk;
 pub mod code_gen;
@@ -65,8 +66,8 @@ use swc_core::{
     },
     ecma::{
         ast::{
-            self, AwaitExpr, CallExpr, Callee, Decl, EmptyStmt, Expr, ExprStmt, Id, Ident,
-            ModuleItem, Program, Script, SourceMapperExt, Stmt, YieldExpr,
+            self, CallExpr, Callee, Decl, EmptyStmt, Expr, ExprStmt, Id, Ident, ModuleItem,
+            Program, Script, SourceMapperExt, Stmt,
         },
         codegen::{Emitter, text_writer::JsWriter},
         utils::StmtLikeInjector,
@@ -2157,43 +2158,7 @@ async fn emit_content(
     .cell())
 }
 
-/// AST visitor that converts all `AwaitExpr` nodes into `YieldExpr` nodes.
-///
-/// Used for environments that don't support native async/await. The containing
-/// module wrapper is changed from `async function` to `function*` (generator),
-/// so `await` must become `yield`. Operating at the AST level avoids false
-/// positives from string replacement (e.g. `"await "` inside string literals).
-struct AwaitToYield;
-
-impl VisitMut for AwaitToYield {
-    fn visit_mut_expr(&mut self, expr: &mut Expr) {
-        // Recurse first so nested expressions are handled
-        expr.visit_mut_children_with(self);
-
-        if let Expr::Await(AwaitExpr { span, arg }) = expr {
-            *expr = Expr::Yield(YieldExpr {
-                span: *span,
-                delegate: false,
-                arg: Some(arg.take()),
-            });
-        }
-    }
-
-    // Defense-in-depth: don't descend into nested async functions.
-    // At this pipeline stage SWC has already converted their `await` to
-    // `yield`, but guard against edge cases where that doesn't hold.
-    fn visit_mut_function(&mut self, f: &mut ast::Function) {
-        if !f.is_async {
-            f.visit_mut_children_with(self);
-        }
-    }
-
-    fn visit_mut_arrow_expr(&mut self, f: &mut ast::ArrowExpr) {
-        if !f.is_async {
-            f.visit_mut_children_with(self);
-        }
-    }
-}
+use await_to_yield::AwaitToYield;
 
 #[instrument(level = Level::TRACE, skip_all, name = "apply code generation")]
 fn process_content_with_code_gens(
