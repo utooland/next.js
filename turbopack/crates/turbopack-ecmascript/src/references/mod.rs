@@ -1465,12 +1465,18 @@ async fn analyze_ecmascript_module_internal(
                         continue;
                     }
 
+                    let attributes = eval_context.imports.get_attributes(span);
+
+                    // Keep ignored runtime bindings untouched so they can execute as-is at runtime
+                    // instead of being rewritten to __turbopack_context__ members.
+                    let is_ignored_runtime_binding = attributes.ignore && &*var == "require";
+                    if is_ignored_runtime_binding {
+                        continue;
+                    }
+
                     // FreeVar("require") might be turbopackIgnore-d
                     let linked_value = analysis_state
-                        .link_value(
-                            JsValue::FreeVar(var.clone()),
-                            eval_context.imports.get_attributes(span),
-                        )
+                        .link_value(JsValue::FreeVar(var.clone()), attributes)
                         .await?;
 
                     // Call handle_free_var if the value is not unknown, or if it might be in
