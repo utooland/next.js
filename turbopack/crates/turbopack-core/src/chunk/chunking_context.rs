@@ -54,7 +54,7 @@ pub enum MangleType {
     Deterministic,
 }
 
-#[derive(Debug, PartialEq, Eq, Encode, Decode, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Encode, Decode, Hash, Clone, Deserialize)]
 pub struct MinifyOptions(
     #[bincode(with = "turbo_bincode::serde_self_describing")] SwcMinifyOptions,
 );
@@ -117,7 +117,7 @@ impl DeterministicHash for MinifyOptions {
 }
 
 #[turbo_tasks::value(shared)]
-#[derive(Debug, TaskInput, Clone, Hash, DeterministicHash)]
+#[derive(Debug, TaskInput, Clone, Hash, DeterministicHash, Deserialize)]
 pub enum MinifyType {
     Minify(Box<MinifyOptions>),
     NoMinify,
