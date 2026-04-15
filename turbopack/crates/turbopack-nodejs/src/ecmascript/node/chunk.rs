@@ -48,6 +48,13 @@ impl EcmascriptBuildNodeChunk {
             Vc::upcast(self),
         ))
     }
+
+    /// Returns the inner [`EcmascriptChunk`] for source-code-based content
+    /// hashing.
+    #[turbo_tasks::function]
+    pub fn ecmascript_chunk(&self) -> Vc<EcmascriptChunk> {
+        *self.chunk
+    }
 }
 
 fn modifier() -> RcStr {

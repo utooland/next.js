@@ -5,7 +5,7 @@ use turbo_tasks::{
     FxIndexMap, ResolvedVc, TryJoinIterExt, Upcast, ValueToString, ValueToStringRef, Vc,
 };
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::{HashAlgorithm, hash_xxh3_hash64};
+use turbo_tasks_hash::{HashAlgorithm, Xxh3Hash64Hasher, encode_hex, hash_xxh3_hash64};
 use turbopack_core::{
     asset::{Asset, AssetContent, no_hash_salt},
     chunk::{
@@ -27,7 +27,8 @@ use turbopack_core::{
     },
     output::{OutputAsset, OutputAssets},
     utils::{
-        match_content_hash_placeholder, replace_content_hash_placeholder, replace_name_placeholder,
+        match_content_hash_placeholder, match_name_placeholder, replace_content_hash_placeholder,
+        replace_name_placeholder,
     },
 };
 use turbopack_ecmascript::{
@@ -168,6 +169,11 @@ impl NodeJsChunkingContextBuilder {
         self
     }
 
+    pub fn chunk_filename(mut self, chunk_filename: RcStr) -> Self {
+        self.chunking_context.chunk_filename = Some(chunk_filename);
+        self
+    }
+
     pub fn asset_content_hashing(mut self, content_hashing: ContentHashing) -> Self {
         self.chunking_context.asset_content_hashing = content_hashing;
         self
@@ -248,8 +254,10 @@ pub struct NodeJsChunkingContext {
     debug_ids: bool,
     /// Global variable names to forward to workers (e.g. NEXT_DEPLOYMENT_ID)
     worker_forwarded_globals: Vec<RcStr>,
-    /// Chunk filename template (e.g. "[name].js"). Applied to all chunks.
+    /// Entry chunk filename template (e.g. "[name].js").
     filename: Option<RcStr>,
+    /// Non-entry chunk filename template (e.g. "[name].[contenthash:8].js").
+    chunk_filename: Option<RcStr>,
     /// Content hashing for asset filenames.
     asset_content_hashing: ContentHashing,
     /// Salt mixed into chunk and asset content hashes. Empty string means no salt.
@@ -299,6 +307,7 @@ impl NodeJsChunkingContext {
                 debug_ids: false,
                 worker_forwarded_globals: vec![],
                 filename: None,
+                chunk_filename: None,
                 asset_content_hashing: ContentHashing::Direct { length: 13 },
                 hash_salt: ResolvedVc::cell(RcStr::default()),
             },
@@ -457,26 +466,48 @@ impl ChunkingContext for NodeJsChunkingContext {
             .await?
             .to_string();
 
-        let name = match &self.filename {
+        // Determine the template and hash strategy based on chunk type.
+        let resolved_asset = match asset {
+            Some(a) => Some(a.to_resolved().await?),
+            None => None,
+        };
+
+        let name = match &self.chunk_filename {
             Some(template) => {
                 let mut result = replace_name_placeholder(template, &output_name);
 
                 if match_content_hash_placeholder(&result) {
-                    if let Some(asset) = asset {
-                        let content = asset.content().await?;
-                        if let AssetContent::File(file) = &*content {
-                            let content_hash = hash_xxh3_hash64(&file.await?);
-                            result = replace_content_hash_placeholder(
-                                &result,
-                                &format!("{content_hash:016x}"),
-                            );
-                        } else {
-                            bail!(
-                                "chunk_path requires an asset with file content when content \
-                                 hashing is enabled"
-                            );
+                    let content_hash = if let Some(build_node_chunk) = resolved_asset
+                        .as_ref()
+                        .and_then(|a| ResolvedVc::try_downcast_type::<EcmascriptBuildNodeChunk>(*a))
+                    {
+                        // Hash source code instead of final output to avoid the
+                        // turbo_tasks cycle: chunk_path() → asset.content() → ... →
+                        // chunk_path(). Source code doesn't depend on chunk path.
+                        let chunk_items = build_node_chunk
+                            .ecmascript_chunk()
+                            .chunk_content()
+                            .await?
+                            .chunk_item_code_and_ids()
+                            .await?;
+
+                        let mut hasher = Xxh3Hash64Hasher::new();
+                        hasher.write_ref(&self.minify_type);
+                        hasher.write_value(chunk_items.len());
+                        for item in &chunk_items {
+                            for (module_id, code) in item {
+                                hasher.write_value((module_id, code.source_code()));
+                            }
                         }
-                    }
+                        let hash = hasher.finish();
+                        encode_hex(hash)
+                    } else {
+                        // Fallback for non-module chunks (e.g. runtime):
+                        // use ident-based hash to avoid the content cycle.
+                        let ident_hash = hash_xxh3_hash64(output_name.as_bytes());
+                        format!("{ident_hash:016x}")
+                    };
+                    result = replace_content_hash_placeholder(&result, &content_hash);
                 }
 
                 if !result.ends_with(extension.as_str()) {
@@ -671,6 +702,37 @@ impl ChunkingContext for NodeJsChunkingContext {
                         .context("entry_chunk_group entries must be evaluatable")
                 })
                 .collect::<Result<Vec<_>>>()?;
+
+            // Apply filename template if configured (e.g. "[name].[contenthash:8].js").
+            let path = if let Some(ref filename_tpl) = self.await?.filename {
+                let file_name = path.file_name();
+                let basename = file_name.strip_suffix(".js").unwrap_or(file_name);
+                let mut name = filename_tpl.to_string();
+                if match_name_placeholder(&name) {
+                    name = replace_name_placeholder(&name, basename);
+                }
+                if match_content_hash_placeholder(&name) {
+                    // Hash sub-chunk paths + evaluatable idents as a
+                    // deterministic proxy for entry content.
+                    let mut hasher = Xxh3Hash64Hasher::new();
+                    for chunk in &other_chunks {
+                        let p = chunk.path().to_string().await?;
+                        hasher.write_ref(&*p);
+                    }
+                    for ea in &evaluatable_assets {
+                        let ident_str = ea.ident().to_string().await?;
+                        hasher.write_ref(&*ident_str);
+                    }
+                    let hash = hasher.finish();
+                    name = replace_content_hash_placeholder(&name, &encode_hex(hash));
+                }
+                if !name.ends_with(".js") {
+                    name.push_str(".js");
+                }
+                path.parent().join(&name)?
+            } else {
+                path
+            };
 
             let asset = ResolvedVc::upcast(
                 EcmascriptBuildNodeEntryChunk::new(
