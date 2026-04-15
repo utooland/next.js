@@ -1,8 +1,5 @@
-use std::{cmp::min, sync::LazyLock};
-
 use anyhow::{Context, Result, bail};
 use qstring::QString;
-use regex::Regex;
 use tracing::Instrument;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{FxIndexMap, ResolvedVc, TaskInput, TryJoinIterExt, Upcast, ValueToString, Vc};
@@ -28,6 +25,10 @@ use turbopack_core::{
         chunk_group_info::ChunkGroup,
     },
     output::{OutputAsset, OutputAssets},
+    utils::{
+        match_content_hash_placeholder, match_name_placeholder, replace_content_hash_placeholder,
+        replace_name_placeholder,
+    },
 };
 use turbopack_css::chunk::{CssChunk, source_map::CssChunkSourceMapAsset};
 use turbopack_ecmascript::{
@@ -1129,51 +1130,4 @@ struct ChunkPathInfo {
     root_path: FileSystemPath,
     chunk_root_path: FileSystemPath,
     chunk_content_hashing: Option<ContentHashing>,
-}
-
-static NAME_PLACEHOLDER_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[name\]").unwrap());
-
-pub fn match_name_placeholder(s: &str) -> bool {
-    NAME_PLACEHOLDER_REGEX.is_match(s)
-}
-
-pub fn replace_name_placeholder(s: &str, name: &str) -> String {
-    NAME_PLACEHOLDER_REGEX
-        .replace_all(s, |caps: &regex::Captures| {
-            let m = caps.get(0).unwrap();
-            let after = &s[m.end()..];
-            // If the name already ends with an extension (e.g. "foo.js") and the template
-            // text right after [name] starts with that same extension (e.g. ".js"), strip
-            // the extension from the name to avoid duplication like "foo.js.js".
-            if let Some(dot_pos) = name.rfind('.') {
-                let ext = &name[dot_pos..]; // e.g. ".js"
-                if after.starts_with(ext) {
-                    return name[..dot_pos].to_string();
-                }
-            }
-            name.to_string()
-        })
-        .to_string()
-}
-
-static CONTENT_HASH_PLACEHOLDER_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[contenthash(?::(?P<len>\d+))?\]").unwrap());
-
-pub fn match_content_hash_placeholder(s: &str) -> bool {
-    CONTENT_HASH_PLACEHOLDER_REGEX.is_match(s)
-}
-
-pub fn replace_content_hash_placeholder(s: &str, hash: &str) -> String {
-    CONTENT_HASH_PLACEHOLDER_REGEX
-        .replace_all(s, |caps: &regex::Captures| {
-            let len = caps.name("len").map(|m| m.as_str()).unwrap_or("");
-            let len = if len.is_empty() {
-                hash.len()
-            } else {
-                len.parse().unwrap_or(hash.len())
-            };
-            let len = min(len, hash.len());
-            hash[..len].to_string()
-        })
-        .to_string()
 }

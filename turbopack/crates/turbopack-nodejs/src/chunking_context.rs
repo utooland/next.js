@@ -5,7 +5,7 @@ use turbo_tasks::{
     FxIndexMap, ResolvedVc, TryJoinIterExt, Upcast, ValueToString, ValueToStringRef, Vc,
 };
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::HashAlgorithm;
+use turbo_tasks_hash::{HashAlgorithm, hash_xxh3_hash64};
 use turbopack_core::{
     asset::{Asset, AssetContent, no_hash_salt},
     chunk::{
@@ -26,6 +26,9 @@ use turbopack_core::{
         chunk_group_info::ChunkGroup,
     },
     output::{OutputAsset, OutputAssets},
+    utils::{
+        match_content_hash_placeholder, replace_content_hash_placeholder, replace_name_placeholder,
+    },
 };
 use turbopack_ecmascript::{
     async_chunk::module::AsyncLoaderModule,
@@ -160,6 +163,11 @@ impl NodeJsChunkingContextBuilder {
         self
     }
 
+    pub fn filename(mut self, filename: RcStr) -> Self {
+        self.chunking_context.filename = Some(filename);
+        self
+    }
+
     pub fn asset_content_hashing(mut self, content_hashing: ContentHashing) -> Self {
         self.chunking_context.asset_content_hashing = content_hashing;
         self
@@ -240,6 +248,8 @@ pub struct NodeJsChunkingContext {
     debug_ids: bool,
     /// Global variable names to forward to workers (e.g. NEXT_DEPLOYMENT_ID)
     worker_forwarded_globals: Vec<RcStr>,
+    /// Chunk filename template (e.g. "[name].js"). Applied to all chunks.
+    filename: Option<RcStr>,
     /// Content hashing for asset filenames.
     asset_content_hashing: ContentHashing,
     /// Salt mixed into chunk and asset content hashes. Empty string means no salt.
@@ -288,6 +298,7 @@ impl NodeJsChunkingContext {
                 chunking_configs: Default::default(),
                 debug_ids: false,
                 worker_forwarded_globals: vec![],
+                filename: None,
                 asset_content_hashing: ContentHashing::Direct { length: 13 },
                 hash_salt: ResolvedVc::cell(RcStr::default()),
             },
@@ -435,19 +446,53 @@ impl ChunkingContext for NodeJsChunkingContext {
     #[turbo_tasks::function]
     async fn chunk_path(
         &self,
-        _asset: Option<Vc<Box<dyn Asset>>>,
+        asset: Option<Vc<Box<dyn Asset>>>,
         ident: Vc<AssetIdent>,
         prefix: Option<RcStr>,
         extension: RcStr,
     ) -> Result<Vc<FileSystemPath>> {
         let root_path = self.chunk_root_path.clone();
-        let mut name = ident
+        let output_name = ident
             .output_name(self.root_path.clone(), prefix, extension.clone())
             .await?
             .to_string();
-        if !name.ends_with(extension.as_str()) {
-            name.push_str(&extension);
-        }
+
+        let name = match &self.filename {
+            Some(template) => {
+                let mut result = replace_name_placeholder(template, &output_name);
+
+                if match_content_hash_placeholder(&result) {
+                    if let Some(asset) = asset {
+                        let content = asset.content().await?;
+                        if let AssetContent::File(file) = &*content {
+                            let content_hash = hash_xxh3_hash64(&file.await?);
+                            result = replace_content_hash_placeholder(
+                                &result,
+                                &format!("{content_hash:016x}"),
+                            );
+                        } else {
+                            bail!(
+                                "chunk_path requires an asset with file content when content \
+                                 hashing is enabled"
+                            );
+                        }
+                    }
+                }
+
+                if !result.ends_with(extension.as_str()) {
+                    result.push_str(&extension);
+                }
+                result
+            }
+            None => {
+                let mut result = output_name;
+                if !result.ends_with(extension.as_str()) {
+                    result.push_str(&extension);
+                }
+                result
+            }
+        };
+
         Ok(root_path.join(&name)?.cell())
     }
 
