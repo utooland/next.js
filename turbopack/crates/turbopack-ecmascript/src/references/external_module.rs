@@ -146,23 +146,14 @@ impl CachedExternalModule {
     }
 
     #[turbo_tasks::function]
-    pub fn content(&self, supports_async_functions: bool) -> Result<Vc<EcmascriptModuleContent>> {
+    pub fn content(&self) -> Result<Vc<EcmascriptModuleContent>> {
         let mut code = RopeBuilder::default();
-
-        // Use `yield` instead of `await` when targeting environments without
-        // native async/await support. The module wrapper will be `function*`
-        // instead of `async function`, so TLA must use `yield`.
-        let await_keyword = if supports_async_functions {
-            "await"
-        } else {
-            "yield"
-        };
 
         match self.external_type {
             CachedExternalType::EcmaScriptViaImport => {
                 writeln!(
                     code,
-                    "var mod = {await_keyword} {TURBOPACK_EXTERNAL_IMPORT}({});",
+                    "var mod = await {TURBOPACK_EXTERNAL_IMPORT}({});",
                     StringifyJs(&self.request())
                 )?;
             }
@@ -200,7 +191,7 @@ impl CachedExternalModule {
                     // First load the URL
                     writeln!(
                         code,
-                        "  {await_keyword} {TURBOPACK_LOAD_BY_URL}({});",
+                        "  await {TURBOPACK_LOAD_BY_URL}({});",
                         StringifyJs(url)
                     )?;
 
@@ -431,19 +422,10 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
         _module_graph: Vc<ModuleGraph>,
         async_module_info: Option<Vc<AsyncModuleInfo>>,
         _estimated: bool,
-    ) -> Result<Vc<EcmascriptChunkItemContent>> {
+    ) -> Vc<EcmascriptChunkItemContent> {
         let async_module_options = self.get_async_module().module_options(async_module_info);
-        let supports_async_functions = *chunking_context
-            .environment()
-            .runtime_versions()
-            .supports_async_functions()
-            .await?;
 
-        Ok(EcmascriptChunkItemContent::new(
-            self.content(supports_async_functions),
-            chunking_context,
-            async_module_options,
-        ))
+        EcmascriptChunkItemContent::new(self.content(), chunking_context, async_module_options)
     }
 
     #[turbo_tasks::function]

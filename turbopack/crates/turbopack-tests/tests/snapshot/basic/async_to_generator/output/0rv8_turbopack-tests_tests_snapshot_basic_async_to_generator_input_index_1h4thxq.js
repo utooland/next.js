@@ -1,6 +1,6 @@
 (globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push([
-    "output/0rv8_turbopack-tests_tests_snapshot_basic_async_promise_compat_input_index_1hxv7ln.js",
-    {"otherChunks":["output/1do3_crates_turbopack-tests_tests_snapshot_basic_async_promise_compat_input_1zt3g7d._.js"],"runtimeModuleIds":["[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_promise_compat/input/index.js [test] (ecmascript)"]}
+    "output/0rv8_turbopack-tests_tests_snapshot_basic_async_to_generator_input_index_1h4thxq.js",
+    {"otherChunks":["output/1do3_crates_turbopack-tests_tests_snapshot_basic_async_to_generator_input_0926zn2._.js"],"runtimeModuleIds":["[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/index.js [test] (ecmascript)"]}
 ]);
 (function(){
 if (!Array.isArray(globalThis["TURBOPACK"])) {
@@ -1896,4 +1896,4 @@ chunksToRegister.forEach(registerChunk);
 })();
 
 
-//# sourceMappingURL=0_9x_turbopack-tests_tests_snapshot_basic_async_promise_compat_input_index_1hxv7ln.js.map
+//# sourceMappingURL=0_9x_turbopack-tests_tests_snapshot_basic_async_to_generator_input_index_1h4thxq.js.map

@@ -2,7 +2,7 @@ use anyhow::Result;
 use bincode::{Decode, Encode};
 use swc_core::{
     common::DUMMY_SP,
-    ecma::ast::{ArrayLit, ArrayPat, Expr, Ident},
+    ecma::ast::{ArrayLit, ArrayPat, BlockStmt, Bool, Expr, Ident, Lit, Stmt},
     quote,
 };
 use turbo_rcstr::rcstr;
@@ -211,18 +211,21 @@ impl AsyncModule {
         references: Vc<ModuleReferences>,
         chunking_context: Vc<Box<dyn ChunkingContext>>,
     ) -> Result<CodeGeneration> {
+        let this = self.await?;
+
         if let Some(async_module_info) = async_module_info {
             let async_idents = self
                 .get_async_idents(async_module_info, references, chunking_context)
                 .await?;
 
+            let mut hoisted_stmts = Vec::new();
             if !async_idents.is_empty() {
                 let idents = async_idents
                     .iter()
                     .map(|(ident, ctxt)| Ident::new(ident.clone().into(), DUMMY_SP, **ctxt))
                     .collect::<Vec<_>>();
 
-                return Ok(CodeGeneration::hoisted_stmts([
+                hoisted_stmts.push(
                     CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__"),
                         quote!(
                             "var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__($deps);"
@@ -236,6 +239,8 @@ impl AsyncModule {
                             })
                         )
                     ),
+                );
+                hoisted_stmts.push(
                     CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__ await"),
                         quote!(
                             "($deps = __turbopack_async_dependencies__.then ? (await \
@@ -250,10 +255,68 @@ impl AsyncModule {
                                 type_ann: None,
                             }.into(),
                         )),
-                ].to_vec()));
+                );
             }
+
+            let has_top_level_await = this.has_top_level_await;
+
+            return Ok(CodeGeneration {
+                hoisted_stmts,
+                body_wrapper: Some(Box::new(move |body_stmts: Vec<Stmt>| {
+                    wrap_body_in_async_module(body_stmts, has_top_level_await)
+                })),
+                ..Default::default()
+            });
         }
 
         Ok(CodeGeneration::empty())
     }
+}
+
+/// Wraps a list of module body statements in the Turbopack async module closure:
+///
+/// ```js
+/// return __turbopack_context__.a(
+///   async (__turbopack_handle_async_dependencies__, __turbopack_async_result__) => {
+///     try {
+///       ...body_stmts...
+///       __turbopack_async_result__();
+///     } catch(e) {
+///       __turbopack_async_result__(e);
+///     }
+///   },
+///   has_top_level_await
+/// );
+/// ```
+fn wrap_body_in_async_module(body_stmts: Vec<Stmt>, has_top_level_await: bool) -> Vec<Stmt> {
+    // Build try { ...body... __turbopack_async_result__(); } catch(e) {
+    // __turbopack_async_result__(e); } Manual AST is needed because quote! can't splice a
+    // Vec<Stmt> into a block.
+    let mut try_body = body_stmts;
+    try_body.push(quote!("__turbopack_async_result__();" as Stmt));
+
+    // quote! template for try/catch, then inject body_stmts into the try block
+    let mut try_catch = quote!("try {} catch(e) { __turbopack_async_result__(e); }" as Stmt);
+    if let Stmt::Try(try_stmt) = &mut try_catch {
+        try_stmt.block.stmts = try_body;
+    }
+
+    // Create async function template via quote!, then inject our try/catch body
+    let mut handler = quote!(
+        "async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
+            as Expr
+    );
+    if let Expr::Fn(fn_expr) = &mut handler {
+        fn_expr.function.body = Some(BlockStmt {
+            span: DUMMY_SP,
+            stmts: vec![try_catch],
+            ctxt: Default::default(),
+        });
+    }
+
+    vec![quote!(
+        "return __turbopack_context__.a($handler, $tla);" as Stmt,
+        handler: Expr = handler,
+        tla: Expr = Expr::Lit(Lit::Bool(Bool { span: DUMMY_SP, value: has_top_level_await })),
+    )]
 }

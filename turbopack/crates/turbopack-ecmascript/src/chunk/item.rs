@@ -27,32 +27,8 @@ use crate::{
     EcmascriptModuleContent,
     chunk::{chunk_type::EcmascriptChunkType, placeable::EcmascriptChunkPlaceable},
     references::async_module::{AsyncModuleOptions, OptionAsyncModuleOptions},
-    runtime_functions::TURBOPACK_ASYNC_MODULE,
     utils::StringifyJs,
 };
-
-/// Inline Promise-based generator runner for environments without native async/await.
-///
-/// Equivalent to the readable form:
-/// ```js
-/// function runner(generatorFn) {
-///   return function() {
-///     var gen = generatorFn.apply(this, arguments);
-///     function step(result) {
-///       if (result.done) return;
-///       return Promise.resolve(result.value).then(
-///         function(value) { return step(gen.next(value)); },
-///         function(error) { return step(gen.throw(error)); }
-///       );
-///     }
-///     return step(gen.next());
-///   };
-/// }
-/// ```
-const GENERATOR_RUNNER: &str =
-    "(function(__gf){return function(){var __g=__gf.apply(this,arguments);function \
-     __s(__r){if(__r.done)return;return Promise.resolve(__r.value).then(function(__v){return \
-     __s(__g.next(__v))},function(__e){return __s(__g.throw(__e))})}return __s(__g.next())}})";
 
 #[derive(
     Debug,
@@ -100,11 +76,6 @@ impl EcmascriptChunkItemContent {
             .runtime_versions()
             .supports_arrow_functions()
             .await?;
-        let supports_async_functions = *chunking_context
-            .environment()
-            .runtime_versions()
-            .supports_async_functions()
-            .await?;
         let externals = *chunking_context
             .environment()
             .supports_commonjs_externals()
@@ -137,7 +108,6 @@ impl EcmascriptChunkItemContent {
                     externals,
                     async_module,
                     supports_arrow_functions,
-                    supports_async_functions,
                     ..Default::default()
                 }
             } else {
@@ -149,7 +119,6 @@ impl EcmascriptChunkItemContent {
                     strict,
                     externals,
                     supports_arrow_functions,
-                    supports_async_functions,
                     // These things are not available in ESM
                     module_and_exports: true,
                     ..Default::default()
@@ -190,42 +159,6 @@ impl EcmascriptChunkItemContent {
             code += "\n";
         }
 
-        if self.options.async_module.is_some() {
-            write!(code, "return {TURBOPACK_ASYNC_MODULE}")?;
-
-            let needs_generator_runner = !self.options.supports_async_functions;
-
-            if needs_generator_runner {
-                // Environment does NOT support async/await. SWC's preset-env transpiles
-                // `await` inside `async function` declarations, but NOT top-level await
-                // (TLA) or await injected by Turbopack's async_module code generation
-                // (these are module-level, not inside an `async function`).
-                //
-                // Strategy:
-                //   1. Wrap body in `function*` (generator) instead of `async function`
-                //   2. Convert remaining `AwaitExpr` → `YieldExpr` at the AST level (done by the
-                //      `AwaitToYield` visitor in lib.rs, after code gen stmts are merged but before
-                //      emission)
-                //   3. Drive the generator with an inline Promise-based runner
-                code += "(";
-                code += GENERATOR_RUNNER;
-                code += "(function*(";
-            } else if self.options.supports_arrow_functions {
-                code += "(async (";
-            } else {
-                code += "(async function(";
-            }
-
-            code += "__turbopack_handle_async_dependencies__, __turbopack_async_result__";
-
-            if !needs_generator_runner && self.options.supports_arrow_functions {
-                code += ") => {";
-            } else {
-                code += "){";
-            }
-            code += " try {\n";
-        }
-
         let source_map = match &self.rewrite_source_path {
             RewriteSourcePath::AbsoluteFilePath(path) => {
                 absolute_fileify_source_map(self.source_map.as_ref(), path.clone()).await?
@@ -242,15 +175,6 @@ impl EcmascriptChunkItemContent {
         };
 
         code.push_source(&self.inner_code, source_map);
-
-        if let Some(opts) = &self.options.async_module {
-            write!(
-                code,
-                "__turbopack_async_result__();\n}} catch(e) {{ __turbopack_async_result__(e); }} \
-                 }}, {});",
-                opts.has_top_level_await
-            )?;
-        }
 
         code += "})";
 
@@ -273,12 +197,6 @@ pub struct EcmascriptChunkItemOptions {
     pub async_module: Option<AsyncModuleOptions>,
     /// Whether the environment supports arrow functions (e.g. when targeting modern browsers).
     pub supports_arrow_functions: bool,
-    /// Whether the environment supports async functions (async/await).
-    /// When false, Turbopack emits a `function*` wrapper with an inline generator runner
-    /// and replaces remaining `await` with `yield` in the inner code. SWC preset-env
-    /// handles transpiling `await` inside `async function` declarations, but NOT top-level
-    /// await or Turbopack's async_module code generation await.
-    pub supports_async_functions: bool,
     pub placeholder_for_future_extensions: (),
 }
 

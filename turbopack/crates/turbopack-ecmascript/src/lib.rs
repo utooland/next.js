@@ -10,7 +10,6 @@
 pub mod analyzer;
 pub mod annotations;
 pub mod async_chunk;
-mod await_to_yield;
 pub mod bytes_source_transform;
 pub mod chunk;
 pub mod code_gen;
@@ -48,7 +47,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, anyhow, bail};
-use await_to_yield::AwaitToYield;
 use bincode::{Decode, Encode};
 use either::Either;
 use itertools::Itertools;
@@ -1692,21 +1690,6 @@ async fn process_parse_result(
     options: Option<&EcmascriptModuleContentOptions>,
     scope_hoisting_options: Option<ScopeHoistingOptions<'_>>,
 ) -> Result<CodeGenResult> {
-    // When the target environment doesn't support async/await, we need to convert
-    // all AwaitExpr AST nodes to YieldExpr before emission. This handles both user
-    // TLA and code-gen-injected await (from async_module.rs) at the AST level,
-    // avoiding false positives from naive string replacement on inner_code.
-    let replace_await_with_yield = if let Some(opts) = options {
-        !*opts
-            .chunking_context
-            .environment()
-            .runtime_versions()
-            .supports_async_functions()
-            .await?
-    } else {
-        false
-    };
-
     with_consumed_parse_result(
         parsed,
         async |mut program, source_map, globals, eval_context, comments| -> Result<CodeGenResult> {
@@ -1821,13 +1804,6 @@ async fn process_parse_result(
             };
 
             process_content_with_code_gens(&mut program, globals, &mut code_gens);
-
-            // Convert AwaitExpr → YieldExpr at the AST level for environments
-            // without native async/await. Must run after code gen stmts are merged
-            // (which may inject AwaitExpr nodes from async_module.rs).
-            if replace_await_with_yield {
-                program.visit_mut_with(&mut AwaitToYield);
-            }
 
             for comments in code_gens.iter_mut().flat_map(|cg| cg.comments.as_mut()) {
                 let leading = Arc::unwrap_or_clone(take(&mut comments.leading));
@@ -2171,6 +2147,7 @@ fn process_content_with_code_gens(
     let mut hoisted_stmts = FxIndexMap::default();
     let mut early_late_stmts = FxIndexMap::default();
     let mut late_stmts = FxIndexMap::default();
+    let mut body_wrapper = None;
     for code_gen in code_gens {
         for CodeGenerationHoistedStmt { key, stmt } in code_gen.hoisted_stmts.drain(..) {
             hoisted_stmts.entry(key).or_insert(stmt);
@@ -2190,6 +2167,9 @@ fn process_content_with_code_gens(
             } else {
                 visitors.push((path, &**visitor));
             }
+        }
+        if let Some(wrapper) = code_gen.body_wrapper.take() {
+            body_wrapper = Some(wrapper);
         }
     }
 
@@ -2220,6 +2200,27 @@ fn process_content_with_code_gens(
                     .chain(late_stmts.into_values())
                     .map(ModuleItem::Stmt),
             );
+
+            // Apply body wrapper LAST — wraps all stmts (including hoisted + late)
+            // in the async module closure at the AST level.
+            if let Some(wrapper) = body_wrapper {
+                let stmts: Vec<Stmt> = body
+                    .drain(..)
+                    .filter_map(|item| match item {
+                        ModuleItem::Stmt(stmt) => Some(stmt),
+                        _ => Some(Stmt::Expr(swc_core::ecma::ast::ExprStmt {
+                            span: swc_core::common::DUMMY_SP,
+                            expr: Box::new(swc_core::ecma::ast::Expr::Invalid(
+                                swc_core::ecma::ast::Invalid {
+                                    span: swc_core::common::DUMMY_SP,
+                                },
+                            )),
+                        })),
+                    })
+                    .collect();
+                let wrapped = wrapper(stmts);
+                body.extend(wrapped.into_iter().map(ModuleItem::Stmt));
+            }
         }
         Program::Script(Script { body, .. }) => {
             body.splice(
@@ -2233,6 +2234,13 @@ fn process_content_with_code_gens(
                     .into_values()
                     .chain(late_stmts.into_values()),
             );
+
+            // Apply body wrapper for scripts too.
+            if let Some(wrapper) = body_wrapper {
+                let stmts: Vec<Stmt> = body.drain(..).collect();
+                let wrapped = wrapper(stmts);
+                *body = wrapped;
+            }
         }
     };
 }

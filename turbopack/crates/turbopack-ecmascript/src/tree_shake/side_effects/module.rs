@@ -147,12 +147,6 @@ impl EcmascriptChunkPlaceable for SideEffectsModule {
         let mut code = RopeBuilder::default();
         let mut has_top_level_await = false;
 
-        let supports_async_functions = *chunking_context
-            .environment()
-            .runtime_versions()
-            .supports_async_functions()
-            .await?;
-
         for &side_effect in module.side_effects.iter() {
             let need_await = 'need_await: {
                 let async_module = *side_effect.get_async_module().await?;
@@ -168,15 +162,7 @@ impl EcmascriptChunkPlaceable for SideEffectsModule {
                 has_top_level_await = true;
             }
 
-            let await_keyword = if need_await {
-                if supports_async_functions {
-                    "await "
-                } else {
-                    "yield "
-                }
-            } else {
-                ""
-            };
+            let await_keyword = if need_await { "await " } else { "" };
 
             code.push_bytes(
                 format!(
@@ -215,7 +201,6 @@ impl EcmascriptChunkPlaceable for SideEffectsModule {
                     .runtime_versions()
                     .supports_arrow_functions()
                     .await?,
-                supports_async_functions,
                 ..Default::default()
             },
             additional_ids: Default::default(),
