@@ -2169,6 +2169,7 @@ fn process_content_with_code_gens(
             }
         }
         if let Some(wrapper) = code_gen.body_wrapper.take() {
+            debug_assert!(body_wrapper.is_none(), "multiple body_wrappers detected");
             body_wrapper = Some(wrapper);
         }
     }
@@ -2208,14 +2209,8 @@ fn process_content_with_code_gens(
                     .drain(..)
                     .filter_map(|item| match item {
                         ModuleItem::Stmt(stmt) => Some(stmt),
-                        _ => Some(Stmt::Expr(swc_core::ecma::ast::ExprStmt {
-                            span: swc_core::common::DUMMY_SP,
-                            expr: Box::new(swc_core::ecma::ast::Expr::Invalid(
-                                swc_core::ecma::ast::Invalid {
-                                    span: swc_core::common::DUMMY_SP,
-                                },
-                            )),
-                        })),
+                        // ModuleDecl items shouldn't exist after code gen merge
+                        _ => None,
                     })
                     .collect();
                 let wrapped = wrapper(stmts);
@@ -2237,7 +2232,7 @@ fn process_content_with_code_gens(
 
             // Apply body wrapper for scripts too.
             if let Some(wrapper) = body_wrapper {
-                let stmts: Vec<Stmt> = body.drain(..).collect();
+                let stmts: Vec<Stmt> = std::mem::take(body);
                 let wrapped = wrapper(stmts);
                 *body = wrapped;
             }

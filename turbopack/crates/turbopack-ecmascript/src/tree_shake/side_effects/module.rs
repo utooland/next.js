@@ -162,11 +162,10 @@ impl EcmascriptChunkPlaceable for SideEffectsModule {
                 has_top_level_await = true;
             }
 
-            let await_keyword = if need_await { "await " } else { "" };
-
             code.push_bytes(
                 format!(
-                    "{await_keyword}{TURBOPACK_IMPORT}({});\n",
+                    "{}{TURBOPACK_IMPORT}({});\n",
+                    if need_await { "await " } else { "" },
                     StringifyModuleId(&side_effect.chunk_item_id(chunking_context).await?)
                 )
                 .as_bytes(),

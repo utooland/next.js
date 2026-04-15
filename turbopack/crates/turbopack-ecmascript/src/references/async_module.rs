@@ -18,7 +18,7 @@ use turbopack_core::{
 
 use crate::{
     ScopeHoistingContext,
-    code_gen::{CodeGeneration, CodeGenerationHoistedStmt},
+    code_gen::{BodyWrapperFn, CodeGeneration, CodeGenerationHoistedStmt},
     references::esm::base::ReferencedAsset,
     utils::AstSyntaxContext,
 };
@@ -218,53 +218,54 @@ impl AsyncModule {
                 .get_async_idents(async_module_info, references, chunking_context)
                 .await?;
 
-            let mut hoisted_stmts = Vec::new();
+            let has_top_level_await = this.has_top_level_await;
+            let body_wrapper: Option<BodyWrapperFn> = Some(Box::new(move |body_stmts| {
+                wrap_body_in_async_module(body_stmts, has_top_level_await)
+            }));
+
             if !async_idents.is_empty() {
                 let idents = async_idents
                     .iter()
                     .map(|(ident, ctxt)| Ident::new(ident.clone().into(), DUMMY_SP, **ctxt))
                     .collect::<Vec<_>>();
 
-                hoisted_stmts.push(
-                    CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__"),
-                        quote!(
-                            "var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__($deps);"
-                                as Stmt,
-                            deps: Expr = Expr::Array(ArrayLit {
-                                span: DUMMY_SP,
-                                elems: idents
-                                    .iter()
-                                    .map(|ident| { Some(Expr::Ident(ident.clone()).into()) })
-                                    .collect(),
-                            })
-                        )
-                    ),
-                );
-                hoisted_stmts.push(
-                    CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__ await"),
-                        quote!(
-                            "($deps = __turbopack_async_dependencies__.then ? (await \
-                            __turbopack_async_dependencies__)() : __turbopack_async_dependencies__);" as Stmt,
-                            deps: AssignTarget = ArrayPat {
-                                span: DUMMY_SP,
-                                elems: idents
-                                    .into_iter()
-                                    .map(|ident| { Some(ident.into()) })
-                                    .collect(),
-                                optional: false,
-                                type_ann: None,
-                            }.into(),
-                        )),
-                );
+                return Ok(CodeGeneration {
+                    hoisted_stmts: [
+                        CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__"),
+                            quote!(
+                                "var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__($deps);"
+                                    as Stmt,
+                                deps: Expr = Expr::Array(ArrayLit {
+                                    span: DUMMY_SP,
+                                    elems: idents
+                                        .iter()
+                                        .map(|ident| { Some(Expr::Ident(ident.clone()).into()) })
+                                        .collect(),
+                                })
+                            )
+                        ),
+                        CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__ await"),
+                            quote!(
+                                "($deps = __turbopack_async_dependencies__.then ? (await \
+                                __turbopack_async_dependencies__)() : __turbopack_async_dependencies__);" as Stmt,
+                                deps: AssignTarget = ArrayPat {
+                                    span: DUMMY_SP,
+                                    elems: idents
+                                        .into_iter()
+                                        .map(|ident| { Some(ident.into()) })
+                                        .collect(),
+                                    optional: false,
+                                    type_ann: None,
+                                }.into(),
+                            )),
+                    ].to_vec(),
+                    body_wrapper,
+                    ..Default::default()
+                });
             }
 
-            let has_top_level_await = this.has_top_level_await;
-
             return Ok(CodeGeneration {
-                hoisted_stmts,
-                body_wrapper: Some(Box::new(move |body_stmts: Vec<Stmt>| {
-                    wrap_body_in_async_module(body_stmts, has_top_level_await)
-                })),
+                body_wrapper,
                 ..Default::default()
             });
         }
@@ -277,7 +278,7 @@ impl AsyncModule {
 ///
 /// ```js
 /// return __turbopack_context__.a(
-///   async (__turbopack_handle_async_dependencies__, __turbopack_async_result__) => {
+///   async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
 ///     try {
 ///       ...body_stmts...
 ///       __turbopack_async_result__();
@@ -299,6 +300,8 @@ fn wrap_body_in_async_module(body_stmts: Vec<Stmt>, has_top_level_await: bool) -
     let mut try_catch = quote!("try {} catch(e) { __turbopack_async_result__(e); }" as Stmt);
     if let Stmt::Try(try_stmt) = &mut try_catch {
         try_stmt.block.stmts = try_body;
+    } else {
+        unreachable!("quote! should produce a TryStmt");
     }
 
     // Create async function template via quote!, then inject our try/catch body
@@ -312,6 +315,8 @@ fn wrap_body_in_async_module(body_stmts: Vec<Stmt>, has_top_level_await: bool) -
             stmts: vec![try_catch],
             ctxt: Default::default(),
         });
+    } else {
+        unreachable!("quote! should produce a FnExpr");
     }
 
     vec![quote!(
