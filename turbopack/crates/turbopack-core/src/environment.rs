@@ -442,6 +442,38 @@ impl RuntimeVersions {
 
         Vc::cell(supported)
     }
+
+    /// Whether the environment supports async/await syntax.
+    #[turbo_tasks::function]
+    pub fn supports_async_await(&self) -> Vc<bool> {
+        // https://github.com/babel/babel/blob/b0e3517dc566880e76b5f1f4dcf7fcecba58337d/packages/babel-compat-data/data/plugins.json#L295-L307
+        // "chrome": "55",
+        // "opera": "42",
+        // "edge": "15",
+        // "firefox": "52",
+        // "safari": "11",
+        // "node": "7.6",
+        // "deno": "1",
+        // "ios": "11",
+        // "samsung": "6",
+        // "opera_mobile": "42",
+        // "electron": "1.6"
+        let data = &self.0;
+
+        let supported = version_at_least!(data, chrome, 55)
+            && version_at_least!(data, opera, 42)
+            && version_at_least!(data, edge, 15)
+            && version_at_least!(data, firefox, 52)
+            && version_at_least!(data, safari, 11)
+            && version_at_least!(data, node, 7, 6)
+            && version_at_least!(data, deno, 1)
+            && version_at_least!(data, ios, 11)
+            && version_at_least!(data, samsung, 6)
+            && version_at_least!(data, opera_mobile, 42)
+            && version_at_least!(data, electron, 1, 6);
+
+        Vc::cell(supported)
+    }
 }
 
 #[turbo_tasks::function]

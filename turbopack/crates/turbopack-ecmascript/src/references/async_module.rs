@@ -2,7 +2,10 @@ use anyhow::Result;
 use bincode::{Decode, Encode};
 use swc_core::{
     common::DUMMY_SP,
-    ecma::ast::{ArrayLit, ArrayPat, BlockStmt, Bool, Expr, Ident, Lit, Stmt},
+    ecma::{
+        ast::{ArrayLit, ArrayPat, AwaitExpr, BlockStmt, Bool, Expr, Ident, Lit, Stmt, YieldExpr},
+        visit::{VisitMut, VisitMutWith},
+    },
     quote,
 };
 use turbo_rcstr::rcstr;
@@ -213,6 +216,12 @@ impl AsyncModule {
     ) -> Result<CodeGeneration> {
         let this = self.await?;
 
+        let supports_async_await = *chunking_context
+            .environment()
+            .runtime_versions()
+            .supports_async_await()
+            .await?;
+
         if let Some(async_module_info) = async_module_info {
             let async_idents = self
                 .get_async_idents(async_module_info, references, chunking_context)
@@ -220,7 +229,7 @@ impl AsyncModule {
 
             let has_top_level_await = this.has_top_level_await;
             let body_wrapper: Option<BodyWrapperFn> = Some(Box::new(move |body_stmts| {
-                wrap_body_in_async_module(body_stmts, has_top_level_await)
+                wrap_body_in_async_module(body_stmts, has_top_level_await, supports_async_await)
             }));
 
             if !async_idents.is_empty() {
@@ -244,8 +253,8 @@ impl AsyncModule {
                                 })
                             )
                         ),
-                        CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__ await"),
-                            quote!(
+                        CodeGenerationHoistedStmt::new(rcstr!("__turbopack_async_dependencies__ await"), {
+                            let mut stmt = quote!(
                                 "($deps = __turbopack_async_dependencies__.then ? (await \
                                 __turbopack_async_dependencies__)() : __turbopack_async_dependencies__);" as Stmt,
                                 deps: AssignTarget = ArrayPat {
@@ -257,7 +266,12 @@ impl AsyncModule {
                                     optional: false,
                                     type_ann: None,
                                 }.into(),
-                            )),
+                            );
+                            if !supports_async_await {
+                                replace_await_with_yield(&mut stmt);
+                            }
+                            stmt
+                        }),
                     ].to_vec(),
                     body_wrapper,
                     ..Default::default()
@@ -289,14 +303,21 @@ impl AsyncModule {
 ///   has_top_level_await
 /// );
 /// ```
-fn wrap_body_in_async_module(body_stmts: Vec<Stmt>, has_top_level_await: bool) -> Vec<Stmt> {
-    // Build try { ...body... __turbopack_async_result__(); } catch(e) {
-    // __turbopack_async_result__(e); } Manual AST is needed because quote! can't splice a
-    // Vec<Stmt> into a block.
+fn wrap_body_in_async_module(
+    body_stmts: Vec<Stmt>,
+    has_top_level_await: bool,
+    supports_async_await: bool,
+) -> Vec<Stmt> {
     let mut try_body = body_stmts;
     try_body.push(quote!("__turbopack_async_result__();" as Stmt));
 
-    // quote! template for try/catch, then inject body_stmts into the try block
+    // For generator-based wrapping, convert all await expressions in the body to yield
+    if !supports_async_await {
+        for stmt in &mut try_body {
+            replace_await_with_yield(stmt);
+        }
+    }
+
     let mut try_catch = quote!("try {} catch(e) { __turbopack_async_result__(e); }" as Stmt);
     if let Stmt::Try(try_stmt) = &mut try_catch {
         try_stmt.block.stmts = try_body;
@@ -304,11 +325,18 @@ fn wrap_body_in_async_module(body_stmts: Vec<Stmt>, has_top_level_await: bool) -
         unreachable!("quote! should produce a TryStmt");
     }
 
-    // Create async function template via quote!, then inject our try/catch body
-    let mut handler = quote!(
-        "async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
-            as Expr
-    );
+    // Use async function or generator function depending on environment support
+    let mut handler = if supports_async_await {
+        quote!(
+            "async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
+                as Expr
+        )
+    } else {
+        quote!(
+            "function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
+                as Expr
+        )
+    };
     if let Expr::Fn(fn_expr) = &mut handler {
         fn_expr.function.body = Some(BlockStmt {
             span: DUMMY_SP,
@@ -324,4 +352,22 @@ fn wrap_body_in_async_module(body_stmts: Vec<Stmt>, has_top_level_await: bool) -
         handler: Expr = handler,
         tla: Expr = Expr::Lit(Lit::Bool(Bool { span: DUMMY_SP, value: has_top_level_await })),
     )]
+}
+
+/// Recursively replaces all `AwaitExpr` nodes with `YieldExpr` in the given statement.
+fn replace_await_with_yield(stmt: &mut Stmt) {
+    struct AwaitToYield;
+    impl VisitMut for AwaitToYield {
+        fn visit_mut_expr(&mut self, expr: &mut Expr) {
+            expr.visit_mut_children_with(self);
+            if let Expr::Await(AwaitExpr { span, arg }) = expr {
+                *expr = Expr::Yield(YieldExpr {
+                    span: *span,
+                    delegate: false,
+                    arg: Some(arg.clone()),
+                });
+            }
+        }
+    }
+    stmt.visit_mut_with(&mut AwaitToYield);
 }

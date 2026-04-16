@@ -18,7 +18,7 @@ function test() {
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
     try {
         __turbopack_context__.s([
             "a",
@@ -27,7 +27,7 @@ return __turbopack_context__.a(async function(__turbopack_handle_async_dependenc
             "topValue",
             ()=>topValue
         ]);
-        var topValue = await Promise.resolve('top level async');
+        var topValue = yield Promise.resolve('top level async');
         ;
         ;
         ;
@@ -40,9 +40,9 @@ return __turbopack_context__.a(async function(__turbopack_handle_async_dependenc
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/side-effect.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
     try {
-        await Promise.resolve('side effect');
+        yield Promise.resolve('side effect');
         console.log('side effect executed');
         __turbopack_async_result__();
     } catch (e) {
@@ -53,7 +53,7 @@ return __turbopack_context__.a(async function(__turbopack_handle_async_dependenc
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/index.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
     try {
         __turbopack_context__.s([]);
         var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/util.js [test] (ecmascript) <internal part 0>");
@@ -63,7 +63,7 @@ return __turbopack_context__.a(async function(__turbopack_handle_async_dependenc
             __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__,
             __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__
         ]);
-        [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__] = __turbopack_async_dependencies__.then ? (await __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
+        [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
         ;
         ;
         ;

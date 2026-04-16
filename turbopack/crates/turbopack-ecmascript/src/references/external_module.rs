@@ -37,8 +37,8 @@ use crate::{
     },
     references::async_module::{AsyncModule, OptionAsyncModule},
     runtime_functions::{
-        TURBOPACK_EXPORT_NAMESPACE, TURBOPACK_EXPORT_VALUE, TURBOPACK_EXTERNAL_IMPORT,
-        TURBOPACK_EXTERNAL_REQUIRE, TURBOPACK_LOAD_BY_URL,
+        TURBOPACK_ASYNC_MODULE, TURBOPACK_EXPORT_NAMESPACE, TURBOPACK_EXPORT_VALUE,
+        TURBOPACK_EXTERNAL_IMPORT, TURBOPACK_EXTERNAL_REQUIRE, TURBOPACK_LOAD_BY_URL,
     },
     utils::StringifyJs,
 };
@@ -149,6 +149,17 @@ impl CachedExternalModule {
     pub fn content(&self) -> Result<Vc<EcmascriptModuleContent>> {
         let mut code = RopeBuilder::default();
 
+        let needs_async_wrapper = self.external_type == CachedExternalType::EcmaScriptViaImport
+            || self.external_type == CachedExternalType::Script;
+
+        if needs_async_wrapper {
+            writeln!(
+                code,
+                "return {TURBOPACK_ASYNC_MODULE}(async (__turbopack_handle_async_dependencies__, \
+                 __turbopack_async_result__) => {{ try {{"
+            )?;
+        }
+
         match self.external_type {
             CachedExternalType::EcmaScriptViaImport => {
                 writeln!(
@@ -243,6 +254,14 @@ impl CachedExternalModule {
             writeln!(code, "{TURBOPACK_EXPORT_NAMESPACE}(mod);")?;
         } else {
             writeln!(code, "{TURBOPACK_EXPORT_VALUE}(mod);")?;
+        }
+
+        if needs_async_wrapper {
+            writeln!(
+                code,
+                "__turbopack_async_result__();\n}} catch(e) {{ __turbopack_async_result__(e); }} \
+                 }}, true);"
+            )?;
         }
 
         Ok(EcmascriptModuleContent {
