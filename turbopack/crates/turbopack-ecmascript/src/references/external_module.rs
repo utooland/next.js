@@ -146,27 +146,45 @@ impl CachedExternalModule {
     }
 
     #[turbo_tasks::function]
-    pub fn content(&self) -> Result<Vc<EcmascriptModuleContent>> {
+    pub fn content(&self, supports_async_await: bool) -> Result<Vc<EcmascriptModuleContent>> {
         let mut code = RopeBuilder::default();
 
         let needs_async_wrapper = self.external_type == CachedExternalType::EcmaScriptViaImport
             || self.external_type == CachedExternalType::Script;
 
         if needs_async_wrapper {
-            writeln!(
-                code,
-                "return {TURBOPACK_ASYNC_MODULE}(async (__turbopack_handle_async_dependencies__, \
-                 __turbopack_async_result__) => {{ try {{"
-            )?;
+            if supports_async_await {
+                writeln!(
+                    code,
+                    "return {TURBOPACK_ASYNC_MODULE}(async \
+                     (__turbopack_handle_async_dependencies__, __turbopack_async_result__) => {{ \
+                     try {{"
+                )?;
+            } else {
+                writeln!(
+                    code,
+                    "return {TURBOPACK_ASYNC_MODULE}(function*\
+                     (__turbopack_handle_async_dependencies__, __turbopack_async_result__) {{ try \
+                     {{"
+                )?;
+            }
         }
 
         match self.external_type {
             CachedExternalType::EcmaScriptViaImport => {
-                writeln!(
-                    code,
-                    "var mod = await {TURBOPACK_EXTERNAL_IMPORT}({});",
-                    StringifyJs(&self.request())
-                )?;
+                if supports_async_await {
+                    writeln!(
+                        code,
+                        "var mod = await {TURBOPACK_EXTERNAL_IMPORT}({});",
+                        StringifyJs(&self.request())
+                    )?;
+                } else {
+                    writeln!(
+                        code,
+                        "var mod = yield {TURBOPACK_EXTERNAL_IMPORT}({});",
+                        StringifyJs(&self.request())
+                    )?;
+                }
             }
             CachedExternalType::EcmaScriptViaRequire | CachedExternalType::CommonJs => {
                 let request = self.request();
@@ -200,11 +218,19 @@ impl CachedExternalModule {
                     writeln!(code, "try {{")?;
 
                     // First load the URL
-                    writeln!(
-                        code,
-                        "  await {TURBOPACK_LOAD_BY_URL}({});",
-                        StringifyJs(url)
-                    )?;
+                    if supports_async_await {
+                        writeln!(
+                            code,
+                            "  await {TURBOPACK_LOAD_BY_URL}({});",
+                            StringifyJs(url)
+                        )?;
+                    } else {
+                        writeln!(
+                            code,
+                            "  yield {TURBOPACK_LOAD_BY_URL}({});",
+                            StringifyJs(url)
+                        )?;
+                    }
 
                     // Then get the variable from global with existence check
                     writeln!(
@@ -441,10 +467,20 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
         _module_graph: Vc<ModuleGraph>,
         async_module_info: Option<Vc<AsyncModuleInfo>>,
         _estimated: bool,
-    ) -> Vc<EcmascriptChunkItemContent> {
+    ) -> Result<Vc<EcmascriptChunkItemContent>> {
         let async_module_options = self.get_async_module().module_options(async_module_info);
 
-        EcmascriptChunkItemContent::new(self.content(), chunking_context, async_module_options)
+        let supports_async_await = *chunking_context
+            .environment()
+            .runtime_versions()
+            .supports_async_await()
+            .await?;
+
+        Ok(EcmascriptChunkItemContent::new(
+            self.content(supports_async_await),
+            chunking_context,
+            async_module_options,
+        ))
     }
 
     #[turbo_tasks::function]

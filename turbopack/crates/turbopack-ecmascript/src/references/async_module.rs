@@ -3,7 +3,10 @@ use bincode::{Decode, Encode};
 use swc_core::{
     common::DUMMY_SP,
     ecma::{
-        ast::{ArrayLit, ArrayPat, AwaitExpr, BlockStmt, Bool, Expr, Ident, Lit, Stmt, YieldExpr},
+        ast::{
+            ArrayLit, ArrayPat, AwaitExpr, BlockStmt, Bool, Expr, Ident, Invalid, Lit, Stmt,
+            YieldExpr,
+        },
         visit::{VisitMut, VisitMutWith},
     },
     quote,
@@ -360,12 +363,17 @@ fn replace_await_with_yield(stmt: &mut Stmt) {
     impl VisitMut for AwaitToYield {
         fn visit_mut_expr(&mut self, expr: &mut Expr) {
             expr.visit_mut_children_with(self);
-            if let Expr::Await(AwaitExpr { span, arg }) = expr {
-                *expr = Expr::Yield(YieldExpr {
-                    span: *span,
-                    delegate: false,
-                    arg: Some(arg.clone()),
-                });
+            if let Expr::Await(_) = expr {
+                let old_expr = std::mem::replace(expr, Expr::Invalid(Invalid { span: DUMMY_SP }));
+                if let Expr::Await(AwaitExpr { span, arg }) = old_expr {
+                    *expr = Expr::Yield(YieldExpr {
+                        span,
+                        delegate: false,
+                        arg: Some(arg),
+                    });
+                } else {
+                    unreachable!();
+                }
             }
         }
     }

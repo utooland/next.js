@@ -75,7 +75,7 @@ return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__
         ]);
         var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__2$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 2>");
         ;
-        // This module tests that user-defined async functions inside a module 
+        // This module tests that user-defined async functions inside a module
         // with top-level await are preserved correctly when the wrapper uses
         // function*/yield (they should already be downleveled by SWC).
         var data = yield fetch('/api/data');
