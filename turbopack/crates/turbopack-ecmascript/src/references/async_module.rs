@@ -4,8 +4,8 @@ use swc_core::{
     common::DUMMY_SP,
     ecma::{
         ast::{
-            ArrayLit, ArrayPat, AwaitExpr, BlockStmt, Bool, Expr, Ident, Invalid, Lit, Stmt,
-            YieldExpr,
+            ArrayLit, ArrayPat, ArrowExpr, AwaitExpr, BlockStmt, Bool, Expr, FnDecl, FnExpr, Ident,
+            Invalid, Lit, Stmt, YieldExpr,
         },
         visit::{VisitMut, VisitMutWith},
     },
@@ -306,7 +306,7 @@ impl AsyncModule {
 ///   has_top_level_await
 /// );
 /// ```
-fn wrap_body_in_async_module(
+pub(crate) fn wrap_body_in_async_module(
     body_stmts: Vec<Stmt>,
     has_top_level_await: bool,
     supports_async_await: bool,
@@ -329,26 +329,61 @@ fn wrap_body_in_async_module(
     }
 
     // Use async function or generator function depending on environment support
-    let mut handler = if supports_async_await {
-        quote!(
+    let handler = if supports_async_await {
+        let mut handler = quote!(
             "async function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
                 as Expr
-        )
+        );
+        if let Expr::Fn(fn_expr) = &mut handler {
+            fn_expr.function.body = Some(BlockStmt {
+                span: DUMMY_SP,
+                stmts: vec![try_catch],
+                ctxt: Default::default(),
+            });
+        } else {
+            unreachable!("quote! should produce a FnExpr");
+        }
+        handler
     } else {
-        quote!(
-            "function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
+        // Legacy: wrap a generator IIFE inside a regular function with an inline
+        // driver.  The generator is created and stepped through immediately,
+        // resolving yielded promises.  This keeps the generator-driving logic
+        // out of the shared runtime so modern environments pay zero cost.
+        let mut gen_fn = quote!("function*() {}" as Expr);
+        if let Expr::Fn(fn_expr) = &mut gen_fn {
+            fn_expr.function.body = Some(BlockStmt {
+                span: DUMMY_SP,
+                stmts: vec![try_catch],
+                ctxt: Default::default(),
+            });
+        } else {
+            unreachable!("quote! should produce a FnExpr");
+        }
+
+        let gen_init = quote!("var __gen = $gen_fn();" as Stmt, gen_fn: Expr = gen_fn);
+
+        let step_call = quote!(
+            "(function __step(k, a) { try { var r = __gen[k](a); } catch(e) { \
+             __turbopack_async_result__(e); return; } if (!r.done) \
+             Promise.resolve(r.value).then(function(v) { __step('next', v); }, function(e) { \
+             __step('throw', e); }); })('next');" as Stmt
+        );
+
+        let mut handler = quote!(
+            "function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {}"
                 as Expr
-        )
+        );
+        if let Expr::Fn(fn_expr) = &mut handler {
+            fn_expr.function.body = Some(BlockStmt {
+                span: DUMMY_SP,
+                stmts: vec![gen_init, step_call],
+                ctxt: Default::default(),
+            });
+        } else {
+            unreachable!("quote! should produce a FnExpr");
+        }
+        handler
     };
-    if let Expr::Fn(fn_expr) = &mut handler {
-        fn_expr.function.body = Some(BlockStmt {
-            span: DUMMY_SP,
-            stmts: vec![try_catch],
-            ctxt: Default::default(),
-        });
-    } else {
-        unreachable!("quote! should produce a FnExpr");
-    }
 
     vec![quote!(
         "return __turbopack_context__.a($handler, $tla);" as Stmt,
@@ -357,7 +392,9 @@ fn wrap_body_in_async_module(
     )]
 }
 
-/// Recursively replaces all `AwaitExpr` nodes with `YieldExpr` in the given statement.
+/// Replaces `AwaitExpr` nodes with `YieldExpr` in the given statement,
+/// stopping at function boundaries (nested async functions are already
+/// downleveled by SWC's preset-env before this runs).
 fn replace_await_with_yield(stmt: &mut Stmt) {
     struct AwaitToYield;
     impl VisitMut for AwaitToYield {
@@ -376,6 +413,12 @@ fn replace_await_with_yield(stmt: &mut Stmt) {
                 }
             }
         }
+
+        // Stop at function boundaries — only transform top-level awaits,
+        // not awaits inside nested functions.
+        fn visit_mut_fn_expr(&mut self, _: &mut FnExpr) {}
+        fn visit_mut_fn_decl(&mut self, _: &mut FnDecl) {}
+        fn visit_mut_arrow_expr(&mut self, _: &mut ArrowExpr) {}
     }
     stmt.visit_mut_with(&mut AwaitToYield);
 }

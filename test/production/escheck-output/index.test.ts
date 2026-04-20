@@ -123,6 +123,13 @@ describe('escheck-output', () => {
 
         expect(esCheckOutput).toContain('info: ✓ ES-Check passed!')
       })
+
+      it('should render TLA page correctly', async () => {
+        const res = await next.fetch('/tla-page')
+        expect(res.status).toBe(200)
+        const html = await res.text()
+        expect(html).toContain('loaded')
+      })
     }
   )
 })

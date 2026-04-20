@@ -2218,8 +2218,10 @@ fn process_content_with_code_gens(
                     .drain(..)
                     .filter_map(|item| match item {
                         ModuleItem::Stmt(stmt) => Some(stmt),
-                        // ModuleDecl items shouldn't exist after code gen merge
-                        _ => None,
+                        ModuleItem::ModuleDecl(_) => {
+                            debug_assert!(false, "Unexpected ModuleDecl item after code gen merge");
+                            None
+                        }
                     })
                     .collect();
                 let wrapped = wrapper(stmts);

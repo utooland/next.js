@@ -18,36 +18,66 @@ function test() {
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        __turbopack_context__.s([
-            "a",
-            ()=>topValue,
-            (new_topValue)=>topValue = new_topValue,
-            "topValue",
-            ()=>topValue
-        ]);
-        var topValue = yield Promise.resolve('top level async');
-        ;
-        ;
-        ;
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            __turbopack_context__.s([
+                "a",
+                ()=>topValue,
+                (new_topValue)=>topValue = new_topValue,
+                "topValue",
+                ()=>topValue
+            ]);
+            var topValue = yield Promise.resolve('top level async');
+            ;
+            ;
+            ;
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
+        }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, true);
 }),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/side-effect.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        yield Promise.resolve('side effect');
-        console.log('side effect executed');
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            yield Promise.resolve('side effect');
+            console.log('side effect executed');
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
+        }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, true);
 }),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
@@ -66,178 +96,253 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbo
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 4>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        __turbopack_context__.s([
-            "a",
-            ()=>data,
-            (new_data)=>data = new_data
-        ]);
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__2$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 2>");
-        ;
-        // This module tests that user-defined async functions inside a module
-        // with top-level await are preserved correctly when the wrapper uses
-        // function*/yield (they should already be downleveled by SWC).
-        var data = yield fetch('/api/data');
-        ;
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            __turbopack_context__.s([
+                "a",
+                ()=>data,
+                (new_data)=>data = new_data
+            ]);
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__2$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 2>");
+            ;
+            // This module tests that user-defined async functions inside a module
+            // with top-level await are preserved correctly when the wrapper uses
+            // function*/yield (they should already be downleveled by SWC).
+            var data = yield fetch('/api/data');
+            ;
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
+        }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, true);
 }),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 6>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        __turbopack_context__.s([
-            "c",
-            ()=>value,
-            (new_value)=>value = new_value,
-            "value",
-            ()=>value
-        ]);
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 4>");
-        var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__
-        ]);
-        [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
-        ;
-        var value = yield Promise.resolve(42);
-        ;
-        ;
-        ;
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            __turbopack_context__.s([
+                "c",
+                ()=>value,
+                (new_value)=>value = new_value,
+                "value",
+                ()=>value
+            ]);
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 4>");
+            var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__
+            ]);
+            [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
+            ;
+            var value = yield Promise.resolve(42);
+            ;
+            ;
+            ;
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
+        }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, true);
 }),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 5>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        __turbopack_context__.s([
-            "b",
-            ()=>processData,
-            (new_processData)=>processData = new_processData,
-            "processData",
-            ()=>processData
-        ]);
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 4>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 0>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_async_to_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/node_modules/.pnpm/@swc+helpers@0.5.15/node_modules/@swc/helpers/esm/_async_to_generator.js [test] (ecmascript) <internal part 0>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__2$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 2>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_ts_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/node_modules/.pnpm/@swc+helpers@0.5.15/node_modules/@swc/helpers/esm/_ts_generator.js [test] (ecmascript) <internal part 0>");
-        var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__
-        ]);
-        [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
-        ;
-        ;
-        ;
-        ;
-        ;
-        function processData() {
-            return (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_async_to_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["_"])(function() {
-                var result;
-                return (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_ts_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["_"])(this, function(_state) {
-                    switch(_state.label){
-                        case 0:
-                            return [
-                                4,
-                                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__["a"].json()
-                            ];
-                        case 1:
-                            result = _state.sent();
-                            return [
-                                2,
-                                result
-                            ];
-                    }
-                });
-            })();
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            __turbopack_context__.s([
+                "b",
+                ()=>processData,
+                (new_processData)=>processData = new_processData,
+                "processData",
+                ()=>processData
+            ]);
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 4>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 0>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_async_to_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/node_modules/.pnpm/@swc+helpers@0.5.15/node_modules/@swc/helpers/esm/_async_to_generator.js [test] (ecmascript) <internal part 0>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__2$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 2>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_ts_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/node_modules/.pnpm/@swc+helpers@0.5.15/node_modules/@swc/helpers/esm/_ts_generator.js [test] (ecmascript) <internal part 0>");
+            var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__
+            ]);
+            [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
+            ;
+            ;
+            ;
+            ;
+            ;
+            function processData() {
+                return (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_async_to_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["_"])(function() {
+                    var result;
+                    return (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f2e$pnpm$2f40$swc$2b$helpers$40$0$2e$5$2e$15$2f$node_modules$2f40$swc$2f$helpers$2f$esm$2f$_ts_generator$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["_"])(this, function(_state) {
+                        switch(_state.label){
+                            case 0:
+                                return [
+                                    4,
+                                    __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__4$3e$__["a"].json()
+                                ];
+                            case 1:
+                                result = _state.sent();
+                                return [
+                                    2,
+                                    result
+                                ];
+                        }
+                    });
+                })();
+            }
+            ;
+            ;
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
         }
-        ;
-        ;
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, false);
 }),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/chained_async.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        __turbopack_context__.s([
-            "a",
-            ()=>chainedValue,
-            (new_chainedValue)=>chainedValue = new_chainedValue,
-            "chainedValue",
-            ()=>chainedValue
-        ]);
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js [test] (ecmascript) <internal part 0>");
-        var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__
-        ]);
-        [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
-        ;
-        ;
-        var chainedValue = yield Promise.resolve(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["topValue"] + ' chained');
-        ;
-        ;
-        ;
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            __turbopack_context__.s([
+                "a",
+                ()=>chainedValue,
+                (new_chainedValue)=>chainedValue = new_chainedValue,
+                "chainedValue",
+                ()=>chainedValue
+            ]);
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js [test] (ecmascript) <internal part 0>");
+            var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__
+            ]);
+            [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
+            ;
+            ;
+            var chainedValue = yield Promise.resolve(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["topValue"] + ' chained');
+            ;
+            ;
+            ;
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
+        }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, true);
 }),
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/index.js [test] (ecmascript)", (function(__turbopack_context__){
 "use strict";
 
-return __turbopack_context__.a(function*(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
-    try {
-        __turbopack_context__.s([]);
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/util.js [test] (ecmascript) <internal part 0>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js [test] (ecmascript) <internal part 0>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/side-effect.js [test] (ecmascript)");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 6>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 5>");
-        var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/chained_async.js [test] (ecmascript) <internal part 0>");
-        var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__,
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__,
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__,
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__,
-            __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__
-        ]);
-        [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
-        ;
-        ;
-        ;
-        ;
-        ;
-        // This module has top-level await via its async_module dependency,
-        // which triggers Turbopack's async module wrapper.
-        // The wrapper should use a regular function (not async function) when
-        // targeting environments without native async support (e.g. chrome 41).
-        var result = (0, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["test"])();
-        console.log(result);
-        console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["topValue"]);
-        // nested_async.js: tests multiple top-level awaits + user async functions
-        console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__["value"]);
-        (0, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__["processData"])();
-        // chained_async.js: tests async dependency chain
-        console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["chainedValue"]);
-        __turbopack_async_result__();
-    } catch (e) {
-        __turbopack_async_result__(e);
-    }
+return __turbopack_context__.a(function(__turbopack_handle_async_dependencies__, __turbopack_async_result__) {
+    var __gen = function*() {
+        try {
+            __turbopack_context__.s([]);
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/util.js [test] (ecmascript) <internal part 0>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js [test] (ecmascript) <internal part 0>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/side-effect.js [test] (ecmascript)");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 6>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js [test] (ecmascript) <internal part 5>");
+            var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/chained_async.js [test] (ecmascript) <internal part 0>");
+            var __turbopack_async_dependencies__ = __turbopack_handle_async_dependencies__([
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__,
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__,
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__,
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__,
+                __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__
+            ]);
+            [__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$side$2d$effect$2e$js__$5b$test$5d$__$28$ecmascript$29$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__] = __turbopack_async_dependencies__.then ? (yield __turbopack_async_dependencies__)() : __turbopack_async_dependencies__;
+            ;
+            ;
+            ;
+            ;
+            ;
+            // This module has top-level await via its async_module dependency,
+            // which triggers Turbopack's async module wrapper.
+            // The wrapper should use a regular function (not async function) when
+            // targeting environments without native async support (e.g. chrome 41).
+            var result = (0, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$util$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["test"])();
+            console.log(result);
+            console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$async_module$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["topValue"]);
+            // nested_async.js: tests multiple top-level awaits + user async functions
+            console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__6$3e$__["value"]);
+            (0, __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$nested_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__5$3e$__["processData"])();
+            // chained_async.js: tests async dependency chain
+            console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$basic$2f$async_to_generator$2f$input$2f$chained_async$2e$js__$5b$test$5d$__$28$ecmascript$29$__$3c$internal__part__0$3e$__["chainedValue"]);
+            __turbopack_async_result__();
+        } catch (e) {
+            __turbopack_async_result__(e);
+        }
+    }();
+    (function __step(k, a) {
+        try {
+            var r = __gen[k](a);
+        } catch (e) {
+            __turbopack_async_result__(e);
+            return;
+        }
+        if (!r.done) Promise.resolve(r.value).then(function(v) {
+            __step('next', v);
+        }, function(e) {
+            __step('throw', e);
+        });
+    })('next');
 }, false);
 }),
 "[project]/node_modules/.pnpm/@swc+helpers@0.5.15/node_modules/@swc/helpers/esm/_async_to_generator.js [test] (ecmascript) <internal part 0>", (function(__turbopack_context__){
