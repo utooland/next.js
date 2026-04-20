@@ -1,20 +1,12 @@
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, fmt::Display, io::Write};
 
 use anyhow::{Context, Result};
 use bincode::{Decode, Encode};
-use swc_core::{
-    common::DUMMY_SP,
-    ecma::{
-        ast::{BindingIdent, BlockStmt, CatchClause, Expr, Ident, Lit, Pat, Stmt, Str, TryStmt},
-        codegen::{Emitter, Node, text_writer::JsWriter},
-    },
-    quote,
-};
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{
     NonLocalValue, ResolvedVc, TaskInput, TryJoinIterExt, ValueToStringRef, Vc, trace::TraceRawVcs,
 };
-use turbo_tasks_fs::{FileSystem, FileSystemPath, LinkType, VirtualFileSystem, rope::Rope};
+use turbo_tasks_fs::{FileSystem, FileSystemPath, LinkType, VirtualFileSystem, rope::RopeBuilder};
 use turbo_tasks_hash::{encode_hex, hash_xxh3_hash64};
 use turbopack_core::{
     asset::{Asset, AssetContent},
@@ -43,40 +35,13 @@ use crate::{
         EcmascriptChunkItemContent, EcmascriptChunkPlaceable, EcmascriptExports,
         ecmascript_chunk_item,
     },
-    references::async_module::{AsyncModule, OptionAsyncModule, wrap_body_in_async_module},
+    references::async_module::{AsyncModule, OptionAsyncModule},
     runtime_functions::{
-        TURBOPACK_EXPORT_NAMESPACE, TURBOPACK_EXPORT_VALUE, TURBOPACK_EXTERNAL_IMPORT,
-        TURBOPACK_EXTERNAL_REQUIRE, TURBOPACK_LOAD_BY_URL,
+        TURBOPACK_ASYNC_MODULE, TURBOPACK_EXPORT_NAMESPACE, TURBOPACK_EXPORT_VALUE,
+        TURBOPACK_EXTERNAL_IMPORT, TURBOPACK_EXTERNAL_REQUIRE, TURBOPACK_LOAD_BY_URL,
     },
+    utils::StringifyJs,
 };
-
-/// Creates a string literal expression.
-fn str_expr(s: &str) -> Expr {
-    Expr::Lit(Lit::Str(Str {
-        span: DUMMY_SP,
-        value: s.into(),
-        raw: None,
-    }))
-}
-
-/// Serializes a list of AST statements to a `Rope`.
-fn emit_stmts_to_rope(stmts: &[Stmt]) -> Result<Rope> {
-    let cm: std::sync::Arc<swc_core::common::SourceMap> = Default::default();
-    let mut buf: Vec<u8> = Vec::new();
-    {
-        let wr = JsWriter::new(cm.clone(), "\n", &mut buf, None);
-        let mut emitter = Emitter {
-            cfg: swc_core::ecma::codegen::Config::default(),
-            cm,
-            comments: None,
-            wr,
-        };
-        for stmt in stmts {
-            stmt.emit_with(&mut emitter)?;
-        }
-    }
-    Ok(buf.into())
-}
 
 #[derive(
     Copy, Clone, Debug, Eq, PartialEq, TraceRawVcs, TaskInput, Hash, NonLocalValue, Encode, Decode,
@@ -182,36 +147,64 @@ impl CachedExternalModule {
 
     #[turbo_tasks::function]
     pub fn content(&self, supports_async_await: bool) -> Result<Vc<EcmascriptModuleContent>> {
+        let mut code = RopeBuilder::default();
+
         let needs_async_wrapper = self.external_type == CachedExternalType::EcmaScriptViaImport
             || self.external_type == CachedExternalType::Script;
 
-        let mut body_stmts: Vec<Stmt> = Vec::new();
+        // Use "yield" in legacy environments so the generator driver can step
+        // through async operations.
+        let kw = if supports_async_await {
+            "await"
+        } else {
+            "yield"
+        };
+
+        // Open async module wrapper
+        if needs_async_wrapper {
+            if supports_async_await {
+                writeln!(
+                    code,
+                    "return {TURBOPACK_ASYNC_MODULE}(async \
+                     function(__turbopack_handle_async_dependencies__, \
+                     __turbopack_async_result__) {{\ntry {{"
+                )?;
+            } else {
+                writeln!(
+                    code,
+                    "return {TURBOPACK_ASYNC_MODULE}(\
+                     function(__turbopack_handle_async_dependencies__, \
+                     __turbopack_async_result__) {{\nvar __gen = function*() {{\ntry {{"
+                )?;
+            }
+        }
 
         match self.external_type {
             CachedExternalType::EcmaScriptViaImport => {
-                body_stmts.push(quote!(
-                    "var mod = await $import($req);" as Stmt,
-                    import: Expr = Expr::from(TURBOPACK_EXTERNAL_IMPORT),
-                    req: Expr = str_expr(&self.request()),
-                ));
+                writeln!(
+                    code,
+                    "var mod = {kw} {TURBOPACK_EXTERNAL_IMPORT}({});",
+                    StringifyJs(&self.request())
+                )?;
             }
             CachedExternalType::EcmaScriptViaRequire | CachedExternalType::CommonJs => {
                 let request = self.request();
-                body_stmts.push(quote!(
-                    "var mod = $require($req1, () => require($req2));" as Stmt,
-                    require: Expr = Expr::from(TURBOPACK_EXTERNAL_REQUIRE),
-                    req1: Expr = str_expr(&request),
-                    req2: Expr = str_expr(&request),
-                ));
+                writeln!(
+                    code,
+                    "var mod = {TURBOPACK_EXTERNAL_REQUIRE}({}, () => require({}));",
+                    StringifyJs(&request),
+                    StringifyJs(&request)
+                )?;
             }
             CachedExternalType::Global => {
                 if self.request.is_empty() {
-                    body_stmts.push(quote!("var mod = {};" as Stmt));
+                    writeln!(code, "var mod = {{}};")?;
                 } else {
-                    body_stmts.push(quote!(
-                        "var mod = globalThis[$req];" as Stmt,
-                        req: Expr = str_expr(&self.request),
-                    ));
+                    writeln!(
+                        code,
+                        "var mod = globalThis[{}];",
+                        StringifyJs(&self.request)
+                    )?;
                 }
             }
             CachedExternalType::Script => {
@@ -219,103 +212,84 @@ impl CachedExternalModule {
                     let variable_name = &self.request[..at_index];
                     let url = &self.request[at_index + 1..];
 
-                    let not_avail_msg = format!(
-                        "Variable {} is not available on global object after loading {}",
-                        variable_name, url,
-                    );
-                    let failed_msg =
-                        format!("Failed to load external URL module {}: ", &self.request,);
+                    writeln!(code, "var mod;")?;
+                    writeln!(code, "try {{")?;
 
-                    body_stmts.push(quote!("var mod;" as Stmt));
+                    writeln!(
+                        code,
+                        "  {kw} {TURBOPACK_LOAD_BY_URL}({});",
+                        StringifyJs(url)
+                    )?;
 
-                    let try_body = vec![
-                        quote!(
-                            "await $load($url);" as Stmt,
-                            load: Expr = Expr::from(TURBOPACK_LOAD_BY_URL),
-                            url: Expr = str_expr(url),
-                        ),
-                        quote!(
-                            "if (typeof global[$var] === 'undefined') { throw new Error($msg); }"
-                                as Stmt,
-                            var: Expr = str_expr(variable_name),
-                            msg: Expr = str_expr(&not_avail_msg),
-                        ),
-                        quote!(
-                            "mod = global[$var];" as Stmt,
-                            var: Expr = str_expr(variable_name),
-                        ),
-                    ];
+                    writeln!(
+                        code,
+                        "  if (typeof global[{}] === 'undefined') {{",
+                        StringifyJs(variable_name)
+                    )?;
+                    writeln!(
+                        code,
+                        "    throw new Error('Variable {} is not available on global object after \
+                         loading {}');",
+                        StringifyJs(variable_name),
+                        StringifyJs(url)
+                    )?;
+                    writeln!(code, "  }}")?;
+                    writeln!(code, "  mod = global[{}];", StringifyJs(variable_name))?;
 
-                    let catch_body = vec![quote!(
-                        "throw new Error($msg + (error.message || error));" as Stmt,
-                        msg: Expr = str_expr(&failed_msg),
-                    )];
-
-                    body_stmts.push(Stmt::Try(Box::new(TryStmt {
-                        span: DUMMY_SP,
-                        block: BlockStmt {
-                            span: DUMMY_SP,
-                            stmts: try_body,
-                            ctxt: Default::default(),
-                        },
-                        handler: Some(CatchClause {
-                            span: DUMMY_SP,
-                            param: Some(Pat::Ident(BindingIdent {
-                                id: Ident::new("error".into(), DUMMY_SP, Default::default()),
-                                type_ann: None,
-                            })),
-                            body: BlockStmt {
-                                span: DUMMY_SP,
-                                stmts: catch_body,
-                                ctxt: Default::default(),
-                            },
-                        }),
-                        finalizer: None,
-                    })));
+                    writeln!(code, "}} catch (error) {{")?;
+                    writeln!(
+                        code,
+                        "  throw new Error('Failed to load external URL module {}: ' + \
+                         (error.message || error));",
+                        StringifyJs(&self.request)
+                    )?;
+                    writeln!(code, "}}")?;
                 } else {
-                    let msg = format!(
-                        "Invalid URL external format. Expected \"variable@url\", got: {}",
-                        &self.request,
-                    );
-                    body_stmts.push(quote!(
-                        "throw new Error($msg);" as Stmt,
-                        msg: Expr = str_expr(&msg),
-                    ));
-                    body_stmts.push(quote!("var mod = undefined;" as Stmt));
+                    writeln!(
+                        code,
+                        "throw new Error('Invalid URL external format. Expected \"variable@url\", \
+                         got: {}');",
+                        StringifyJs(&self.request)
+                    )?;
+                    writeln!(code, "var mod = undefined;")?;
                 }
             }
         }
 
-        // Export statement
+        writeln!(code)?;
+
         if self.external_type == CachedExternalType::CommonJs {
-            body_stmts.push(quote!("module.exports = mod;" as Stmt));
+            writeln!(code, "module.exports = mod;")?;
         } else if self.external_type == CachedExternalType::EcmaScriptViaImport
             || self.external_type == CachedExternalType::EcmaScriptViaRequire
         {
-            body_stmts.push(quote!(
-                "$export(mod);" as Stmt,
-                export: Expr = Expr::from(TURBOPACK_EXPORT_NAMESPACE),
-            ));
+            writeln!(code, "{TURBOPACK_EXPORT_NAMESPACE}(mod);")?;
         } else {
-            body_stmts.push(quote!(
-                "$export(mod);" as Stmt,
-                export: Expr = Expr::from(TURBOPACK_EXPORT_VALUE),
-            ));
+            writeln!(code, "{TURBOPACK_EXPORT_VALUE}(mod);")?;
         }
 
-        // Wrap in async module closure if needed (reuses the same AST-based
-        // wrapper from async_module.rs, including the generator driver for
-        // legacy environments).
-        let final_stmts = if needs_async_wrapper {
-            wrap_body_in_async_module(body_stmts, true, supports_async_await)
-        } else {
-            body_stmts
-        };
-
-        let inner_code = emit_stmts_to_rope(&final_stmts)?;
+        // Close async module wrapper
+        if needs_async_wrapper {
+            writeln!(code, "__turbopack_async_result__();")?;
+            writeln!(code, "}} catch(e) {{ __turbopack_async_result__(e); }}")?;
+            if supports_async_await {
+                writeln!(code, "}}, true);")?;
+            } else {
+                // Close the generator IIFE and add the step driver
+                writeln!(code, "}}();")?;
+                writeln!(
+                    code,
+                    "(function __step(k, a) {{ try {{ var r = __gen[k](a); }} catch(e) {{ \
+                     __turbopack_async_result__(e); return; }} if (!r.done) \
+                     Promise.resolve(r.value).then(function(v) {{ __step('next', v); }}, \
+                     function(e) {{ __step('throw', e); }}); }})('next');"
+                )?;
+                writeln!(code, "}}, true);")?;
+            }
+        }
 
         Ok(EcmascriptModuleContent {
-            inner_code,
+            inner_code: code.build(),
             source_map: None,
             is_esm: self.external_type != CachedExternalType::CommonJs,
             strict: false,
