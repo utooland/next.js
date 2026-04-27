@@ -225,9 +225,7 @@ function loadScript(
 
   promise = new Promise<void>((resolve, reject) => {
     const script = document.createElement('script')
-    if (CROSS_ORIGIN_LOADING) {
-      script.crossOrigin = CROSS_ORIGIN_LOADING
-    }
+    script.crossOrigin = CROSS_ORIGIN
     script.src = scriptUrl
     script.onload = () => resolve()
     script.onerror = () =>
