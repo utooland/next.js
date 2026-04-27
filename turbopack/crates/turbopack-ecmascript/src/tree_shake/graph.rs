@@ -1120,7 +1120,7 @@ impl DepGraph {
                                 content: ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(
                                     VarDecl {
                                         span: DUMMY_SP,
-                                        kind: VarDeclKind::Var,
+                                        kind: VarDeclKind::Const,
                                         decls: vec![VarDeclarator {
                                             span: DUMMY_SP,
                                             name: default_var.clone().into(),

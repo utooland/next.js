@@ -91,14 +91,11 @@ use turbopack_core::{
     compile_time_info::CompileTimeInfo,
     context::AssetContext,
     ident::AssetIdent,
-    module::{Module, ModuleSideEffects, OptionModule},
+    module::{Module, ModuleSideEffects},
     module_graph::ModuleGraph,
     reference::ModuleReferences,
     reference_type::InnerAssets,
-    resolve::{
-        FindContextFileResult, find_context_file, origin::ResolveOrigin, package_json,
-        parse::Request,
-    },
+    resolve::{FindContextFileResult, find_context_file, origin::ResolveOrigin, package_json},
     source::Source,
     source_map::GenerateSourceMap,
 };
@@ -977,19 +974,6 @@ impl ResolveOrigin for EcmascriptModuleAsset {
     fn asset_context(&self) -> Vc<Box<dyn AssetContext>> {
         *self.asset_context
     }
-
-    #[turbo_tasks::function]
-    async fn get_inner_asset(&self, request: Vc<Request>) -> Result<Vc<OptionModule>> {
-        Ok(Vc::cell(if let Some(inner_assets) = &self.inner_assets {
-            if let Some(request) = request.await?.request() {
-                inner_assets.await?.get(&request).copied()
-            } else {
-                None
-            }
-        } else {
-            None
-        }))
-    }
 }
 
 /// The transformed contents of an Ecmascript module.
@@ -1237,14 +1221,8 @@ impl EcmascriptModuleContent {
                 .try_join()
                 .await?;
 
-            let (
-                merged_ast,
-                comments,
-                source_maps,
-                original_source_maps,
-                lookup_table,
-                fallback_import_idents,
-            ) = merge_modules(contents, &entry_points, &globals_merged).await?;
+            let (merged_ast, comments, source_maps, original_source_maps, lookup_table) =
+                merge_modules(contents, &entry_points, &globals_merged).await?;
 
             // Use the options from an arbitrary module, since they should all be the same with
             // regards to minify_type and chunking_context.
@@ -1273,35 +1251,22 @@ impl EcmascriptModuleContent {
             };
 
             let first_entry = entry_points.first().unwrap().0;
-            let module_ids = modules
-                .iter()
-                .map(async |(module, exposure)| {
-                    Ok((
-                        *module,
-                        *exposure,
-                        module.chunk_item_id(*options.chunking_context).await?,
-                    ))
+            let additional_ids = modules
+                .keys()
+                // Additionally set this module factory for all modules that are exposed. The whole
+                // group might be imported via a different entry import in different chunks (we only
+                // ensure that the modules are in the same order, not that they form a subgraph that
+                // is always imported from the same root module).
+                //
+                // Also skip the first entry, which is the name of the chunk item.
+                .filter(|m| {
+                    **m != first_entry
+                        && *modules.get(*m).unwrap() == MergeableModuleExposure::External
                 })
+                .map(|m| m.chunk_item_id(*options.chunking_context))
                 .try_join()
-                .await?;
-            let additional_ids = module_ids
-                .into_iter()
-                .filter_map(|(module, exposure, module_id)| {
-                    if module == first_entry {
-                        return None;
-                    }
-                    let fallback_ident: Atom =
-                        crate::magic_identifier::mangle(&format!("imported module {module_id}"))
-                            .into();
-                    if exposure == MergeableModuleExposure::External
-                        || fallback_import_idents.contains(&fallback_ident)
-                    {
-                        Some(module_id)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<SmallVec<[ModuleId; 1]>>();
+                .await?
+                .into();
 
             emit_content(content, additional_ids)
                 .instrument(tracing::info_span!("emit code"))
@@ -1335,7 +1300,6 @@ async fn merge_modules(
     Vec<CodeGenResultSourceMap>,
     SmallVec<[ResolvedVc<Box<dyn GenerateSourceMap>>; 1]>,
     Arc<Mutex<Vec<ModulePosition>>>,
-    FxHashSet<Atom>,
 )> {
     struct SetSyntaxContextVisitor<'a> {
         modules_header_width: u32,
@@ -1635,12 +1599,10 @@ async fn merge_modules(
         merged_ast.visit_mut_with(&mut swc_core::ecma::transforms::base::hygiene::hygiene());
         drop(span);
 
-        let fallback_import_idents = inserted_imports.keys().cloned().collect();
-
-        Ok((merged_ast, inserted, fallback_import_idents))
+        Ok((merged_ast, inserted))
     });
 
-    let (merged_ast, inserted, fallback_import_idents) = match result {
+    let (merged_ast, inserted) = match result {
         Ok(v) => v,
         Err((content_idx, err)) => {
             return Err(
@@ -1689,7 +1651,6 @@ async fn merge_modules(
         source_maps,
         original_source_maps,
         Arc::new(Mutex::new(lookup_table)),
-        fallback_import_idents,
     ))
 }
 
@@ -2272,6 +2233,7 @@ fn process_content_with_code_gens(
     let mut hoisted_stmts = FxIndexMap::default();
     let mut early_late_stmts = FxIndexMap::default();
     let mut late_stmts = FxIndexMap::default();
+    let mut body_wrapper = None;
     for code_gen in code_gens {
         for CodeGenerationHoistedStmt { key, stmt } in code_gen.hoisted_stmts.drain(..) {
             hoisted_stmts.entry(key).or_insert(stmt);
@@ -2291,6 +2253,10 @@ fn process_content_with_code_gens(
             } else {
                 visitors.push((path, &**visitor));
             }
+        }
+        if let Some(wrapper) = code_gen.body_wrapper.take() {
+            debug_assert!(body_wrapper.is_none(), "multiple body_wrappers detected");
+            body_wrapper = Some(wrapper);
         }
     }
 
@@ -2321,6 +2287,23 @@ fn process_content_with_code_gens(
                     .chain(late_stmts.into_values())
                     .map(ModuleItem::Stmt),
             );
+
+            // Apply body wrapper LAST — wraps all stmts (including hoisted + late)
+            // in the async module closure at the AST level.
+            if let Some(wrapper) = body_wrapper {
+                let stmts: Vec<Stmt> = body
+                    .drain(..)
+                    .filter_map(|item| match item {
+                        ModuleItem::Stmt(stmt) => Some(stmt),
+                        ModuleItem::ModuleDecl(_) => {
+                            debug_assert!(false, "Unexpected ModuleDecl item after code gen merge");
+                            None
+                        }
+                    })
+                    .collect();
+                let wrapped = wrapper(stmts);
+                body.extend(wrapped.into_iter().map(ModuleItem::Stmt));
+            }
         }
         Program::Script(Script { body, .. }) => {
             body.splice(
@@ -2334,6 +2317,13 @@ fn process_content_with_code_gens(
                     .into_values()
                     .chain(late_stmts.into_values()),
             );
+
+            // Apply body wrapper for scripts too.
+            if let Some(wrapper) = body_wrapper {
+                let stmts: Vec<Stmt> = std::mem::take(body);
+                let wrapped = wrapper(stmts);
+                *body = wrapped;
+            }
         }
     };
 }

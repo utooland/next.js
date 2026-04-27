@@ -27,55 +27,14 @@ use swc_core::{
 };
 use tracing::instrument;
 use turbopack_core::{
-    chunk::{CompressType, MangleType},
+    chunk::MangleType,
     code_builder::{Code, CodeBuilder},
 };
 
 use crate::parse::{IdentCollector, generate_js_source_map};
 
-fn default_compress_options(mangle: Option<MangleType>) -> CompressOptions {
-    CompressOptions {
-        // Only run 2 passes, this is a tradeoff between performance and
-        // compression size. Default is 3 passes.
-        passes: 2,
-        keep_classnames: mangle.is_none(),
-        keep_fnames: mangle.is_none(),
-        ..Default::default()
-    }
-}
-
-pub fn get_compress_options(
-    compress: Option<CompressType>,
-    mangle: Option<MangleType>,
-) -> Option<CompressOptions> {
-    compress.map(|compress| match compress {
-        CompressType::Default => default_compress_options(mangle),
-        CompressType::Options(custom) => {
-            let mut options = default_compress_options(mangle);
-            if let Some(passes) = custom.passes {
-                options.passes = passes as usize;
-            }
-            if let Some(sequences) = custom.sequences {
-                options.sequences = sequences;
-            }
-            if let Some(keep_classnames) = custom.keep_classnames {
-                options.keep_classnames = keep_classnames;
-            }
-            if let Some(keep_fnames) = custom.keep_fnames {
-                options.keep_fnames = keep_fnames;
-            }
-            options
-        }
-    })
-}
-
 #[instrument(level = "info", name = "minify ecmascript code", skip_all)]
-pub fn minify(
-    code: Code,
-    source_maps: bool,
-    mangle: Option<MangleType>,
-    compress: Option<CompressOptions>,
-) -> Result<Code> {
+pub fn minify(code: Code, source_maps: bool, mangle: Option<MangleType>) -> Result<Code> {
     // Pass None for the debug ID so we don't needlessly compute it for the pre-minified content, it
     // will be added by the Code object returned from this function
     let source_maps = source_maps.then(|| code.generate_source_map_ref(None));
@@ -135,7 +94,14 @@ pub fn minify(
                         Some(&comments),
                         None,
                         &MinifyOptions {
-                            compress,
+                            compress: Some(CompressOptions {
+                                // Only run 2 passes, this is a tradeoff between performance and
+                                // compression size. Default is 3 passes.
+                                passes: 2,
+                                keep_classnames: mangle.is_none(),
+                                keep_fnames: mangle.is_none(),
+                                ..Default::default()
+                            }),
                             mangle: mangle.map(|mangle| {
                                 let reserved = vec![atom!("AbortSignal")];
                                 match mangle {

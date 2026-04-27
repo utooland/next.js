@@ -78,7 +78,6 @@ pub const TURBOPACK_CACHE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("c
 pub const TURBOPACK_MODULES: &TurbopackRuntimeFunctionShortcut = make_shortcut!("M");
 pub const TURBOPACK_LOAD: &TurbopackRuntimeFunctionShortcut = make_shortcut!("l");
 pub const TURBOPACK_LOAD_BY_URL: &TurbopackRuntimeFunctionShortcut = make_shortcut!("L");
-pub const TURBOPACK_LOAD_SCRIPT: &TurbopackRuntimeFunctionShortcut = make_shortcut!("S");
 pub const TURBOPACK_CLEAR_CHUNK_CACHE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("C");
 pub const TURBOPACK_DYNAMIC: &TurbopackRuntimeFunctionShortcut = make_shortcut!("j");
 pub const TURBOPACK_RESOLVE_ABSOLUTE_PATH: &TurbopackRuntimeFunctionShortcut = make_shortcut!("P");
@@ -94,11 +93,10 @@ pub const TURBOPACK_REQUIRE_REAL: &TurbopackRuntimeFunctionShortcut = make_short
 pub const TURBOPACK_WASM: &TurbopackRuntimeFunctionShortcut = make_shortcut!("w");
 pub const TURBOPACK_WASM_MODULE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("u");
 pub const TURBOPACK_GLOBAL: &TurbopackRuntimeFunctionShortcut = make_shortcut!("g");
-pub const TURBOPACK_PUBLIC_PATH: &TurbopackRuntimeFunctionShortcut = make_shortcut!("p");
 
 /// Adding an entry to this list will automatically ensure that `__turbopack_XXX__` can be called
 /// from user code (by inserting a replacement into free_var_references)
-pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 25] = [
+pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 23] = [
     ("__turbopack_require__", TURBOPACK_REQUIRE),
     ("__turbopack_module_context__", TURBOPACK_MODULE_CONTEXT),
     ("__turbopack_import__", TURBOPACK_IMPORT),
@@ -109,7 +107,6 @@ pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctio
     ("__turbopack_modules__", TURBOPACK_MODULES),
     ("__turbopack_load__", TURBOPACK_LOAD),
     ("__turbopack_load_by_url__", TURBOPACK_LOAD_BY_URL),
-    ("__turbopack_load_script__", TURBOPACK_LOAD_SCRIPT),
     ("__turbopack_dynamic__", TURBOPACK_DYNAMIC),
     (
         "__turbopack_resolve_absolute_path__",
@@ -132,5 +129,4 @@ pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctio
     ),
     ("__turbopack_wasm__", TURBOPACK_WASM),
     ("__turbopack_wasm_module__", TURBOPACK_WASM_MODULE),
-    ("__turbopack_public_path__", TURBOPACK_PUBLIC_PATH),
 ];

@@ -10,7 +10,7 @@ use turbo_tasks::{
     trace::TraceRawVcs, turbofmt,
 };
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::{DeterministicHash, Xxh3Hash64Hasher, encode_hex, hash_xxh3_hash64};
+use turbo_tasks_hash::{DeterministicHash, Xxh3Hash64Hasher, encode_base38, hash_xxh3_hash64};
 
 use crate::resolve::ModulePart;
 
@@ -269,27 +269,6 @@ impl AssetIdent {
             fragment.deterministic_hash(&mut hasher);
             has_hash = true;
         }
-        if !assets.is_empty() {
-            // Use XOR to combine asset hashes in an order-independent way
-            // This ensures chunks with the same modules but different order get the same hash
-            let mut asset_hashes = Vec::with_capacity(assets.len());
-            for (key, ident) in assets.iter() {
-                let mut asset_hasher = Xxh3Hash64Hasher::new();
-                key.deterministic_hash(&mut asset_hasher);
-                ident
-                    .to_string()
-                    .await?
-                    .deterministic_hash(&mut asset_hasher);
-                asset_hashes.push(asset_hasher.finish());
-            }
-            asset_hashes.sort_unstable();
-
-            2_u8.deterministic_hash(&mut hasher);
-            for h in asset_hashes {
-                h.deterministic_hash(&mut hasher);
-            }
-            has_hash = true;
-        }
         for (key, ident) in assets.iter() {
             2_u8.deterministic_hash(&mut hasher);
             key.deterministic_hash(&mut hasher);
@@ -357,8 +336,9 @@ impl AssetIdent {
         }
 
         if has_hash {
-            let hash = encode_hex(hasher.finish());
-            let truncated_hash = &hash[..8];
+            let hash = encode_base38(hasher.finish());
+            // 7 base38 chars ≈ 36 bits of collision resistance
+            let truncated_hash = &hash[..7];
             write!(name, "_{truncated_hash}")?;
         }
 
@@ -379,17 +359,18 @@ impl AssetIdent {
             }
         }
         if i > 0 {
-            let hash = encode_hex(hash_xxh3_hash64(&name.as_bytes()[..i]));
-            let truncated_hash = &hash[..5];
+            let hash = encode_base38(hash_xxh3_hash64(&name.as_bytes()[..i]));
+            // 4 base38 chars ≈ 21 bits — just a short disambiguator prefix
+            let truncated_hash = &hash[..4];
             name = format!("{}_{}", truncated_hash, &name[i..]);
         }
         // We need to make sure that `.json` and `.json.js` doesn't end up with the same
         // name. So when we add an extra extension when want to mark that with a "._"
         // suffix.
-        // if !removed_extension {
-        //     name += "._";
-        // }
-        // name += &expected_extension;
+        if !removed_extension {
+            name += "._";
+        }
+        name += &expected_extension;
         Ok(Vc::cell(name.into()))
     }
 }
@@ -455,8 +436,8 @@ impl ValueToString for AssetIdent {
     }
 }
 
-pub fn escape_file_path(s: &str) -> String {
-    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?:\[\]<>@\s()]").unwrap());
+fn escape_file_path(s: &str) -> String {
+    static SEPARATOR_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[/#?:]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "_").to_string()
 }
 
