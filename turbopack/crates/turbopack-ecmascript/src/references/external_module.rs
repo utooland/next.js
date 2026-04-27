@@ -281,6 +281,11 @@ impl CachedExternalModule {
             || self.external_type == CachedExternalType::EcmaScriptViaRequire
         {
             writeln!(code, "{TURBOPACK_EXPORT_NAMESPACE}(mod);")?;
+        } else if self.external_type == CachedExternalType::Script {
+            writeln!(code, "var ns = Object.create(null);")?;
+            writeln!(code, "for (var key in mod) ns[key] = mod[key];")?;
+            writeln!(code, "ns.default = mod;")?;
+            writeln!(code, "{TURBOPACK_EXPORT_NAMESPACE}(ns);")?;
         } else {
             writeln!(code, "{TURBOPACK_EXPORT_VALUE}(mod);")?;
         }
