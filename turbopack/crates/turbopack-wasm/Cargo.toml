@@ -23,6 +23,6 @@ turbo-tasks-fs = { workspace = true }
 turbo-tasks-hash = { workspace = true }
 turbopack-core = { workspace = true }
 turbopack-ecmascript = { workspace = true }
-wasmparser = "0.235.0"
+wasmparser = "0.239.0"
 wat = "1.0.69"
 
