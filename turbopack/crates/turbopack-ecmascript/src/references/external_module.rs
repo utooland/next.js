@@ -225,21 +225,8 @@ impl CachedExternalModule {
             CachedExternalType::Promise => {
                 if self.request.is_empty() {
                     writeln!(code, "var mod = {kw} {{}};")?;
-                } else if self.request.contains(' ') {
-                    let global_access = self
-                        .request
-                        .split(' ')
-                        .fold("globalThis".to_string(), |acc, part| {
-                            format!("{}[{}]", acc, StringifyJs(part))
-                        });
-
-                    writeln!(code, "var mod = {kw} {global_access};")?;
                 } else {
-                    writeln!(
-                        code,
-                        "var mod = {kw} globalThis[{}];",
-                        StringifyJs(&self.request)
-                    )?;
+                    writeln!(code, "var mod = {kw} ({});", self.request)?;
                 }
             }
             CachedExternalType::Umd => {
@@ -381,19 +368,28 @@ fn externals_fs_root() -> Vc<FileSystemPath> {
 impl Module for CachedExternalModule {
     #[turbo_tasks::function]
     async fn ident(&self) -> Result<Vc<AssetIdent>> {
-        // For script externals, simplify the path by using variable name
-        // instead of the full url to avoid long filenames
-        let path_str = if self.external_type == CachedExternalType::Script
-            && let Some(at_index) = self.request.rfind('@').filter(|&i| i > 0)
-        {
-            self.request[..at_index].to_string()
-        } else {
-            self.request.to_string()
+        let (path_str, include_request_modifier) = match self.external_type {
+            CachedExternalType::Script => {
+                // Use the variable name instead of the full URL to avoid long filenames.
+                if let Some(at_index) = self.request.rfind('@').filter(|&i| i > 0) {
+                    (self.request[..at_index].to_string(), true)
+                } else {
+                    (self.request.to_string(), true)
+                }
+            }
+            CachedExternalType::Promise => {
+                let hash = encode_hex(hash_xxh3_hash64(self.request.as_str()));
+                (format!("promise-{}", &hash[..8]), false)
+            }
+            _ => (self.request.to_string(), true),
         };
         let mut ident = AssetIdent::from_path(externals_fs_root().await?.join(&path_str)?)
-            .with_layer(Layer::new(rcstr!("external")))
-            .with_modifier(self.request.clone())
-            .with_modifier(self.external_type.to_string().into());
+            .with_layer(Layer::new(rcstr!("external")));
+
+        if include_request_modifier {
+            ident = ident.with_modifier(self.request.clone());
+        }
+        ident = ident.with_modifier(self.external_type.to_string().into());
 
         if let Some(target) = &self.target {
             ident = ident.with_modifier(target.to_string_ref().await?);
