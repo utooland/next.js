@@ -51,6 +51,7 @@ pub enum CachedExternalType {
     EcmaScriptViaRequire,
     EcmaScriptViaImport,
     Global,
+    Promise,
     Script,
     Umd,
 }
@@ -74,6 +75,7 @@ impl Display for CachedExternalType {
             CachedExternalType::EcmaScriptViaRequire => write!(f, "esm_require"),
             CachedExternalType::EcmaScriptViaImport => write!(f, "esm_import"),
             CachedExternalType::Global => write!(f, "global"),
+            CachedExternalType::Promise => write!(f, "promise"),
             CachedExternalType::Script => write!(f, "script"),
             CachedExternalType::Umd => write!(f, "umd"),
         }
@@ -152,6 +154,7 @@ impl CachedExternalModule {
         let mut code = RopeBuilder::default();
 
         let needs_async_wrapper = self.external_type == CachedExternalType::EcmaScriptViaImport
+            || self.external_type == CachedExternalType::Promise
             || self.external_type == CachedExternalType::Script;
 
         // Use "yield" in legacy environments so the generator driver can step
@@ -215,6 +218,26 @@ impl CachedExternalModule {
                     writeln!(
                         code,
                         "var mod = globalThis[{}];",
+                        StringifyJs(&self.request)
+                    )?;
+                }
+            }
+            CachedExternalType::Promise => {
+                if self.request.is_empty() {
+                    writeln!(code, "var mod = {kw} {{}};")?;
+                } else if self.request.contains(' ') {
+                    let global_access = self
+                        .request
+                        .split(' ')
+                        .fold("globalThis".to_string(), |acc, part| {
+                            format!("{}[{}]", acc, StringifyJs(part))
+                        });
+
+                    writeln!(code, "var mod = {kw} {global_access};")?;
+                } else {
+                    writeln!(
+                        code,
+                        "var mod = {kw} globalThis[{}];",
                         StringifyJs(&self.request)
                     )?;
                 }
@@ -412,6 +435,7 @@ impl Module for CachedExternalModule {
                         .await?
                     }
                     CachedExternalType::Global
+                    | CachedExternalType::Promise
                     | CachedExternalType::Script
                     | CachedExternalType::Umd => {
                         origin
@@ -465,6 +489,7 @@ impl Module for CachedExternalModule {
     fn is_self_async(&self) -> Result<Vc<bool>> {
         Ok(Vc::cell(
             self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Promise
                 || self.external_type == CachedExternalType::Script,
         ))
     }
@@ -502,6 +527,7 @@ impl EcmascriptChunkPlaceable for CachedExternalModule {
     fn get_async_module(&self) -> Vc<OptionAsyncModule> {
         Vc::cell(
             if self.external_type == CachedExternalType::EcmaScriptViaImport
+                || self.external_type == CachedExternalType::Promise
                 || self.external_type == CachedExternalType::Script
             {
                 Some(

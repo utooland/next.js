@@ -1252,6 +1252,7 @@ pub async fn replace_external(
             }
         }
         ExternalType::Global => CachedExternalType::Global,
+        ExternalType::Promise => CachedExternalType::Promise,
         ExternalType::Script => CachedExternalType::Script,
         ExternalType::Umd => CachedExternalType::Umd,
         ExternalType::Url => {
