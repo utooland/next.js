@@ -870,6 +870,42 @@ impl Analyzer<'_> {
             }
         }
     }
+
+    fn register_ident_usage(&mut self, node: &Ident) {
+        let id = node.to_id();
+        if let Some((esm_reference_index, _)) = self.data.get_binding(&id) {
+            // An import binding
+            let usage = self
+                .program_decl_usage
+                .import_usages
+                .entry(esm_reference_index)
+                .or_default();
+            if let Some(top_level) = self.state.cur_top_level_decl_name() {
+                usage.add_usage(top_level);
+            } else {
+                usage.make_side_effects();
+            }
+        } else {
+            // A regular variable
+            if !is_unresolved(node, self.unresolved_mark) {
+                if let Some(top_level) = self.state.cur_top_level_decl_name() {
+                    if &id != top_level {
+                        self.program_decl_usage
+                            .decl_usages
+                            .entry(id)
+                            .or_default()
+                            .add_usage(top_level);
+                    }
+                } else {
+                    self.program_decl_usage
+                        .decl_usages
+                        .entry(id)
+                        .or_default()
+                        .make_side_effects();
+                }
+            }
+        }
+    }
 }
 
 impl Visit for Analyzer<'_> {
@@ -1224,15 +1260,11 @@ impl Visit for Analyzer<'_> {
 
     fn visit_member_expr(&mut self, node: &MemberExpr) {
         if let MemberProp::Ident(..) | MemberProp::PrivateName(..) = &node.prop
-            && node.obj.is_ident()
+            && let Expr::Ident(obj) = &*node.obj
         {
             // Skip traversing if obj is a Expr::Ident, so that it doesn't get added to
             // full_star_imports below in visit_expr.
-
-            // TODO this currently doesn't properly mark the import in self.program_decl_usage, see
-            // todo in
-            // turbopack/crates/turbopack-tests/tests/execution/turbopack/remove-unused-imports/
-            // import-star/input/index.js
+            self.register_ident_usage(obj);
             return;
         }
         node.visit_children_with(self);
@@ -1268,39 +1300,7 @@ impl Visit for Analyzer<'_> {
     }
 
     fn visit_ident(&mut self, node: &Ident) {
-        let id = node.to_id();
-        if let Some((esm_reference_index, _)) = self.data.get_binding(&id) {
-            // An import binding
-            let usage = self
-                .program_decl_usage
-                .import_usages
-                .entry(esm_reference_index)
-                .or_default();
-            if let Some(top_level) = self.state.cur_top_level_decl_name() {
-                usage.add_usage(top_level);
-            } else {
-                usage.make_side_effects();
-            }
-        } else {
-            // A regular variable
-            if !is_unresolved(node, self.unresolved_mark) {
-                if let Some(top_level) = self.state.cur_top_level_decl_name() {
-                    if &id != top_level {
-                        self.program_decl_usage
-                            .decl_usages
-                            .entry(id)
-                            .or_default()
-                            .add_usage(top_level);
-                    }
-                } else {
-                    self.program_decl_usage
-                        .decl_usages
-                        .entry(id)
-                        .or_default()
-                        .make_side_effects();
-                }
-            }
-        }
+        self.register_ident_usage(node);
     }
 
     fn visit_fn_expr(&mut self, node: &FnExpr) {
