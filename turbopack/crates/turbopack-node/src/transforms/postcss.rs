@@ -9,6 +9,7 @@ use turbo_tasks::{
 };
 use turbo_tasks_fs::{
     File, FileContent, FileSystemEntryType, FileSystemPath, json::parse_json_with_source_context,
+    to_sys_path,
 };
 use turbopack_core::{
     asset::{Asset, AssetContent},
@@ -606,17 +607,20 @@ impl PostCssTransformedAsset {
         .to_resolved()
         .await?;
 
-        let css_fs_path = self.source.ident().path();
+        let css_fs_path = self.source.ident().path().owned().await?;
 
-        // We need to get a path relative to the project because the postcss loader
-        // runs with the project as the current working directory.
-        let css_path =
-            if let Some(css_path) = project_path.get_relative_path_to(&*css_fs_path.await?) {
-                css_path.into_owned()
-            } else {
-                // This shouldn't be an error since it can happen on virtual assets
-                "".into()
-            };
+        // Prefer an absolute filesystem path for PostCSS `from`/`to`.
+        // Some plugins resolve dependencies relative to these fields, and on
+        // Windows a cwd-relative path can be joined against the wrong base when
+        // the project path and root path differ.
+        let css_path = if let Some(css_path) = to_sys_path(css_fs_path.clone()).await? {
+            css_path.to_string_lossy().into_owned()
+        } else if let Some(css_path) = project_path.get_relative_path_to(&css_fs_path) {
+            css_path.into_owned()
+        } else {
+            // This shouldn't be an error since it can happen on virtual assets
+            "".into()
+        };
 
         let config_value = evaluate_webpack_loader(WebpackLoaderContext {
             entries,
