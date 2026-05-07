@@ -22,7 +22,7 @@ use turbopack_core::{
         chunk_id_strategy::ModuleIdStrategy,
     },
     environment::Environment,
-    ident::AssetIdent,
+    ident::{AssetIdent, escape_file_path},
     module::Module,
     module_graph::{
         ModuleGraph,
@@ -698,9 +698,10 @@ impl ChunkingContext for BrowserChunkingContext {
                 match filename_template {
                     Some(filename) => {
                         let mut filename = filename.to_string();
+                        let name = escape_file_path(name);
 
                         if match_name_placeholder(&filename) {
-                            filename = replace_name_placeholder(&filename, name);
+                            filename = replace_name_placeholder(&filename, &name);
                         }
 
                         if match_content_hash_placeholder(&filename) {
@@ -803,9 +804,10 @@ impl ChunkingContext for BrowserChunkingContext {
                 let mut filename = filename_template.to_string();
 
                 let (_, name, ext) = source_path.split_file_stem_extension();
+                let name = escape_file_path(name);
 
                 if match_name_placeholder(&filename) {
-                    filename = replace_name_placeholder(&filename, name);
+                    filename = replace_name_placeholder(&filename, &name);
                 }
 
                 if match_content_hash_placeholder(&filename) {
