@@ -456,7 +456,7 @@ impl ValueToString for AssetIdent {
 
 pub fn escape_file_path(s: &str) -> String {
     static SEPARATOR_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"[/#?:\[\]<>@\s()]").unwrap());
+        LazyLock::new(|| Regex::new(r"[/#?:\[\]<>@\s()&]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "_").to_string()
 }
 
@@ -485,7 +485,7 @@ pub mod tests {
                 let fs = VirtualFileSystem::new_with_name(rcstr!("test"));
                 let root = fs.root().owned().await?;
 
-                let asset_ident = AssetIdent::from_path(root.join("a:b?c#d.js")?);
+                let asset_ident = AssetIdent::from_path(root.join("a:b?c#d&e.js")?);
                 let output_name = asset_ident
                     .output_name(root, Some(rcstr!("prefix")), rcstr!(".js"))
                     .await?;
@@ -493,7 +493,7 @@ pub mod tests {
             }
 
             let output_name = output_name_operation().read_strongly_consistent().await?;
-            assert_eq!(&*output_name, "prefix-a_b_c_d.js");
+            assert_eq!(&*output_name, "prefix-a_b_c_d_e.js");
 
             Ok(())
         })
