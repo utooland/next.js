@@ -38,6 +38,15 @@ pub mod web_worker;
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod worker_thread;
 
+#[cfg(all(
+    feature = "worker_pool_napi",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
+pub use self::worker_thread::{
+    NapiTaskMessage, NapiWorkerCreation, NapiWorkerTermination, recv_task_message_in_worker,
+    register_worker_scheduler, send_task_message, worker_created,
+};
+
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
 #[turbo_tasks::value(
