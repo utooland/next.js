@@ -22,6 +22,8 @@ use crate::NodeJsChunkingContext;
 
 /// An Ecmascript chunk that loads a list of parallel chunks, then instantiates
 /// runtime entries.
+// Downstream consumer: utoo webpack-stats generation
+// https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L160
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Build Node Entry Chunk")]
@@ -63,6 +65,8 @@ impl EcmascriptBuildNodeEntryChunk {
         .cell()
     }
 
+    // Downstream consumer: utoo webpack-stats generation
+    // https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L189
     #[turbo_tasks::function]
     pub async fn chunks_data(&self) -> Result<Vc<ChunksData>> {
         Ok(ChunkData::from_assets(
@@ -71,16 +75,22 @@ impl EcmascriptBuildNodeEntryChunk {
         ))
     }
 
+    // Downstream consumer: utoo webpack-stats generation
+    // https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L174
     #[turbo_tasks::function]
     pub fn evaluatable_assets(&self) -> Vc<EvaluatableAssets> {
         *self.evaluatable_assets
     }
 
+    // Downstream consumer: utoo webpack-stats generation
+    // https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L181
     #[turbo_tasks::function]
     pub fn module_graph(&self) -> Vc<ModuleGraph> {
         *self.module_graph
     }
 
+    // Downstream consumer: utoo webpack-stats generation
+    // https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L181
     #[turbo_tasks::function]
     pub fn chunking_context(&self) -> Vc<Box<dyn ChunkingContext>> {
         Vc::upcast(*self.chunking_context)

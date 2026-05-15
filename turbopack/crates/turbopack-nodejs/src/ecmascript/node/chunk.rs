@@ -16,6 +16,8 @@ use super::content::EcmascriptBuildNodeChunkContent;
 use crate::NodeJsChunkingContext;
 
 /// Production Ecmascript chunk targeting Node.js.
+// Downstream consumer: utoo webpack-stats generation
+// https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L140
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Build Node Chunk")]
@@ -72,6 +74,8 @@ impl EcmascriptBuildNodeChunk {
         ))
     }
 
+    // Downstream consumer: utoo webpack-stats generation
+    // https://github.com/utooland/utoo/blob/f7250e6685c4964ba61b859fc6b87f9f60713a91/crates/pack-api/src/webpack_stats.rs#L154
     #[turbo_tasks::function]
     pub fn chunk(&self) -> Vc<Box<dyn Chunk>> {
         Vc::upcast(*self.chunk)
