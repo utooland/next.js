@@ -117,6 +117,17 @@ impl EcmascriptChunkPlaceable for StaticUrlJsModule {
             }
             .cell());
         }
+        if let Some(asset_path) = url.strip_prefix("__AUTO_PUBLIC_PATH__") {
+            let code = format!(
+                "{TURBOPACK_EXPORT_VALUE}({TURBOPACK_PUBLIC_PATH}(\"auto\") + {path});",
+                path = StringifyJs(asset_path)
+            );
+            return Ok(EcmascriptChunkItemContent {
+                inner_code: code.into(),
+                ..Default::default()
+            }
+            .cell());
+        }
 
         let url_behavior = chunking_context.url_behavior(this.tag.clone()).await?;
 
