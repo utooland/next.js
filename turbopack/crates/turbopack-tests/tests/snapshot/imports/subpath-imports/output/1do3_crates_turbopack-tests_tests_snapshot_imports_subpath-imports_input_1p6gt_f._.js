@@ -1,4 +1,4 @@
-(globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push(["output/1do3_crates_turbopack-tests_tests_snapshot_imports_subpath-imports_input_14v1xaq._.js",
+(globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push(["output/1do3_crates_turbopack-tests_tests_snapshot_imports_subpath-imports_input_1p6gt_f._.js",
 "[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/foo.js [test] (ecmascript)", ((__turbopack_context__) => {
 "use strict";
 
@@ -45,15 +45,26 @@ module.exports = 'require';
 __turbopack_context__.s([]);
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$foo$2e$js__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/foo.js [test] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$dep$2f$index$2e$js__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/dep/index.js [test] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$node_modules$2f$dep$2d$in$2d$nm$2f$index$2e$js__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/node_modules/dep-in-nm/index.js [test] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$pat$2e$js__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/pat.js [test] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$import$2e$mjs__$5b$test$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/import.mjs [test] (ecmascript)");
 ;
 ;
 ;
 ;
+;
 const conditionalRequire = __turbopack_context__.r("[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/require.cjs [test] (ecmascript)");
-console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$foo$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$dep$2f$index$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$pat$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$import$2e$mjs__$5b$test$5d$__$28$ecmascript$29$__["default"], conditionalRequire);
+console.log(__TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$foo$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$dep$2f$index$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$node_modules$2f$dep$2d$in$2d$nm$2f$index$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$pat$2e$js__$5b$test$5d$__$28$ecmascript$29$__["default"], __TURBOPACK__imported__module__$5b$project$5d2f$turbopack$2f$crates$2f$turbopack$2d$tests$2f$tests$2f$snapshot$2f$imports$2f$subpath$2d$imports$2f$input$2f$import$2e$mjs__$5b$test$5d$__$28$ecmascript$29$__["default"], conditionalRequire);
+}),
+"[project]/turbopack/crates/turbopack-tests/tests/snapshot/imports/subpath-imports/input/node_modules/dep-in-nm/index.js [test] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "default",
+    ()=>__TURBOPACK__default__export__
+]);
+const __TURBOPACK__default__export__ = 'dep-in-nm';
 }),
 ]);
 
-//# sourceMappingURL=1do3_crates_turbopack-tests_tests_snapshot_imports_subpath-imports_input_14v1xaq._.js.map
+//# sourceMappingURL=1do3_crates_turbopack-tests_tests_snapshot_imports_subpath-imports_input_1p6gt_f._.js.map

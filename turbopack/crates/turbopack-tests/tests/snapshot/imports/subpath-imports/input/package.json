@@ -3,6 +3,7 @@
   "imports": {
     "#foo": "./foo.js",
     "#dep": "dep",
+    "#dep-in-nm": "dep-in-nm",
     "#conditional": {
       "import": "./import.mjs",
       "require": "./require.cjs"
@@ -10,6 +11,7 @@
     "#pattern/*.js": "./*.js"
   },
   "dependencies": {
-    "dep": "./dep"
+    "dep": "./dep",
+    "dep-in-nm": "dep-in-nm"
   }
 }

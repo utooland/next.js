@@ -47,7 +47,7 @@ use crate::{
         parse::{Request, stringify_data_uri},
         pattern::{Pattern, PatternMatch, read_matches},
         plugin::{AfterResolvePlugin, AfterResolvePluginCondition, BeforeResolvePlugin},
-        remap::{ExportsField, ImportsField, ReplacedSubpathValueResult},
+        remap::{ExportImport, ExportsField, ImportsField, ReplacedSubpathValueResult},
     },
     source::{OptionSource, Source, Sources},
 };
@@ -2950,6 +2950,7 @@ async fn resolve_into_package(
                         conditions,
                         unspecified_conditions,
                         query,
+                        ExportImport::Export,
                     )
                     .await?,
                 );
@@ -3229,6 +3230,7 @@ async fn handle_exports_imports_field(
     conditions: &BTreeMap<RcStr, ConditionValue>,
     unspecified_conditions: &ConditionValue,
     query: RcStr,
+    kind: ExportImport,
 ) -> Result<Vc<ResolveResult>> {
     let mut results = Vec::new();
     let mut conditions_state = FxHashMap::default();
@@ -3263,12 +3265,13 @@ async fn handle_exports_imports_field(
     } in results
     {
         if let Some(result_path) = result_path.with_normalized_path() {
-            let request = *Request::parse(Pattern::Concatenation(vec![
-                Pattern::Constant(rcstr!("./")),
-                result_path.clone(),
-            ]))
-            .to_resolved()
-            .await?;
+            let request =
+                Pattern::Concatenation(vec![Pattern::Constant(rcstr!("./")), result_path.clone()]);
+            let request = match kind {
+                ExportImport::Export => request,
+                ExportImport::Import => Pattern::alternatives(vec![request, result_path.clone()]),
+            };
+            let request = *Request::parse(request).to_resolved().await?;
 
             let resolve_result = Box::pin(resolve_internal_inline(
                 package_path.clone(),
@@ -3370,6 +3373,7 @@ async fn resolve_package_internal_with_imports_field(
         conditions,
         unspecified_conditions,
         RcStr::default(),
+        ExportImport::Import,
     )
     .await
 }
