@@ -104,7 +104,7 @@ type GetWorkerURL = (
   shared: boolean
 ) => URL
 
-type GetPublicPath = () => string
+type GetPublicPath = (mode?: 'auto') => string
 
 type ExternalRequire = (
   id: DependencySpecifier,
