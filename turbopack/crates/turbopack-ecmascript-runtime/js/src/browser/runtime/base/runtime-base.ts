@@ -36,10 +36,13 @@ declare var ASSET_SUFFIX: string
 declare var CROSS_ORIGIN: 'anonymous' | 'use-credentials' | null
 declare var WORKER_FORWARDED_GLOBALS: string[]
 
-// Support runtime public path from window.publicPath
+// Support runtime public path modes.
 function getRuntimeChunkBasePath(basePath: string = CHUNK_BASE_PATH): string {
-  if (CHUNK_BASE_PATH === '__RUNTIME_PUBLIC_PATH__') {
+  if (basePath === '__RUNTIME_PUBLIC_PATH__') {
     return contextPrototype.p()
+  }
+  if (basePath === '__AUTO_PUBLIC_PATH__') {
+    return contextPrototype.p('auto')
   }
   return basePath
 }
