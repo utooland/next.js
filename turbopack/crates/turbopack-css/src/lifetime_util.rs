@@ -3,14 +3,12 @@ use lightningcss::{
     traits::IntoOwned,
 };
 
-pub fn stylesheet_into_static<'i, 'o>(
-    ss: &StyleSheet,
-    options: ParserOptions<'o, 'i>,
-) -> StyleSheet<'i, 'o> {
+pub fn stylesheet_into_static(
+    ss: &StyleSheet<'_>,
+    options: ParserOptions<'static>,
+) -> StyleSheet<'static> {
     let sources = ss.sources.clone();
     let rules = ss.rules.clone().into_owned();
-
-    //
 
     StyleSheet::new(sources, rules, options)
 }
