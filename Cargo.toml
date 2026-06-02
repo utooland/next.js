@@ -277,13 +277,13 @@ indexmap = "2.13.0"
 indoc = "2.0.0"
 inventory = "0.3.21"
 itertools = "0.10.5"
-lightningcss = { version = "1.0.0-alpha.70", features = [
+lightningcss = { version = "1.0.0-alpha.71", features = [
   "serde",
   "visitor",
   "into_owned",
   "browserslist",
 ] }
-lightningcss-napi = { version = "0.4.6", default-features = false, features = [
+lightningcss-napi = { version = "0.4.8", default-features = false, features = [
   "visitor",
 ] }
 lzzzz = "2.0.0"

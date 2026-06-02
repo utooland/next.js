@@ -1,4 +1,7 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    borrow::Cow,
+    sync::{Arc, RwLock},
+};
 
 use anyhow::{Result, bail};
 use async_trait::async_trait;
@@ -95,7 +98,7 @@ async fn get_lightningcss_browser_targets(
 }
 
 async fn stylesheet_to_css(
-    ss: &StyleSheet<'_, '_>,
+    ss: &StyleSheet<'_>,
     code: &str,
     minify_type: MinifyType,
     enable_srcmap: bool,
@@ -155,14 +158,14 @@ pub enum ParseCssResult {
         code: ResolvedVc<FileContent>,
 
         #[turbo_tasks(trace_ignore)]
-        stylesheet: StyleSheet<'static, 'static>,
+        stylesheet: StyleSheet<'static>,
 
         references: ResolvedVc<ModuleReferences>,
 
         url_references: ResolvedVc<UnresolvedUrlReferences>,
 
         #[turbo_tasks(trace_ignore)]
-        options: ParserOptions<'static, 'static>,
+        options: ParserOptions<'static>,
     },
     Unparsable,
     NotFound,
@@ -406,12 +409,12 @@ pub async fn parse_css(
 ///
 /// Does not handle parser warnings — the caller is responsible for configuring
 /// the `warnings` field in `config` and processing collected warnings.
-fn parse_css_stylesheet<'a, 'o>(
+fn parse_css_stylesheet<'a>(
     code: &'a str,
-    config: ParserOptions<'o, 'a>,
+    config: ParserOptions<'a>,
     _ty: CssModuleType,
     _source: ResolvedVc<Box<dyn Source>>,
-) -> Result<StyleSheet<'a, 'o>, lightningcss::error::Error<lightningcss::error::ParserError<'a>>> {
+) -> Result<StyleSheet<'a>, lightningcss::error::Error<lightningcss::error::ParserError<'a>>> {
     // if matches!(ty, CssModuleType::Module) {
     //     let mut validator = CssValidator { errors: Vec::new() };
     //     ss.visit_mut(&mut validator).unwrap();
@@ -435,8 +438,7 @@ async fn process_content(
     environment: Option<ResolvedVc<Environment>>,
     feature_flags: LightningCssFeatureFlags,
 ) -> Result<Vc<ParseCssResult>> {
-    #[allow(clippy::needless_lifetimes)]
-    fn without_warnings<'o, 'i>(config: ParserOptions<'o, 'i>) -> ParserOptions<'o, 'static> {
+    fn without_warnings(config: ParserOptions<'_>) -> ParserOptions<'static> {
         ParserOptions {
             filename: config.filename,
             css_modules: config.css_modules,
@@ -453,9 +455,9 @@ async fn process_content(
                 pattern: Pattern {
                     segments: smallvec![
                         Segment::Name,
-                        Segment::Literal("__"),
+                        Segment::Literal(Cow::Borrowed("__")),
                         Segment::Hash,
-                        Segment::Literal("__"),
+                        Segment::Literal(Cow::Borrowed("__")),
                         Segment::Local,
                     ],
                 },
