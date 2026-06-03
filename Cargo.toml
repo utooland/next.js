@@ -372,6 +372,9 @@ mdxjs = { git = "https://github.com/vercel-labs/mdxjs-rs-turbopack.git", branch 
 # Doesn't compile on recent nightly versions because of https://github.com/Michael-F-Bryan/include_dir/pull/117
 include_dir = { git = "https://github.com/vercel-labs/include_dir", branch = "turbopack" }
 libmimalloc-sys = { git = "https://github.com/utooland/mimalloc_rust.git" }
+lightningcss = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
+lightningcss-napi = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
 mimalloc = { git = "https://github.com/utooland/mimalloc_rust.git" }
+parcel_selectors = { git = "https://github.com/utooland/lightningcss", branch = "support-css-module-global" }
 tokio = { git = "https://github.com/utooland/tokio.git", package = "tokio" }
 tokio-util = { git = "https://github.com/utooland/tokio.git", package = "tokio-util" }
