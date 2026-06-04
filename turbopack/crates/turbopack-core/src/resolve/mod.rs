@@ -2112,14 +2112,19 @@ async fn resolve_internal_inline(
                         if let Some(fs_path) = disk_fs.try_from_sys_path(disk_fs_vc, sys_path, None)
                         {
                             let root_path = disk_fs_vc.root().owned().await?;
+                            // Windows absolute requests should be normalized through the
+                            // filesystem root. Otherwise an absolute request can keep the
+                            // importer's lookup path in the resolved identity chain, which may
+                            // create a different module record from a relative request to the same
+                            // physical file.
                             let (relative_lookup_path, relative_path) = if let Some(relative_path) =
-                                lookup_path.get_relative_path_to(&fs_path)
-                            {
-                                (lookup_path.clone(), relative_path)
-                            } else if let Some(relative_path) =
                                 root_path.get_relative_path_to(&fs_path)
                             {
                                 (root_path.clone(), relative_path)
+                            } else if let Some(relative_path) =
+                                lookup_path.get_relative_path_to(&fs_path)
+                            {
+                                (lookup_path.clone(), relative_path)
                             } else {
                                 continue;
                             };
