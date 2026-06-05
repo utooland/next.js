@@ -10,36 +10,21 @@ autobenches = false
 bench = false
 
 [dependencies]
-
-[target.'cfg(all(target_os = "linux", not(target_env = "musl")))'.dependencies]
-mimalloc = { version = "0.1.48", features = [
-  "extended",
-  "local_dynamic_tls",
-  "v3",
-], optional = true }
-
-[target.'cfg(all(target_os = "linux", not(target_family = "wasm")))'.dependencies]
-mimalloc = { version = "0.1.48", features = [
-  "extended",
-  "local_dynamic_tls",
-  "v3",
-], optional = true }
-
-[target.'cfg(all(target_os = "linux", target_env = "musl"))'.dependencies]
-mimalloc = { version = "0.1.48", features = [
-  "extended",
-  "v3",
-], optional = true }
-
-[target.'cfg(not(any(target_os = "linux", target_family = "wasm")))'.dependencies]
-mimalloc = { version = "0.1.48", features = [
-  "extended",
-  "v3",
-], optional = true }
-
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
 libmimalloc-sys = { version = "0.1.44", features = [
   "extended",
+], optional = true }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+mimalloc = { version = "0.1.48", features = [
+  "extended",
+  "v3",
+], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+mimalloc = { version = "0.1.48", features = [
+  "extended",
+  "local_dynamic_tls",
+  "v3",
 ], optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
