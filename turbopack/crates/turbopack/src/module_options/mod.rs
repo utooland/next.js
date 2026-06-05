@@ -457,6 +457,9 @@ impl ModuleOptions {
                     )
                 }
 
+                rule_conditions.push(RuleCondition::not(RuleCondition::ReferenceType(
+                    ReferenceTypeCondition::Url(Some(UrlReferenceSubType::CssUrl)),
+                )));
                 rule_conditions.push(RuleCondition::not(RuleCondition::ResourceIsVirtualSource));
                 rule_conditions.push(module_css_external_transform_conditions.clone());
 
