@@ -104,11 +104,11 @@ impl TurboMalloc {
     /// force=true: do all the work of `process=false` and then process global shared structures and
     /// return memory to the OS if possible, this is much slower and should only be done rarely.
     pub fn collect(force: bool) {
-        #[cfg(all(feature = "custom_allocator", not(target_family = "wasm")))]
+        #[cfg(feature = "custom_allocator")]
         unsafe {
             libmimalloc_sys::mi_collect(force);
         }
-        #[cfg(not(all(feature = "custom_allocator", not(target_family = "wasm"))))]
+        #[cfg(not(feature = "custom_allocator"))]
         {
             let _ = force;
         }
@@ -143,17 +143,17 @@ impl TurboMalloc {
 /// Get the allocator for this platform that we should wrap with TurboMalloc.
 #[inline]
 fn base_alloc() -> &'static impl GlobalAlloc {
-    #[cfg(all(feature = "custom_allocator", not(target_family = "wasm")))]
+    #[cfg(feature = "custom_allocator")]
     return &mimalloc::MiMalloc;
-    #[cfg(any(not(feature = "custom_allocator"), target_family = "wasm"))]
+    #[cfg(not(feature = "custom_allocator"))]
     return &std::alloc::System;
 }
 
 #[allow(unused_variables)]
 unsafe fn base_alloc_size(ptr: *const u8, layout: Layout) -> usize {
-    #[cfg(all(feature = "custom_allocator", not(target_family = "wasm")))]
+    #[cfg(feature = "custom_allocator")]
     return unsafe { mimalloc::MiMalloc.usable_size(ptr) };
-    #[cfg(any(not(feature = "custom_allocator"), target_family = "wasm"))]
+    #[cfg(not(feature = "custom_allocator"))]
     return layout.size();
 }
 
