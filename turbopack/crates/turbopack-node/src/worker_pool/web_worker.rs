@@ -44,8 +44,20 @@ pub async fn register_worker_scheduler(creator: js_sys::Function, terminator: js
     while let Some(op) = rx.recv().await {
         match op {
             WorkerOperation::Create(creation, tx) => {
-                PENDING_CREATIONS.lock().unwrap().push_back(tx);
-                let _ = creator.call1(&JsValue::NULL, &JsValue::from(creation));
+                let (created_tx, created_rx) = oneshot::channel();
+                PENDING_CREATIONS.lock().unwrap().push_back(created_tx);
+
+                if creator.call1(&JsValue::NULL, &JsValue::from(creation)).is_err() {
+                    let _ = PENDING_CREATIONS.lock().unwrap().pop_back();
+                    continue;
+                }
+
+                // Web workers can finish booting out of creation order. Wait for
+                // workerCreated before accepting another Create, so the returned
+                // worker id is paired with the WorkerOptions that requested it.
+                if let Ok(worker_id) = created_rx.await {
+                    let _ = tx.send(worker_id);
+                }
             }
             WorkerOperation::Terminate(termination) => {
                 let _ = terminator.call1(&JsValue::NULL, &JsValue::from(termination));

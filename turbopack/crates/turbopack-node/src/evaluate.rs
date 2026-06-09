@@ -276,7 +276,13 @@ pub async fn get_evaluate_pool(
             assets_for_source_mapping,
             assets_root: output_root.clone(),
             project_dir: chunking_context.root_path().owned().await?,
-            concurrency: available_parallelism().map_or(1, |v| v.get()),
+            concurrency: if cfg!(all(target_family = "wasm", target_os = "unknown")) {
+                //TODO: Enable concurrency may cause OPFS error, which can't resolve files under
+                // .turbopack/
+                1
+            } else {
+                available_parallelism().map_or(1, |v| v.get())
+            },
             debug,
         })
         .await?;
