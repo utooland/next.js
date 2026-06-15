@@ -267,6 +267,7 @@ async fn apply_module_type(
             ty,
             environment,
             lightningcss_features,
+            css_modules_pattern,
         } => ResolvedVc::upcast(
             CssModule::new(
                 *source,
@@ -275,6 +276,7 @@ async fn apply_module_type(
                 css_import_context.map(|c| *c),
                 environment.as_deref().copied(),
                 *lightningcss_features,
+                css_modules_pattern.clone(),
             )
             .to_resolved()
             .await?,
@@ -769,6 +771,7 @@ async fn process_default_internal(
                     default_options,
                     None,
                     Default::default(),
+                    None,
                 )
                 .await?;
             match effect {

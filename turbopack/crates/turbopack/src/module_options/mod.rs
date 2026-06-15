@@ -257,6 +257,7 @@ impl ModuleOptions {
                     source_maps: css_source_maps,
                     ref module_css_condition,
                     lightningcss_features,
+                    ref css_modules_pattern,
                     ..
                 },
             ref static_url_tag,
@@ -503,6 +504,7 @@ impl ModuleOptions {
                                     ecmascript_options_vc,
                                     environment,
                                     lightningcss_features,
+                                    css_modules_pattern.clone(),
                                 )
                                 .await?,
                         )
@@ -834,6 +836,7 @@ impl ModuleOptions {
                         ty: CssModuleType::Module,
                         environment,
                         lightningcss_features,
+                        css_modules_pattern: css_modules_pattern.clone(),
                     })],
                 ),
                 ModuleRule::new(
@@ -845,6 +848,7 @@ impl ModuleOptions {
                         ty: CssModuleType::Default,
                         environment,
                         lightningcss_features,
+                        css_modules_pattern: None,
                     })],
                 ),
             ]);
@@ -910,6 +914,7 @@ impl ModuleOptions {
                         ty: CssModuleType::Module,
                         environment,
                         lightningcss_features,
+                        css_modules_pattern: css_modules_pattern.clone(),
                     })],
                 ),
                 // Ecmascript CSS Modules referencing the actual CSS module to include it
@@ -924,6 +929,7 @@ impl ModuleOptions {
                         ty: CssModuleType::Module,
                         environment,
                         lightningcss_features,
+                        css_modules_pattern: css_modules_pattern.clone(),
                     })],
                 ),
                 // Ecmascript CSS Modules referencing the actual CSS module to list the classes
@@ -938,6 +944,7 @@ impl ModuleOptions {
                         ty: CssModuleType::Module,
                         environment,
                         lightningcss_features,
+                        css_modules_pattern: css_modules_pattern.clone(),
                     })],
                 ),
                 ModuleRule::new(
@@ -953,6 +960,7 @@ impl ModuleOptions {
                         ty: CssModuleType::Default,
                         environment,
                         lightningcss_features,
+                        css_modules_pattern: None,
                     })],
                 ),
             ]);

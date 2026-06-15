@@ -369,6 +369,7 @@ pub async fn parse_css(
     ty: CssModuleType,
     environment: Option<ResolvedVc<Environment>>,
     feature_flags: LightningCssFeatureFlags,
+    css_modules_pattern: Option<RcStr>,
 ) -> Result<Vc<ParseCssResult>> {
     let span = tracing::info_span!(
         "parse css",
@@ -394,6 +395,7 @@ pub async fn parse_css(
                             ty,
                             environment,
                             feature_flags,
+                            css_modules_pattern.clone(),
                         )
                         .await?
                     }
@@ -437,6 +439,7 @@ async fn process_content(
     ty: CssModuleType,
     environment: Option<ResolvedVc<Environment>>,
     feature_flags: LightningCssFeatureFlags,
+    css_modules_pattern: Option<RcStr>,
 ) -> Result<Vc<ParseCssResult>> {
     fn without_warnings(config: ParserOptions<'_>) -> ParserOptions<'static> {
         ParserOptions {
@@ -449,10 +452,15 @@ async fn process_content(
         }
     }
 
+    let css_modules_pattern = match css_modules_pattern {
+        Some(pattern) => Some(Pattern::parse(&pattern)?),
+        None => None,
+    };
+
     let config = ParserOptions {
         css_modules: match ty {
             CssModuleType::Module => Some(lightningcss::css_modules::Config {
-                pattern: Pattern {
+                pattern: css_modules_pattern.unwrap_or_else(|| Pattern {
                     segments: smallvec![
                         Segment::Name,
                         Segment::Literal(Cow::Borrowed("__")),
@@ -460,7 +468,7 @@ async fn process_content(
                         Segment::Literal(Cow::Borrowed("__")),
                         Segment::Local,
                     ],
-                },
+                }),
                 dashed_idents: false,
                 grid: false,
                 container: false,

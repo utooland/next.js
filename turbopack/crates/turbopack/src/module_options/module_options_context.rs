@@ -308,6 +308,9 @@ pub struct CssOptionsContext {
     /// User-specified lightningcss feature flags (include/exclude bitmasks).
     pub lightningcss_features: turbopack_css::LightningCssFeatureFlags,
 
+    /// CSS Modules local class name pattern.
+    pub css_modules_pattern: Option<RcStr>,
+
     pub placeholder_for_future_extensions: (),
 }
 

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use turbo_rcstr::rcstr;
+use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, TryJoinIterExt, Vc, turbofmt};
 use turbo_tasks_fs::{FileContent, FileSystemPath};
 use turbopack_core::{
@@ -43,6 +43,7 @@ pub struct CssModule {
     ty: CssModuleType,
     environment: Option<ResolvedVc<Environment>>,
     lightningcss_features: LightningCssFeatureFlags,
+    css_modules_pattern: Option<RcStr>,
 }
 
 #[turbo_tasks::value_impl]
@@ -56,6 +57,7 @@ impl CssModule {
         import_context: Option<ResolvedVc<ImportContext>>,
         environment: Option<ResolvedVc<Environment>>,
         lightningcss_features: LightningCssFeatureFlags,
+        css_modules_pattern: Option<RcStr>,
     ) -> Vc<Self> {
         Self::cell(CssModule {
             source,
@@ -64,6 +66,7 @@ impl CssModule {
             ty,
             environment,
             lightningcss_features,
+            css_modules_pattern,
         })
     }
 
@@ -87,6 +90,7 @@ impl ParseCss for CssModule {
             this.ty,
             this.environment.as_deref().copied(),
             this.lightningcss_features,
+            this.css_modules_pattern.clone(),
         ))
     }
 }
