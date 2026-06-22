@@ -7,8 +7,11 @@ use std::{
 
 pub use async_trait::async_trait;
 pub use bincode;
+pub use inventory;
 use rustc_hash::FxHashMap;
+#[cfg(not(target_family = "wasm"))]
 pub use scattered_collect;
+#[cfg(not(target_family = "wasm"))]
 use scattered_collect::slice::ScatteredSlice;
 pub use shrink_to_fit;
 pub use tracing;
@@ -22,7 +25,7 @@ use crate::{
 pub use crate::{
     dyn_task_inputs::DynTaskInputs,
     global_name_for_method, global_name_for_scope, global_name_for_trait_method,
-    global_name_for_trait_method_impl, global_name_for_type,
+    global_name_for_trait_method_impl, global_name_for_type, inventory_submit,
     manager::{find_cell_by_id, find_cell_by_type, spawn_detached_for_testing},
     native_function::{
         ArgMeta, NativeFunction, VTABLE_DEFAULT, downcast_args_owned, downcast_args_ref,
@@ -243,8 +246,7 @@ where
     }
 }
 
-/// One `impl Trait for ConcreteType` registration, gathered at link time into
-/// [`TRAIT_IMPLS_SLICE`].
+/// One `impl Trait for ConcreteType` registration, gathered at link time.
 pub struct TraitImplRecord {
     pub value_type: &'static ValueType,
     pub trait_type: &'static TraitType,
@@ -254,15 +256,31 @@ pub struct TraitImplRecord {
     pub install_vtable: fn(ValueTypeId),
 }
 
-// Link-time collection of every `impl Trait for Concrete`. Like the definition slices in
-// `registry`, this is populated by the linker — complete at process start, no constructors, no
-// ordering. It is iterated exactly once, in `register_all_trait_methods`.
-//
-// `pub` so the `value_impl`-emitted scatter (which expands in downstream crates) can name it as
-// `$crate::macro_helpers::TRAIT_IMPLS_SLICE`; the data is `#[doc(hidden)]`.
+#[cfg(not(target_family = "wasm"))]
 #[doc(hidden)]
 #[scattered_collect::gather]
 pub static TRAIT_IMPLS_SLICE: ScatteredSlice<TraitImplRecord>;
+
+#[cfg(target_family = "wasm")]
+inventory::collect! { TraitImplRecord }
+
+/// Submit an item to the inventory.
+///
+/// This macro is a wrapper around `inventory::submit` that adds a
+/// `#[not(cfg(rust_analyzer))]` attribute to the item. This avoids warnings about unused items
+/// when using Rust Analyzer.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! inventory_submit {
+    ($($item:tt)*) => {
+        #[cfg(not(rust_analyzer))]
+        $crate::macro_helpers::inventory_submit_inner! { $($item)* }
+    };
+}
+
+/// Exported so the above macro can reference it.
+#[doc(hidden)]
+pub use inventory::submit as inventory_submit_inner;
 
 /// Use `type_name` to get globally unique identifier that's stable across multiple executions of
 /// the same Turbopack version, potentially allowing cache sharing across platforms/architectures.

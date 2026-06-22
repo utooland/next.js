@@ -285,8 +285,8 @@ pub fn value_impl(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
         quote! {
-            // Register this `impl Trait for Concrete` into the link-time `TRAIT_IMPLS_SLICE`.
-            #[cfg(not(rust_analyzer))]
+            // Register this `impl Trait for Concrete` into the link-time registry.
+            #[cfg(not(target_family = "wasm"))]
             turbo_tasks::macro_helpers::scattered_collect::declarative::scatter! {
                 #[scatter(turbo_tasks::macro_helpers::TRAIT_IMPLS_SLICE)]
                 const _: turbo_tasks::macro_helpers::TraitImplRecord = {
@@ -306,6 +306,26 @@ pub fn value_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                         },
                     }
                 };
+            }
+            #[cfg(target_family = "wasm")]
+            turbo_tasks::macro_helpers::inventory_submit! {
+                {
+                    const LEN: usize = <::std::boxed::Box<dyn #trait_path> as turbo_tasks::macro_helpers::TraitVtablePrototype>::LEN;
+                    static METHODS: [&turbo_tasks::macro_helpers::NativeFunction; LEN] = turbo_tasks::macro_helpers::build_trait_vtable::<::std::boxed::Box<dyn #trait_path>, LEN>(&[#(#trait_methods),*]);
+
+                    turbo_tasks::macro_helpers::TraitImplRecord {
+                        value_type: <#ty as turbo_tasks::macro_helpers::RegistryDef::<turbo_tasks::ValueType>>::DEF,
+                        trait_type: <::std::boxed::Box<dyn #trait_path> as turbo_tasks::macro_helpers::RegistryDef::<turbo_tasks::TraitType>>::DEF,
+                        methods: &METHODS,
+                        install_vtable: |id: turbo_tasks::ValueTypeId| {
+                            // Materialize the vtable pointer via the null-fat-ptr trick.
+                            let p: *const #ty = ::std::ptr::null();
+                            let fat: *const dyn #trait_path = p;
+                            <::std::boxed::Box<dyn #trait_path> as turbo_tasks::VcValueTrait>::IMPL_VTABLES
+                                .insert(id, turbo_tasks::macro_helpers::metadata(fat));
+                        },
+                    }
+                }
             }
 
             // NOTE(alexkirsz) We can't have a general `turbo_tasks::Upcast<Box<dyn Trait>> for T where T: Trait` because

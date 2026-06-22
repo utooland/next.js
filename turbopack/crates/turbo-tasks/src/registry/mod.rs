@@ -1,6 +1,7 @@
 use std::{cell::SyncUnsafeCell, num::NonZeroU16, sync::LazyLock};
 
 use anyhow::Error;
+#[cfg(not(target_family = "wasm"))]
 use scattered_collect::slice::ScatteredSlice;
 
 use crate::{
@@ -42,43 +43,58 @@ macro_rules! impl_ptr_identity {
 
 pub(crate) use impl_ptr_identity;
 
-// Link-time gather slices, one per registry.
+#[cfg(not(target_family = "wasm"))]
 #[doc(hidden)]
 #[scattered_collect::gather]
 pub static FUNCTIONS_SLICE: ScatteredSlice<&'static NativeFunction>;
 
+#[cfg(not(target_family = "wasm"))]
 #[doc(hidden)]
 #[scattered_collect::gather]
 pub static VALUES_SLICE: ScatteredSlice<&'static ValueType>;
 
+#[cfg(not(target_family = "wasm"))]
 #[doc(hidden)]
 #[scattered_collect::gather]
 pub static TRAITS_SLICE: ScatteredSlice<&'static TraitType>;
 
-/// Register a [`NativeFunction`] definition into the link-time [`FUNCTIONS_SLICE`].
+#[cfg(target_family = "wasm")]
+inventory::collect!(&'static NativeFunction);
+#[cfg(target_family = "wasm")]
+inventory::collect!(&'static ValueType);
+#[cfg(target_family = "wasm")]
+inventory::collect!(&'static TraitType);
+
+/// Register a [`NativeFunction`] definition into the link-time registry.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! register_function {
     ($name:ident = $value:expr) => {
         static $name: $crate::macro_helpers::NativeFunction = $value;
+        #[cfg(not(target_family = "wasm"))]
         $crate::macro_helpers::scattered_collect::declarative::scatter! {
             #[scatter($crate::registry::FUNCTIONS_SLICE)]
             const _: &'static $crate::macro_helpers::NativeFunction = &$name;
         }
+        #[cfg(target_family = "wasm")]
+        $crate::macro_helpers::inventory_submit! { &$name }
     };
 }
 
-/// Register a [`ValueType`] definition into the link-time [`VALUES_SLICE`], and provide its
+/// Register a [`ValueType`] definition into the link-time registry, and provide its
 /// `RegistryDef` so the impl macros can recover the `&'static ValueType` for a Vc type.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! register_value {
     ($reg:ty => $name:ident = $value:expr) => {
         static $name: $crate::ValueType = $value;
+        #[cfg(not(target_family = "wasm"))]
         $crate::macro_helpers::scattered_collect::declarative::scatter! {
             #[scatter($crate::registry::VALUES_SLICE)]
             const _: &'static $crate::ValueType = &$name;
         }
+        #[cfg(target_family = "wasm")]
+        $crate::macro_helpers::inventory_submit! { &$name }
 
         impl $crate::macro_helpers::RegistryDef<$crate::ValueType> for $reg {
             const DEF: &'static $crate::ValueType = &$name;
@@ -86,17 +102,20 @@ macro_rules! register_value {
     };
 }
 
-/// Register a [`TraitType`] definition into the link-time [`TRAITS_SLICE`], and provide its
+/// Register a [`TraitType`] definition into the link-time registry, and provide its
 /// `RegistryDef` so the impl macros can recover the `&'static TraitType` for a `Box<dyn Trait>`.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! register_trait {
     ($reg:ty => $name:ident = $value:expr) => {
         static $name: $crate::TraitType = $value;
+        #[cfg(not(target_family = "wasm"))]
         $crate::macro_helpers::scattered_collect::declarative::scatter! {
             #[scatter($crate::registry::TRAITS_SLICE)]
             const _: &'static $crate::TraitType = &$name;
         }
+        #[cfg(target_family = "wasm")]
+        $crate::macro_helpers::inventory_submit! { &$name }
 
         impl $crate::macro_helpers::RegistryDef<$crate::TraitType> for $reg {
             const DEF: &'static $crate::TraitType = &$name;
@@ -233,8 +252,21 @@ fn validate_id<T: Registerable>(
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn registered_functions() -> Vec<&'static NativeFunction> {
+    FUNCTIONS_SLICE.iter().copied().collect()
+}
+
+#[cfg(target_family = "wasm")]
+fn registered_functions() -> Vec<&'static NativeFunction> {
+    inventory::iter::<&'static NativeFunction>
+        .into_iter()
+        .copied()
+        .collect()
+}
+
 static FUNCTIONS: LazyLock<Box<[&'static NativeFunction]>> =
-    LazyLock::new(|| init_registry(FUNCTIONS_SLICE.iter().copied().collect()));
+    LazyLock::new(|| init_registry(registered_functions()));
 
 #[inline]
 pub fn get_native_function(id: FunctionId) -> &'static NativeFunction {
@@ -250,8 +282,21 @@ pub fn validate_function_id(id: FunctionId) -> Option<Error> {
     validate_id(&FUNCTIONS, id)
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn registered_values() -> Vec<&'static ValueType> {
+    VALUES_SLICE.iter().copied().collect()
+}
+
+#[cfg(target_family = "wasm")]
+fn registered_values() -> Vec<&'static ValueType> {
+    inventory::iter::<&'static ValueType>
+        .into_iter()
+        .copied()
+        .collect()
+}
+
 static VALUES: LazyLock<Box<[&'static ValueType]>> = LazyLock::new(|| {
-    let items = init_registry(VALUES_SLICE.iter().copied().collect());
+    let items = init_registry(registered_values());
     crate::value_type::register_all_trait_methods();
     items
 });
@@ -289,8 +334,21 @@ pub(crate) fn trait_type_count() -> usize {
     TRAITS.len()
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn registered_traits() -> Vec<&'static TraitType> {
+    TRAITS_SLICE.iter().copied().collect()
+}
+
+#[cfg(target_family = "wasm")]
+fn registered_traits() -> Vec<&'static TraitType> {
+    inventory::iter::<&'static TraitType>
+        .into_iter()
+        .copied()
+        .collect()
+}
+
 static TRAITS: LazyLock<Box<[&'static TraitType]>> =
-    LazyLock::new(|| init_registry(TRAITS_SLICE.iter().copied().collect()));
+    LazyLock::new(|| init_registry(registered_traits()));
 
 #[inline]
 pub fn get_trait_type_id(trait_type: &'static TraitType) -> TraitTypeId {

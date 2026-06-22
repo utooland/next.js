@@ -343,8 +343,8 @@ pub fn value_trait(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         // Per-trait `VTableRegistry`, populated during `register_all_trait_methods` (inside the
-        // `VALUES` `LazyLock` init) from the link-time `TRAIT_IMPLS_SLICE`. `const`-constructible,
-        // so no `LazyLock` / first-access init of its own. Kept private — the only reference is
+        // `VALUES` `LazyLock` init) from the link-time registry. `const`-constructible, so no
+        // `LazyLock` / first-access init of its own. Kept private — the only reference is
         // from the `VcValueTrait::IMPL_VTABLES` assoc const below.
         #[doc(hidden)]
         #[allow(non_upper_case_globals)]

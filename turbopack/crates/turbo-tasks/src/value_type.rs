@@ -13,7 +13,7 @@ use crate::{
     RawVc, SharedReference, TaskPriority, VcValueType,
     dyn_task_inputs::any_as_encode,
     id::TraitTypeId,
-    macro_helpers::{NativeFunction, TRAIT_IMPLS_SLICE},
+    macro_helpers::NativeFunction,
     registry::{
         RegistryType, get_trait_type_id, get_value_type_id_unchecked, impl_ptr_identity,
         trait_type_count,
@@ -272,7 +272,12 @@ impl ValueType {
 // Called during ValueType registry post_init to register all trait methods.
 // Single-threaded during Lazy init.
 pub(crate) fn register_all_trait_methods() {
-    for entry in TRAIT_IMPLS_SLICE.iter() {
+    #[cfg(not(target_family = "wasm"))]
+    let trait_impls = crate::macro_helpers::TRAIT_IMPLS_SLICE.iter();
+    #[cfg(target_family = "wasm")]
+    let trait_impls = inventory::iter::<crate::macro_helpers::TraitImplRecord>;
+
+    for entry in trait_impls {
         for (i, impl_method) in entry.methods.iter().enumerate() {
             let trait_method = &entry.trait_type.methods[i];
             if trait_method.is_root != impl_method.is_root {

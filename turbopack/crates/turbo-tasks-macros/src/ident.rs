@@ -16,7 +16,7 @@ pub fn get_trait_type_ident(ident: &Ident) -> Ident {
 }
 
 /// Name of the per-trait `VTableRegistry` static, populated during `register_all_trait_methods`
-/// from the link-time `TRAIT_IMPLS_SLICE`.
+/// from the link-time registry.
 pub fn get_trait_vtable_registry_ident(ident: &Ident) -> Ident {
     Ident::new(&format!("__TurboTasksVTableRegistry_{ident}"), ident.span())
 }

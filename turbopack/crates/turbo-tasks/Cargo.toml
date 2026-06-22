@@ -41,7 +41,6 @@ pin-project-lite = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
 rustc-hash = { workspace = true }
-scattered-collect = { workspace = true }
 serde = { workspace = true, features = ["rc", "derive"] }
 serde_json = { workspace = true }
 shrink-to-fit = { workspace = true, features = [
@@ -77,6 +76,9 @@ tokio = { workspace = true }
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 js-sys = { version = "0.3.78" }
 wasm-bindgen = { version = "0.2.104" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+scattered-collect = { workspace = true }
 
 [[bench]]
 name = "mod"
