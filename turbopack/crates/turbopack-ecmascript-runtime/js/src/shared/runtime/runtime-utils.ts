@@ -683,7 +683,7 @@ function getAutomaticPublicPath(): string {
 
 /**
  * Gets the public path for runtime assets.
- * Checks globalThis.publicPath and falls back to empty string.
+ * Checks globalThis.publicPath and falls back to "/".
  */
 function getPublicPath(mode?: 'auto'): string {
   if (mode === 'auto') {
@@ -697,7 +697,7 @@ function getPublicPath(mode?: 'auto'): string {
     const publicPath = (globalThis as any).publicPath as string
     return publicPath.endsWith('/') ? publicPath : `${publicPath}/`
   }
-  return ''
+  return '/'
 }
 contextPrototype.p = getPublicPath
 
