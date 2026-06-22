@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 5, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/input/runtime.js"],"sourcesContent":["await Promise.resolve();\n\nglobalThis.__turbopack_async_runtime_entry = true;\n"],"names":["Promise","resolve","globalThis","__turbopack_async_runtime_entry"],"mappings":"AAAA,MAAMA,QAAQC,OAAO;AAErBC,WAAWC,+BAA+B,GAAG"}},
+    {"offset": {"line": 11, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/input/index.js"],"sourcesContent":["module.exports = \"entry\";\n"],"names":["module","exports"],"mappings":"AAAAA,OAAOC,OAAO,GAAG"}}]
+}

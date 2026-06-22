@@ -8,6 +8,7 @@ use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{ChunkData, ChunkingContext, ChunksData, EvaluatableAssets, ModuleChunkItemIdExt},
     code_builder::{Code, CodeBuilder},
+    module::Module,
     module_graph::ModuleGraph,
     output::{
         OutputAsset, OutputAssets, OutputAssetsReference, OutputAssetsReferences,
@@ -180,7 +181,17 @@ impl EcmascriptBuildNodeEntryChunk {
             *self.chunking_context.runtime_type().await?,
             RuntimeType::Production
         ) {
-            !self.module_graph.async_module_info().await?.is_empty()
+            let mut has_async_modules = !self.module_graph.async_module_info().await?.is_empty();
+            if !has_async_modules {
+                let evaluatable_assets = self.evaluatable_assets.await?;
+                for evaluatable_asset in &*evaluatable_assets {
+                    if *evaluatable_asset.is_self_async().await? {
+                        has_async_modules = true;
+                        break;
+                    }
+                }
+            }
+            has_async_modules
         } else {
             true
         };
