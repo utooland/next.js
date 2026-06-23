@@ -405,13 +405,28 @@ pub(crate) async fn config_loader_source(
         r#"
             import {{ pathToFileURL }} from 'node:url';
             import path from 'node:path';
+            import {{ createRequire }} from 'node:module';
 
             const configPath = path.join(process.cwd(), {config_path});
-            // Absolute paths don't work with ESM imports on Windows:
-            // https://github.com/nodejs/node/issues/31710
-            // convert it to a file:// URL, which works on all platforms
             const configUrl = pathToFileURL(configPath).toString();
-            const mod = await {TURBOPACK_EXTERNAL_IMPORT}(configUrl);
+            const requireConfig = createRequire(configUrl);
+            let mod;
+            try {{
+                mod = requireConfig(configPath);
+            }} catch (error) {{
+                if (
+                    error == null ||
+                    (error.code !== 'ERR_REQUIRE_ESM' &&
+                        error.code !== 'ERR_REQUIRE_ASYNC_MODULE')
+                ) {{
+                    throw error;
+                }}
+
+                // Absolute paths don't work with ESM imports on Windows:
+                // https://github.com/nodejs/node/issues/31710
+                // convert it to a file:// URL, which works on all platforms
+                mod = await {TURBOPACK_EXTERNAL_IMPORT}(configUrl);
+            }}
 
             export default mod.default ?? mod;
         "#,
