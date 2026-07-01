@@ -418,14 +418,12 @@ pub(crate) async fn config_loader_source(
         r#"
             import {{ pathToFileURL }} from 'node:url';
             import path from 'node:path';
-            import {{ createRequire }} from 'node:module';
 
             const configPath = {config_path_expr};
             const configUrl = pathToFileURL(configPath).toString();
-            const requireConfig = createRequire(configUrl);
             let mod;
             try {{
-                mod = requireConfig(configPath);
+                mod = module.require(configPath);
             }} catch (error) {{
                 if (
                     error == null ||
