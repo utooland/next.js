@@ -394,9 +394,22 @@ pub(crate) async fn config_loader_source(
         return Ok(Vc::upcast(FileSource::new(postcss_config_path)));
     }
 
-    let Some(config_path) = project_path.get_relative_path_to(&postcss_config_path_value) else {
-        bail!("Unable to get relative path to postcss config");
-    };
+    let config_path = project_path.get_relative_path_to(&postcss_config_path_value);
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    let config_path_expr =
+        if let Some(config_sys_path) = to_sys_path(postcss_config_path_value.clone()).await? {
+            serde_json::to_string(&config_sys_path.to_string_lossy())
+                .expect("a string should be serializable")
+        } else {
+            let Some(config_path) = config_path.as_ref() else {
+                bail!("Unable to get relative path to postcss config");
+            };
+            format!(
+                "path.join(process.cwd(), {})",
+                serde_json::to_string(config_path).expect("a string should be serializable")
+            )
+        };
 
     // We don't want to bundle the config file, so we load it with `import()`.
     // Bundling would break the ability to use `require.resolve` in the config file.
@@ -407,7 +420,7 @@ pub(crate) async fn config_loader_source(
             import path from 'node:path';
             import {{ createRequire }} from 'node:module';
 
-            const configPath = path.join(process.cwd(), {config_path});
+            const configPath = {config_path_expr};
             const configUrl = pathToFileURL(configPath).toString();
             const requireConfig = createRequire(configUrl);
             let mod;
@@ -430,7 +443,7 @@ pub(crate) async fn config_loader_source(
 
             export default mod.default ?? mod;
         "#,
-        config_path = serde_json::to_string(&config_path).expect("a string should be serializable"),
+        config_path_expr = config_path_expr,
     };
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
@@ -443,7 +456,10 @@ pub(crate) async fn config_loader_source(
 
             export default mod.default ?? mod;
         "#,
-        config_path = serde_json::to_string(&config_path).expect("a string should be serializable"),
+        config_path = serde_json::to_string(
+            &config_path.context("Unable to get relative path to postcss config")?
+        )
+        .expect("a string should be serializable"),
     };
 
     Ok(Vc::upcast(VirtualSource::new(
