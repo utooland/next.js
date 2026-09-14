@@ -1,3 +1,4 @@
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::path::Path;
 
 pub use ::include_dir::{
@@ -14,11 +15,15 @@ pub async fn directory_from_relative_path(
     name: RcStr,
     path: RcStr,
 ) -> Result<Vc<Box<dyn FileSystem>>> {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     // note: canonicalizing inside of a turbo-tasks function causes an untracked read of the root
     // directory path (e.g. if it's a symlink), but it's okay because this codepath is only used in
     // development and the root directory is unlikely to move.
     let root = canonicalize_to_rcstr(Path::new(&*path))?;
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    let root = path;
     let disk_fs = DiskFileSystem::new(name, Vc::cell(root));
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     disk_fs.await?.start_watching().await?;
 
     Ok(Vc::upcast(disk_fs))

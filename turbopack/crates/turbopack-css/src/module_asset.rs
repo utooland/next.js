@@ -278,7 +278,24 @@ impl EcmascriptChunkPlaceable for EcmascriptCssModule {
     ) -> Result<Vc<EcmascriptChunkItemContent>> {
         let classes = self.classes().await?;
 
-        let mut code = format!("{TURBOPACK_EXPORT_VALUE}({{\n");
+        let mut code = String::new();
+
+        // The inner asset is normally a CssModule and is emitted as a parallel CSS chunk.
+        // Custom module rules such as style-loader can instead turn it into ECMAScript. In that
+        // case it must be evaluated explicitly; merely placing its factory in the JavaScript
+        // chunk does not run the style injection side effect.
+        if let Some(inner) = *self
+            .inner(ReferenceType::Css(CssReferenceSubType::Inner))
+            .try_into_module()
+            .await?
+            && let Some(placeable) =
+                ResolvedVc::try_sidecast::<Box<dyn EcmascriptChunkPlaceable>>(inner)
+        {
+            let module_id = placeable.chunk_item_id(chunking_context).await?;
+            writeln!(code, "{TURBOPACK_IMPORT}({});", StringifyJs(&module_id))?;
+        }
+
+        code += &format!("{TURBOPACK_EXPORT_VALUE}({{\n");
         for (export_name, class_names) in &*classes {
             let mut exported_class_names = Vec::with_capacity(class_names.len());
 

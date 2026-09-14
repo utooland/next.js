@@ -96,7 +96,7 @@ turbopack-core = { workspace = true }
 turbopack-ecmascript-hmr-protocol = { workspace = true }
 turbopack-trace-utils = { workspace = true }
 turbopack-trace-server = { workspace = true }
-turbopack-node = { workspace = true, default-features = false, features = ["worker_pool"] }
+turbopack-node = { workspace = true, default-features = false, features = ["worker_pool_napi"] }
 
 mdxjs = { workspace = true, features = ["serializable"] }
 

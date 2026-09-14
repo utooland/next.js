@@ -14,7 +14,7 @@ use turbopack_core::{
     output::{OutputAsset, OutputAssetsReference, OutputAssetsWithReferenced},
     source_map::{GenerateSourceMap, SourceMapAsset},
 };
-use turbopack_ecmascript::minify::minify;
+use turbopack_ecmascript::minify::{get_compress_options_for_target, minify};
 
 use crate::BrowserChunkingContext;
 
@@ -68,8 +68,21 @@ impl EcmascriptBrowserWorkerEntrypoint {
             };
         let mut code = generate_worker_bootstrap_code(&forwarded_globals, shared_runtime)?;
 
-        if let MinifyType::Minify { mangle } = *this.chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } =
+            *this.chunking_context.minify_type().await?
+        {
+            let supports_arrow_functions = *this
+                .chunking_context
+                .environment()
+                .runtime_versions()
+                .supports_arrow_functions()
+                .await?;
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options_for_target(compress, mangle, supports_arrow_functions),
+            )?;
         }
 
         Ok(code.cell())

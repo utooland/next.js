@@ -13,7 +13,7 @@ use crate::{
 /// The glob is read at construction time and stored as a `ReadRef`, so `matches` is a pure
 /// sync function. `serialization = "skip"` because serializing a `ReadRef` is wasteful and
 /// recomputing this is very cheap.
-#[turbo_tasks::value(serialization = "skip")]
+#[turbo_tasks::value(shared, serialization = "skip")]
 pub enum AfterResolvePluginCondition {
     Glob {
         root: FileSystemPath,

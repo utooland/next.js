@@ -38,15 +38,37 @@ pub fn rcstr(input: TokenStream) -> TokenStream {
         let source = if let Some((lit, len)) = classify_literal(input.clone()) {
             if len <= MAX_INLINE_LEN {
                 format!("::turbo_rcstr::inline_atom({lit}).unwrap()")
+            } else if cfg!(feature = "atom_size_128") {
+                format!(
+                    "{{ #[cfg(target_arch = \"wasm32\")] {{ ::turbo_rcstr::RcStr::from({lit}) }} \
+                     #[cfg(not(target_arch = \"wasm32\"))] {{ static RCSTR_STORAGE: \
+                     ::turbo_rcstr::StaticPrehashedString = \
+                     ::turbo_rcstr::make_const_prehashed_string({lit}); \
+                     ::turbo_rcstr::__rcstr_static_submit!( \
+                     ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); \
+                     ::turbo_rcstr::from_static(&RCSTR_STORAGE) }} }}",
+                )
             } else {
                 format!(
                     "{{ static RCSTR_STORAGE: ::turbo_rcstr::StaticPrehashedString = \
                      ::turbo_rcstr::make_const_prehashed_string({lit}); const RCSTR: \
                      ::turbo_rcstr::RcStr = ::turbo_rcstr::from_static(&RCSTR_STORAGE); \
-                     ::turbo_rcstr::__rcstr_static_submit!(
+                     ::turbo_rcstr::__rcstr_static_submit!( \
                      ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); RCSTR }}",
                 )
             }
+        } else if cfg!(feature = "atom_size_128") {
+            format!(
+                "{{ const TEXT: &str = {input}; #[cfg(target_arch = \"wasm32\")] {{ \
+                 ::turbo_rcstr::inline_atom(TEXT).unwrap() }} #[cfg(not(target_arch = \
+                 \"wasm32\"))] {{ if ::turbo_rcstr::is_atom_inlineable(TEXT) {{ \
+                 ::turbo_rcstr::inline_atom(TEXT).unwrap() }} else {{ static RCSTR_STORAGE: \
+                 ::turbo_rcstr::StaticPrehashedString = \
+                 ::turbo_rcstr::make_const_prehashed_string(TEXT); \
+                 ::turbo_rcstr::__rcstr_static_submit!( \
+                 ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); \
+                 ::turbo_rcstr::from_static(&RCSTR_STORAGE) }} }} }}",
+            )
         } else {
             format!(
                 "{{ const TEXT: &str = {input}; if ::turbo_rcstr::is_atom_inlineable(TEXT) {{ \
@@ -54,7 +76,7 @@ pub fn rcstr(input: TokenStream) -> TokenStream {
                  ::turbo_rcstr::StaticPrehashedString = \
                  ::turbo_rcstr::make_const_prehashed_string(TEXT); const RCSTR: \
                  ::turbo_rcstr::RcStr = ::turbo_rcstr::from_static(&RCSTR_STORAGE); \
-                 ::turbo_rcstr::__rcstr_static_submit!(
+                 ::turbo_rcstr::__rcstr_static_submit!( \
                  ::turbo_rcstr::StaticRcStr(&RCSTR_STORAGE) ); RCSTR }} }}",
             )
         };

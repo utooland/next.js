@@ -62,6 +62,7 @@ use turbopack_resolve::{
     typescript::type_resolve,
 };
 use turbopack_static::{css::StaticUrlCssModule, ecma::StaticUrlJsModule};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::{module_asset::WebAssemblyModuleAsset, source::WebAssemblySource};
 
 use crate::{
@@ -238,6 +239,7 @@ async fn apply_module_type(
             environment,
             lightningcss_features,
             module_css_debuggable_idents,
+            css_modules_pattern,
         } => ResolvedVc::upcast(
             CssModule::new(
                 *source,
@@ -247,6 +249,7 @@ async fn apply_module_type(
                 environment.as_deref().copied(),
                 *lightningcss_features,
                 *module_css_debuggable_idents,
+                css_modules_pattern.clone(),
             )
             .to_resolved()
             .await?,
@@ -261,6 +264,7 @@ async fn apply_module_type(
                 .to_resolved()
                 .await?,
         ),
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
         ModuleType::WebAssembly { source_ty } => ResolvedVc::upcast(
             WebAssemblyModuleAsset::new(
                 WebAssemblySource::new(*source, *source_ty),
@@ -712,6 +716,8 @@ async fn process_default_internal(
                     default_options,
                     None,
                     Default::default(),
+                    false,
+                    None,
                 )
                 .await?;
             match effect {
@@ -1217,7 +1223,9 @@ pub async fn replace_external(
             }
         }
         ExternalType::Global => CachedExternalType::Global,
+        ExternalType::Promise => CachedExternalType::Promise,
         ExternalType::Script => CachedExternalType::Script,
+        ExternalType::Umd => CachedExternalType::Umd,
         ExternalType::Url => {
             // we don't want to wrap url externals.
             return Ok(None);

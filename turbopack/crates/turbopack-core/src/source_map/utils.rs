@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ResolvedVc, turbofmt};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use turbo_tasks_fs::util::uri_from_path_buf;
 use turbo_tasks_fs::{DiskFileSystem, FileContent, FileSystemPath, rope::Rope};
 use url::Url;
 
@@ -111,15 +113,24 @@ pub async fn resolve_source_map_sources(
 
             let fs_path = if let Ok(original_source_url_obj) = Url::parse(&maybe_file_url) {
                 // We have an absolute URL, try to parse it as a `file://` URL
-                if let Ok(sys_path) = original_source_url_obj.to_file_path() {
-                    if let Some((disk_fs_vc, disk_fs)) = disk_fs {
-                        disk_fs.try_from_sys_path(*disk_fs_vc, &sys_path, Some(origin))
+                #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+                {
+                    if let Ok(sys_path) = original_source_url_obj.to_file_path() {
+                        if let Some((disk_fs_vc, disk_fs)) = disk_fs {
+                            disk_fs.try_from_sys_path(*disk_fs_vc, &sys_path, Some(origin))
+                        } else {
+                            None
+                        }
                     } else {
-                        None
+                        // this is an absolute URL with a non-`file://` scheme, just assume it's valid
+                        // and don't modify anything
+                        return Ok(());
                     }
-                } else {
-                    // this is an absolute URL with a non-`file://` scheme, just assume it's valid
-                    // and don't modify anything
+                }
+                #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+                {
+                    // On WASM targets, to_file_path() is not available,
+                    // just assume it's a valid absolute URL and don't modify anything
                     return Ok(());
                 }
             } else {
@@ -270,11 +281,15 @@ pub async fn absolute_fileify_source_map(
         // `to_sys_path` returns a win32 path on Windows. `Url::from_file_path` can also handle
         // verbatim (`\\?\`-prefixed) disk and UNC paths, in case that conversion failed.
         let sys_path = context_fs.to_sys_path(&path);
-        Ok(Url::from_file_path(&sys_path)
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        return Ok(Url::from_file_path(&sys_path)
             .map_err(|()| {
                 anyhow::anyhow!("path {sys_path:?} cannot be converted to a file:// URI")
             })?
-            .into())
+            .into());
+
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        Ok(uri_from_path_buf(sys_path))
     })
     .await
 }

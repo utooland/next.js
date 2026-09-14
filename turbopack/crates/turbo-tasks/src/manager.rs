@@ -15,7 +15,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     task::{Context, Poll, Waker},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use anyhow::{Result, anyhow};
@@ -26,7 +26,7 @@ use futures::FutureExt;
 use rustc_hash::{FxBuildHasher, FxHasher};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use tokio::{select, sync::mpsc::Receiver, task_local};
+use tokio::{select, sync::mpsc::Receiver, task_local, time::Instant};
 use tracing::{Instrument, Span, instrument};
 use turbo_tasks_hash::{DeterministicHash, hash_xxh3_hash128};
 
@@ -682,6 +682,10 @@ pub struct TurboTasks<B: Backend + 'static> {
     currently_scheduled_foreground_jobs: AtomicUsize,
     currently_scheduled_background_jobs: AtomicUsize,
     scheduled_tasks: AtomicUsize,
+    /// Total number of scheduled tasks that have finished processing.
+    ///
+    /// Used by utoopack progress reporting.
+    completed_scheduled_tasks: AtomicUsize,
     /// Diagnostics for reads and inline execution, see `TurboTasks::inline_execution_stats`.
     /// Zero-sized without the `inline_execution_stats` feature.
     inline_counters: InlineExecutionCounters,
@@ -884,6 +888,7 @@ impl<B: Backend + 'static> TurboTasks<B> {
             currently_scheduled_foreground_jobs: AtomicUsize::new(0),
             currently_scheduled_background_jobs: AtomicUsize::new(0),
             scheduled_tasks: AtomicUsize::new(0),
+            completed_scheduled_tasks: AtomicUsize::new(0),
             inline_counters: InlineExecutionCounters::default(),
             priority_runner: Arc::new(PriorityRunner::new(TurboTasksExecutor)),
             start: Default::default(),
@@ -1242,6 +1247,10 @@ impl<B: Backend + 'static> TurboTasks<B> {
             .load(Ordering::Acquire)
     }
 
+    pub fn get_completed_scheduled_task_count(&self) -> usize {
+        self.completed_scheduled_tasks.load(Ordering::Relaxed)
+    }
+
     /// Counters describing how reads and inline execution interacted. Diagnostics only; a dump of
     /// these can be requested with `TURBO_ENGINE_INLINE_STATS=1`.
     #[cfg(feature = "inline_execution_stats")]
@@ -1581,6 +1590,8 @@ impl<B: Backend> Executor<TurboTasks<B>, ScheduledTask, TaskPriority> for TurboT
                             // other tasks can run in the right priority order.
                             this.schedule(task_id, stale_priority);
                         }
+                        this.completed_scheduled_tasks
+                            .fetch_add(1, Ordering::Relaxed);
                         this.finish_foreground_job();
                     })
                     .await

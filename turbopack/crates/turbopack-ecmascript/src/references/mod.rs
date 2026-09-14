@@ -1263,16 +1263,38 @@ async fn analyze_ecmascript_module_internal(
                         continue;
                     }
 
+                    let attributes = eval_context.imports.get_attributes(span);
+
+                    // Keep ignored runtime bindings untouched so they can execute as-is at runtime
+                    // instead of being rewritten to __turbopack_context__ members.
+                    let is_ignored_runtime_binding = attributes.ignore && &*var == "require";
+                    if is_ignored_runtime_binding {
+                        continue;
+                    }
+
                     // FreeVar("require") might be turbopackIgnore-d
-                    if !analysis_state
-                        .link_value(
-                            JsValue::FreeVar(var.clone()),
-                            eval_context.imports.get_attributes(span),
-                        )
-                        .await?
-                        .is_unknown()
-                    {
-                        // Call handle free var
+                    let linked_value = analysis_state
+                        .link_value(JsValue::FreeVar(var.clone()), attributes)
+                        .await?;
+
+                    // Call handle_free_var if the value is not unknown, or if it might be in
+                    // free_var_references (e.g., when Object is too large and
+                    // gets converted to Unknown in link_value, but we still
+                    // need to add code generation via ConstantValueCodeGen)
+                    let might_be_in_free_var_references = {
+                        let free_var_js = JsValue::FreeVar(var.clone());
+                        if let [Some((name, _))] = &*free_var_js.get_definable_name(None) {
+                            analysis_state
+                                .compile_time_info_ref
+                                .free_var_references
+                                .get(name)
+                                .await?
+                                .is_some()
+                        } else {
+                            false
+                        }
+                    };
+                    if !linked_value.is_unknown() || might_be_in_free_var_references {
                         handle_free_var(
                             &ast_path,
                             JsValue::FreeVar(var),
@@ -2024,7 +2046,18 @@ where
                     && meta_prop.as_str() == "url"
                 {
                     let pat = js_value_to_pattern(url);
-                    if !pat.has_constant_parts() {
+                    // An undefined default does not constrain an otherwise dynamic URL. Keep
+                    // other static alternatives so their assets are still resolved and emitted.
+                    let has_constant_parts = match url {
+                        JsValue::Alternatives { values, .. } if pat.has_dynamic_parts() => {
+                            values.iter().any(|value| {
+                                !matches!(value, JsValue::Constant(JsConstantValue::Undefined))
+                                    && js_value_to_pattern(value).has_constant_parts()
+                            })
+                        }
+                        _ => pat.has_constant_parts(),
+                    };
+                    if !has_constant_parts {
                         let (args, hints) = explain_args(args);
                         handler.span_warn_with_code(
                             span,

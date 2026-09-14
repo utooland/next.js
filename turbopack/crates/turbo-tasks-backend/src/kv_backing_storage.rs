@@ -1,17 +1,23 @@
+use std::{borrow::Borrow, path::PathBuf, sync::Arc};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::{
-    borrow::Borrow,
     env,
-    path::PathBuf,
-    sync::{Arc, LazyLock, Mutex, PoisonError, Weak},
+    sync::{LazyLock, Mutex, PoisonError, Weak},
 };
 
-use anyhow::{Context, Result};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use anyhow::Context;
+use anyhow::Result;
 use smallvec::SmallVec;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_bincode::{new_turbo_bincode_decoder, turbo_bincode_decode, turbo_bincode_encode};
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub(crate) struct CommitStats;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_persistence::CommitStats;
+use turbo_tasks::{DynTaskInputs, RawVc, TaskId, macro_helpers::NativeFunction};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_tasks::{
-    DynTaskInputs, RawVc, TaskId,
-    macro_helpers::NativeFunction,
     panic_hooks::{PanicHookGuard, register_panic_hook},
     parallel,
 };
@@ -20,17 +26,28 @@ use crate::{
     GitVersionInfo,
     backend::{AnyOperation, SpecificTaskDataCategory, TtlCounter, storage_schema::TaskStorage},
     backing_storage::{SnapshotItem, SnapshotMeta, compute_task_type_hash_from_components},
+    database::{db_invalidation::StartupCacheState, key_value_database::KeySpace},
+};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::{
     database::{
-        db_invalidation::{StartupCacheState, check_db_invalidation_and_cleanup, invalidate_db},
+        db_invalidation::{check_db_invalidation_and_cleanup, invalidate_db},
         db_versioning::handle_db_versioning,
-        key_value_database::KeySpace,
         turbo::{TurboKeyValueDatabase, TurboWriteBatch},
         write_batch::WriteBuffer,
     },
     db_invalidation::invalidation_reasons,
 };
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl std::fmt::Display for CommitStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("wasm no-op compaction")
+    }
+}
+
 /// The fixed keys in the [`KeySpace::Infra`] keyspace.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[derive(Clone, Copy)]
 #[repr(u8)]
 enum InfraKey {
@@ -39,40 +56,48 @@ enum InfraKey {
     GcRoots = 2,
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl InfraKey {
     fn key(self) -> ByteKey {
         ByteKey::new(self as u8)
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 struct ByteKey([u8; 1]);
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl ByteKey {
     fn new(value: u8) -> Self {
         Self([value])
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl AsRef<[u8]> for ByteKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 struct IntKey([u8; 4]);
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl IntKey {
     fn new(value: u32) -> Self {
         Self(value.to_le_bytes())
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl AsRef<[u8]> for IntKey {
     fn as_ref(&self) -> &[u8] {
         &self.0
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn as_u32(bytes: impl Borrow<[u8]>) -> Result<u32> {
     let n = u32::from_le_bytes(bytes.borrow().try_into()?);
     Ok(n)
@@ -86,6 +111,7 @@ fn as_u32(bytes: impl Borrow<[u8]>) -> Result<u32> {
 //
 // These overrides let us avoid the cache invalidation / error suppression within Vercel so that we
 // feel these pain points and fix the root causes of bugs.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn should_invalidate_on_panic() -> bool {
     fn env_is_falsy(key: &str) -> bool {
         env::var_os(key)
@@ -97,6 +123,7 @@ fn should_invalidate_on_panic() -> bool {
     *SHOULD_INVALIDATE
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 struct TurboBackingStorageInner {
     database: TurboKeyValueDatabase,
     /// Used when calling [`TurboBackingStorage::invalidate`]. Can be `None` in the
@@ -116,11 +143,16 @@ struct TurboBackingStorageInner {
 /// backend needs (snapshots, task-candidate lookups, etc.).
 ///
 /// [`TurboTasksBackend::new`]: crate::TurboTasksBackend::new
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub struct TurboBackingStorage {
     // wrapped so that `register_panic_hook` can hold a weak reference to `inner`.
     inner: Arc<TurboBackingStorageInner>,
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub struct TurboBackingStorage;
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl TurboBackingStorage {
     pub(crate) fn new_in_memory(database: TurboKeyValueDatabase) -> Self {
         Self {
@@ -184,6 +216,7 @@ impl TurboBackingStorage {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl TurboBackingStorageInner {
     fn invalidate(&self, reason_code: &str) -> Result<()> {
         // `base_path` is `None` for in-memory backing storage (see `noop_backing_storage`).
@@ -217,6 +250,7 @@ impl TurboBackingStorageInner {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 impl TurboBackingStorage {
     /// Called when the database should be invalidated upon re-initialization.
     ///
@@ -482,6 +516,79 @@ impl TurboBackingStorage {
     }
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl TurboBackingStorage {
+    pub(crate) fn new_in_memory() -> Self {
+        Self
+    }
+
+    pub(crate) fn invalidate(&self, _reason_code: &str) -> Result<()> {
+        Ok(())
+    }
+
+    pub(crate) fn next_free_task_id(&self) -> Result<TaskId> {
+        Ok(TaskId::MIN)
+    }
+
+    pub(crate) fn uncompleted_operations(&self) -> Result<Vec<AnyOperation>> {
+        Ok(Vec::new())
+    }
+
+    pub(crate) fn roots(&self) -> Result<Vec<(TaskId, TtlCounter)>> {
+        Ok(Vec::new())
+    }
+
+    pub(crate) fn save_snapshot<I>(
+        &self,
+        _operations: Vec<Arc<AnyOperation>>,
+        _roots: Option<Vec<(TaskId, TtlCounter)>>,
+        _snapshots: Vec<I>,
+    ) -> Result<SnapshotMeta>
+    where
+        I: IntoIterator<Item = SnapshotItem> + Send + Sync,
+    {
+        Ok(SnapshotMeta::default())
+    }
+
+    pub(crate) fn lookup_task_candidates(
+        &self,
+        _native_fn: &'static NativeFunction,
+        _this: Option<RawVc>,
+        _arg: &dyn DynTaskInputs,
+    ) -> Result<SmallVec<[TaskId; 1]>> {
+        Ok(SmallVec::new())
+    }
+
+    pub(crate) fn lookup_data(
+        &self,
+        _task_id: TaskId,
+        _category: SpecificTaskDataCategory,
+    ) -> Result<Option<TaskStorage>> {
+        Ok(None)
+    }
+
+    pub(crate) fn batch_lookup_data(
+        &self,
+        task_ids: &[TaskId],
+        _category: SpecificTaskDataCategory,
+    ) -> Result<Vec<TaskStorage>> {
+        Ok(task_ids.iter().map(|_| TaskStorage::new()).collect())
+    }
+
+    pub(crate) fn compact(&self) -> Result<Option<CommitStats>> {
+        Ok(None)
+    }
+
+    pub(crate) fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
+
+    pub(crate) fn has_unrecoverable_write_error(&self) -> bool {
+        false
+    }
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn get_next_free_task_id(batch: &TurboWriteBatch<'_>) -> Result<u32, anyhow::Error> {
     Ok(
         match batch.get(KeySpace::Infra, InfraKey::NextFreeTaskId.key().as_ref())? {
@@ -491,6 +598,7 @@ fn get_next_free_task_id(batch: &TurboWriteBatch<'_>) -> Result<u32, anyhow::Err
     )
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn save_infra(
     batch: &TurboWriteBatch<'_>,
     next_task_id: u32,

@@ -33,8 +33,11 @@ use crate::{
     code_gen::{CodeGeneration, CodeGenerationHoistedStmt},
     magic_identifier::MAGIC_IDENTIFIER_DEFAULT_EXPORT_ATOM,
     module_fragments::part::module::EcmascriptModulePartAsset,
-    references::esm::{base::ReferencedAsset, mangle::mangled_export_names},
-    runtime_functions::{TURBOPACK_DYNAMIC, TURBOPACK_ESM},
+    references::esm::{
+        base::{ImportSource, ReferencedAsset, ReferencedAssetIdent},
+        mangle::mangled_export_names,
+    },
+    runtime_functions::{TURBOPACK_DYNAMIC, TURBOPACK_ESM, TURBOPACK_IMPORT},
     utils::module_id_to_lit,
 };
 
@@ -763,67 +766,116 @@ impl EsmExports {
                 EsmExport::ImportedBinding(esm_ref, name, mutable) => {
                     let referenced_asset =
                         ReferencedAsset::from_resolve_result(esm_ref.resolve_reference()).await?;
-                    referenced_asset
+                    let ident = referenced_asset
                         .get_ident(chunking_context, Some(name.clone()), scope_hoisting_context)
-                        .await?
-                        .map(|ident| {
-                            let expr = ident.as_expr_individual(DUMMY_SP);
-                            let read_expr = expr.map_either(Expr::from, Expr::from).into_inner();
-                            use crate::references::esm::base::ReferencedAssetIdent;
-                            match &ident {
-                                ReferencedAssetIdent::LocalBinding {ctxt, liveness,.. } => {
-                                    debug_assert!(*mutable == (*liveness == Liveness::Mutable), "If the re-export is mutable, the merged local must be too");
-                                    // If we are re-exporting something but got merged with it we can treat it like a local export
-                                     match (liveness, export_usage_info.is_circuit_breaker) {
-                                        (Liveness::Constant, false) => {
-                                            ExportBinding::Value(read_expr)
-                                        }
-                                        // If the value might change or we are a circuit breaker we must bind a
-                                        // getter to avoid capturing the value at the wrong time.
-                                        (Liveness::Live, _) | (Liveness::Constant, true) => {
-                                            // In the constant case, we could still export as a value if we knew that the module
-                                            // came _before_ us, but we don't at this point.
-                                            ExportBinding::Getter(quote!("() => $local" as Expr, local: Expr = read_expr))
-                                        }
-                                        (Liveness::Mutable, _) => {
-                                            let assign_target = AssignTarget::Simple(
-                                                        ident.as_expr_individual(DUMMY_SP).map_either(|i| SimpleAssignTarget::Ident(i.into()), SimpleAssignTarget::Member).into_inner());
-                                            ExportBinding::GetterSetter(
-                                                quote!("() => $local" as Expr, local: Expr= read_expr.clone()),
-                                                quote!(
-                                                    "($new) => $lhs = $new" as Expr,
-                                                    lhs: AssignTarget = assign_target,
-                                                    new = Ident::new(format!("new_{name}").into(), DUMMY_SP, *ctxt),
-                                                )
-                                            )
-                                        }
+                        .await?;
+                    if let Some(ident) = ident {
+                        let read_expr = match &ident {
+                            ReferencedAssetIdent::Module {
+                                namespace_ident,
+                                ctxt,
+                                export: Some(export),
+                                import_source: ImportSource::Module { asset },
+                            } if export_usage_info.is_circuit_breaker => {
+                                let id = asset.chunk_item_id(chunking_context).await?;
+                                quote!(
+                                    "($namespace ?? $turbopack_import($id))[$export]" as Expr,
+                                    namespace = Ident::new(
+                                        namespace_ident.as_str().into(),
+                                        DUMMY_SP,
+                                        ctxt.unwrap_or_default(),
+                                    ),
+                                    turbopack_import: Expr = TURBOPACK_IMPORT.into(),
+                                    id: Expr = module_id_to_lit(&id),
+                                    export: Expr = Lit::Str(Str {
+                                        span: DUMMY_SP,
+                                        value: export.as_str().into(),
+                                        raw: None,
+                                    })
+                                    .into(),
+                                )
+                            }
+                            _ => {
+                                let expr = ident.as_expr_individual(DUMMY_SP);
+                                expr.map_either(Expr::from, Expr::from).into_inner()
+                            }
+                        };
+                        match &ident {
+                            ReferencedAssetIdent::LocalBinding { ctxt, liveness, .. } => {
+                                debug_assert!(
+                                    *mutable == (*liveness == Liveness::Mutable),
+                                    "If the re-export is mutable, the merged local must be too"
+                                );
+                                // If we are re-exporting something but got merged with it we can
+                                // treat it like a local export
+                                match (liveness, export_usage_info.is_circuit_breaker) {
+                                    (Liveness::Constant, false) => ExportBinding::Value(read_expr),
+                                    // If the value might change or we are a circuit breaker we must
+                                    // bind a getter to avoid
+                                    // capturing the value at the wrong time.
+                                    (Liveness::Live, _) | (Liveness::Constant, true) => {
+                                        // In the constant case, we could still export as a value if
+                                        // we knew that the module
+                                        // came _before_ us, but we don't at this point.
+                                        ExportBinding::Getter(
+                                            quote!("() => $local" as Expr, local: Expr = read_expr),
+                                        )
                                     }
-                                },
-                                ReferencedAssetIdent::Module { .. } => {
-                                    // Otherwise we need to bind as a getter to preserve the 'liveness' of the other modules bindings.
-                                    // TODO: If this becomes important it might be faster to use the runtime to copy PropertyDescriptors across modules
-                                    // since that would reduce allocations and optimize access. We could do this by passing the module-id up.
-                                    let getter = quote!("() => $expr" as Expr, expr: Expr = read_expr);
-                                    let assign_target = AssignTarget::Simple(
-                                                    ident.as_expr_individual(DUMMY_SP).map_either(|i| SimpleAssignTarget::Ident(i.into()), SimpleAssignTarget::Member).into_inner());
-                                    if *mutable {
+                                    (Liveness::Mutable, _) => {
+                                        let assign_target = AssignTarget::Simple(
+                                            ident
+                                                .as_expr_individual(DUMMY_SP)
+                                                .map_either(
+                                                    |i| SimpleAssignTarget::Ident(i.into()),
+                                                    SimpleAssignTarget::Member,
+                                                )
+                                                .into_inner(),
+                                        );
                                         ExportBinding::GetterSetter(
-                                            getter,
+                                            quote!("() => $local" as Expr, local: Expr= read_expr.clone()),
                                             quote!(
                                                 "($new) => $lhs = $new" as Expr,
                                                 lhs: AssignTarget = assign_target,
-                                                new = Ident::new(
-                                                    format!("new_{name}").into(),
-                                                    DUMMY_SP,
-                                                    Default::default()
-                                                ),
-                                            ))
-                                    } else {
-                                        ExportBinding::Getter(getter)
+                                                new = Ident::new(format!("new_{name}").into(), DUMMY_SP, *ctxt),
+                                            ),
+                                        )
                                     }
                                 }
                             }
-                        }).unwrap_or(ExportBinding::None)
+                            ReferencedAssetIdent::Module { .. } => {
+                                // Otherwise we need to bind as a getter to preserve the 'liveness'
+                                // of the other modules bindings.
+                                // The namespace variable can still be undefined while a cyclic
+                                // dependency is evaluating this getter. In that case, import the
+                                // module directly so we read from its already-created namespace.
+                                let getter = quote!(
+                                    "() => $expr" as Expr,
+                                    expr: Expr = read_expr.clone()
+                                );
+                                let assign_target =
+                                    AssignTarget::try_from(Box::new(read_expr.clone()))
+                                        .expect("imported binding must be assignable");
+                                if *mutable {
+                                    ExportBinding::GetterSetter(
+                                        getter,
+                                        quote!(
+                                            "($new) => $lhs = $new" as Expr,
+                                            lhs: AssignTarget = assign_target,
+                                            new = Ident::new(
+                                                format!("new_{name}").into(),
+                                                DUMMY_SP,
+                                                Default::default()
+                                            ),
+                                        ),
+                                    )
+                                } else {
+                                    ExportBinding::Getter(getter)
+                                }
+                            }
+                        }
+                    } else {
+                        ExportBinding::None
+                    }
                 }
                 EsmExport::ImportedNamespace(esm_ref) => {
                     let referenced_asset =

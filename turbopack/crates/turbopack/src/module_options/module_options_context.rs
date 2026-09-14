@@ -330,6 +330,9 @@ pub struct CssOptionsContext {
     /// Include the file name in CSS Module class names for easier debugging.
     pub module_css_debuggable_idents: bool,
 
+    /// CSS Modules local class name pattern.
+    pub css_modules_pattern: Option<RcStr>,
+
     pub placeholder_for_future_extensions: (),
 }
 

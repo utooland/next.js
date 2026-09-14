@@ -30,6 +30,17 @@ declare var CHUNK_LOAD_RETRY_BASE_DELAY_MS: number
 declare var CHUNK_LOAD_RETRY_MAX_JITTER_MS: number
 declare const SUPPORT_COMPONENT_CHUNKS: boolean
 
+// Support runtime public path modes.
+function getRuntimeChunkBasePath(basePath: string = CHUNK_BASE_PATH): string {
+  if (basePath === '__RUNTIME_PUBLIC_PATH__') {
+    return contextPrototype.p()
+  }
+  if (basePath === '__AUTO_PUBLIC_PATH__') {
+    return contextPrototype.p('auto')
+  }
+  return basePath
+}
+
 interface TurbopackBrowserBaseContext<M> extends TurbopackBaseContext<M> {
   R: ResolvePathFromModule
 }
@@ -284,6 +295,37 @@ function loadChunkByUrl(
 }
 browserContextPrototype.L = loadChunkByUrl
 
+const loadedScripts = new Map<string, Promise<void>>()
+
+/**
+ * Load an external script by creating a <script> tag.
+ * This is used for script externals that need to be loaded from CDN or other external sources.
+ */
+function loadScript(
+  this: TurbopackBrowserBaseContext<Module>,
+  scriptUrl: string
+): Promise<void> {
+  // Return cached promise if script is already loading or loaded
+  let promise = loadedScripts.get(scriptUrl)
+  if (promise) {
+    return promise
+  }
+
+  promise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script')
+    script.crossOrigin = CROSS_ORIGIN
+    script.src = scriptUrl
+    script.onload = () => resolve()
+    script.onerror = () =>
+      reject(new Error(`Failed to load script: ${scriptUrl}`))
+    document.head.appendChild(script)
+  })
+
+  loadedScripts.set(scriptUrl, promise)
+  return promise
+}
+browserContextPrototype.S = loadScript
+
 // Do not make this async. React relies on referential equality of the returned Promise.
 function loadChunkByUrlInternal(
   sourceType: SourceType,
@@ -348,10 +390,9 @@ function loadChunkByUrlInternal(
 // match the keys stored in `chunkComponents`.
 function chunkUrlToPath(chunkUrl: ChunkUrl): ChunkPath {
   const src = decodeURIComponent(chunkUrl.replace(/[?#].*$/, ''))
+  const runtimeBasePath = getRuntimeChunkBasePath(RUNTIME_CHUNK_BASE_PATH)
   return (
-    src.startsWith(RUNTIME_CHUNK_BASE_PATH)
-      ? src.slice(RUNTIME_CHUNK_BASE_PATH.length)
-      : src
+    src.startsWith(runtimeBasePath) ? src.slice(runtimeBasePath.length) : src
   ) as ChunkPath
 }
 
@@ -502,7 +543,7 @@ function getChunkRelativeUrl(
   const encodedPath = CHUNK_PATH_NEEDS_ENCODING.test(chunkPath)
     ? chunkPath.split('/').map(encodeURIComponent).join('/')
     : chunkPath
-  return `${basePath}${encodedPath}${ASSET_SUFFIX}` as ChunkUrl
+  return `${getRuntimeChunkBasePath(basePath)}${encodedPath}${ASSET_SUFFIX}` as ChunkUrl
 }
 
 // Shared runtime primitives consumed by the bundled `createWorker` helper,
@@ -529,9 +570,13 @@ function getPathFromScript(
   }
   const chunkUrl = chunkScript.src!
   const src = decodeURIComponent(chunkUrl.replace(/[?#].*$/, ''))
-  const path = src.startsWith(RUNTIME_CHUNK_BASE_PATH)
-    ? src.slice(RUNTIME_CHUNK_BASE_PATH.length)
+  const runtimeBasePath = getRuntimeChunkBasePath(RUNTIME_CHUNK_BASE_PATH)
+  let path = src.startsWith(runtimeBasePath)
+    ? src.slice(runtimeBasePath.length)
     : src
+  if (path.startsWith('/')) {
+    path = path.slice(1)
+  }
   return path as ChunkPath | ChunkListPath
 }
 

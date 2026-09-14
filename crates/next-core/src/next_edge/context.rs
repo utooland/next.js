@@ -6,8 +6,8 @@ use turbo_tasks_fs::FileSystemPath;
 use turbopack_browser::BrowserChunkingContext;
 use turbopack_core::{
     chunk::{
-        AssetSuffix, ChunkingConfig, ChunkingContext, CrossOrigin, MangleType, MinifyType,
-        SourceMapSourceType, SourceMapsType, UnusedReferences, UrlBehavior,
+        AssetSuffix, ChunkingConfig, ChunkingContext, CompressType, CrossOrigin, MangleType,
+        MinifyType, SourceMapSourceType, SourceMapsType, UnusedReferences, UrlBehavior,
         chunk_id_strategy::ModuleIdStrategy,
     },
     compile_time_info::{CompileTimeDefines, CompileTimeInfo, FreeVarReference, FreeVarReferences},
@@ -248,6 +248,7 @@ pub async fn get_edge_chunking_context_with_client_assets(
         MinifyType::Minify {
             // React needs deterministic function names to work correctly.
             mangle: (!*no_mangling.await?).then_some(MangleType::Deterministic),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify
@@ -361,6 +362,7 @@ pub async fn get_edge_chunking_context(
     .minify_type(if *turbo_minify.await? {
         MinifyType::Minify {
             mangle: (!*no_mangling.await?).then_some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify

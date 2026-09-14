@@ -37,7 +37,6 @@ include_dir = { version = "0.7.3", features = ["nightly"] }
 indexmap = { workspace = true }
 jsonc-parser = { version = "0.26.3", features = ["serde"] }
 mime = { workspace = true }
-notify = { workspace = true }
 parking_lot = { workspace = true }
 regex = { workspace = true }
 rustc-hash = { workspace = true }
@@ -56,6 +55,13 @@ turbo-tasks-hash = { workspace = true }
 turbo-unix-path = { workspace = true }
 url = { workspace = true }
 urlencoding = { workspace = true }
+notify-types = { workspace = true }
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+tokio-fs-ext = { version = "0.7.8", features = ["opfs_offload", "opfs_watch"] }
+
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+notify = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 omnipath = "0.1.6"

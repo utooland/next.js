@@ -8,7 +8,9 @@
 type UpdateCallback = (update: ServerMessage) => void
 
 type ChunkUpdateProvider = {
-  push: (registration: [ChunkListPath, UpdateCallback]) => void
+  push: (
+    registration: [ChunkListPath, UpdateCallback, expectedVersion: string]
+  ) => void
 }
 
 declare var CHUNK_UPDATE_LISTENERS: ChunkUpdateProvider

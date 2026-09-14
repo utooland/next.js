@@ -15,8 +15,8 @@ use turbopack::{
 };
 use turbopack_core::{
     chunk::{
-        AssetSuffix, ChunkingConfig, MangleType, MinifyType, SourceMapSourceType, SourceMapsType,
-        UnusedReferences, UrlBehavior, chunk_id_strategy::ModuleIdStrategy,
+        AssetSuffix, ChunkingConfig, CompressType, MangleType, MinifyType, SourceMapSourceType,
+        SourceMapsType, UnusedReferences, UrlBehavior, chunk_id_strategy::ModuleIdStrategy,
     },
     compile_time_defines,
     compile_time_info::{CompileTimeDefines, CompileTimeInfo, FreeVarReferences},
@@ -1092,6 +1092,7 @@ pub async fn get_server_chunking_context_with_client_assets(
         MinifyType::Minify {
             // React needs deterministic function names to work correctly.
             mangle: (!*no_mangling.await?).then_some(MangleType::Deterministic),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify
@@ -1203,6 +1204,7 @@ pub async fn get_server_chunking_context(
     .minify_type(if *minify.await? {
         MinifyType::Minify {
             mangle: (!*no_mangling.await?).then_some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify

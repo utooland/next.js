@@ -9,9 +9,7 @@ use crate::{
     module_fragments::part::module::EcmascriptModulePartAsset,
     references::{FollowExportsResult, follow_reexports},
     rename::module::EcmascriptModuleRenameModule,
-    side_effect_optimization::{
-        facade::module::EcmascriptModuleFacadeModule, locals::module::EcmascriptModuleLocalsModule,
-    },
+    side_effect_optimization::facade::module::EcmascriptModuleFacadeModule,
 };
 
 #[turbo_tasks::task_input]
@@ -37,7 +35,12 @@ pub async fn canonicalize_ecmascript_module(
                 if let Some(part) = part {
                     match part {
                         ModulePart::Evaluation => {
-                            Vc::upcast(EcmascriptModuleLocalsModule::new(*module))
+                            // Evaluating an ESM module must evaluate the original module
+                            // record, not only its synthesized locals part. Otherwise a
+                            // re-export barrel can be re-entered through a namespace import
+                            // and run later re-exports before earlier dependencies finish
+                            // initializing.
+                            Vc::upcast(EcmascriptModuleFacadeModule::new(Vc::upcast(*module)))
                         }
                         ModulePart::Export(_) => {
                             apply_reexport_tree_shaking(
@@ -74,7 +77,7 @@ async fn apply_reexport_tree_shaking(
             module: final_module,
             export_name: new_export,
             ..
-        } = &*follow_reexports(module, export.clone(), true).await?;
+        } = &*follow_reexports(module, export.clone(), false).await?;
         return Ok(if let Some(new_export) = new_export {
             if *new_export == *export {
                 **final_module

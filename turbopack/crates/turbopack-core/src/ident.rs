@@ -8,7 +8,9 @@ use turbo_tasks::{
     ReadRef, ResolvedVc, ValueToString, ValueToStringRef, Vc, trace::TraceRawVcs, turbofmt,
 };
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::{DeterministicHash, Xxh3Hash64Hasher, encode_base38, hash_xxh3_hash64};
+use turbo_tasks_hash::{
+    DeterministicHash, Xxh3Hash64Hasher, encode_base38, encode_hex, hash_xxh3_hash64,
+};
 
 use crate::resolve::ModulePart;
 
@@ -225,10 +227,25 @@ impl AssetIdent {
             fragment.deterministic_hash(&mut hasher);
             has_hash = true;
         }
-        for (key, ident) in assets.iter() {
+        if !assets.is_empty() {
+            // Hash nested assets in sorted order so the result is independent of insertion order.
+            // This ensures chunks with the same modules but different order get the same hash.
+            let mut asset_hashes = Vec::with_capacity(assets.len());
+            for (key, ident) in assets.iter() {
+                let mut asset_hasher = Xxh3Hash64Hasher::new();
+                key.deterministic_hash(&mut asset_hasher);
+                ident
+                    .to_string()
+                    .await?
+                    .deterministic_hash(&mut asset_hasher);
+                asset_hashes.push(asset_hasher.finish());
+            }
+            asset_hashes.sort_unstable();
+
             2_u8.deterministic_hash(&mut hasher);
-            key.deterministic_hash(&mut hasher);
-            ident.to_string().await?.deterministic_hash(&mut hasher);
+            for h in asset_hashes {
+                h.deterministic_hash(&mut hasher);
+            }
             has_hash = true;
         }
         for modifier in modifiers.iter() {
@@ -321,18 +338,17 @@ impl AssetIdent {
             }
         }
         if i > 0 {
-            let hash = encode_base38(hash_xxh3_hash64(&name.as_bytes()[..i]));
-            // 4 base38 chars ≈ 21 bits — just a short disambiguator prefix
-            let truncated_hash = &hash[..4];
+            let hash = encode_hex(hash_xxh3_hash64(&name.as_bytes()[..i]));
+            let truncated_hash = &hash[..5];
             name = format!("{}_{}", truncated_hash, &name[i..]);
         }
         // We need to make sure that `.json` and `.json.js` doesn't end up with the same
         // name. So when we add an extra extension when want to mark that with a "._"
         // suffix.
-        if !removed_extension {
-            name += "._";
-        }
-        name += &expected_extension;
+        // if !removed_extension {
+        //     name += "._";
+        // }
+        // name += &expected_extension;
         Ok(Vc::cell(name.into()))
     }
 }
@@ -398,8 +414,9 @@ impl ValueToString for AssetIdent {
     }
 }
 
-fn escape_file_path(s: &str) -> String {
-    static SEPARATOR_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[/#?:]").unwrap());
+pub fn escape_file_path(s: &str) -> String {
+    static SEPARATOR_REGEX: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"[/#?:\[\]<>@\s()&$]").unwrap());
     SEPARATOR_REGEX.replace_all(s, "_").to_string()
 }
 
@@ -428,7 +445,7 @@ pub mod tests {
                 let fs = VirtualFileSystem::new_with_name(rcstr!("test"));
                 let root = fs.root().owned().await?;
 
-                let asset_ident = AssetIdent::from_path(root.join("a:b?c#d.js")?).into_vc();
+                let asset_ident = AssetIdent::from_path(root.join("a:b?c#d&e$f.js")?).into_vc();
                 let output_name = asset_ident
                     .output_name(root, Some(rcstr!("prefix")), rcstr!(".js"))
                     .await?;
@@ -436,7 +453,57 @@ pub mod tests {
             }
 
             let output_name = output_name_operation().read_strongly_consistent().await?;
-            assert_eq!(&*output_name, "prefix-a_b_c_d.js");
+            assert_eq!(&*output_name, "prefix-a_b_c_d_e_f");
+
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_nested_assets_order_independent() {
+        let tt = turbo_tasks::TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async move {
+            #[turbo_tasks::function(operation, root)]
+            async fn output_name_operation(reversed: bool) -> anyhow::Result<Vc<RcStr>> {
+                let fs = VirtualFileSystem::new_with_name(rcstr!("test"));
+                let root = fs.root().owned().await?;
+                let first = AssetIdent::from_path(root.join("first.js")?)
+                    .into_vc()
+                    .to_resolved()
+                    .await?;
+                let second = AssetIdent::from_path(root.join("second.js")?)
+                    .into_vc()
+                    .to_resolved()
+                    .await?;
+                let assets = if reversed {
+                    [(rcstr!("second"), second), (rcstr!("first"), first)]
+                } else {
+                    [(rcstr!("first"), first), (rcstr!("second"), second)]
+                };
+
+                let mut asset_ident = AssetIdent::from_path(root.join("chunk.js")?);
+                for (key, asset) in assets {
+                    asset_ident = asset_ident.with_asset(key, asset);
+                }
+                let output_name = asset_ident
+                    .into_vc()
+                    .output_name(root, None, rcstr!(".js"))
+                    .await?;
+                Ok(Vc::cell((*output_name).clone()))
+            }
+
+            let output_name = output_name_operation(false)
+                .read_strongly_consistent()
+                .await?;
+            let reversed_output_name = output_name_operation(true)
+                .read_strongly_consistent()
+                .await?;
+            assert_eq!(&*output_name, &*reversed_output_name);
 
             Ok(())
         })

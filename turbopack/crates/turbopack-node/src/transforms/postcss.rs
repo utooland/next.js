@@ -5,10 +5,10 @@ use serde::Deserialize;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{
     Completion, Completions, ResolvedVc, TryFlatJoinIterExt, Vc, fxindexmap, trace::TraceRawVcs,
-    turbofmt,
 };
 use turbo_tasks_fs::{
     File, FileContent, FileSystemEntryType, FileSystemPath, json::parse_json_with_source_context,
+    to_sys_path,
 };
 use turbopack_core::{
     asset::{Asset, AssetContent},
@@ -67,6 +67,7 @@ pub enum PostCssConfigLocation {
 pub struct PostCssTransformOptions {
     pub postcss_package: Option<ResolvedVc<ImportMapping>>,
     pub config_location: PostCssConfigLocation,
+    pub config_content: Option<RcStr>,
     pub placeholder_for_future_extensions: u8,
 }
 
@@ -109,6 +110,7 @@ pub struct PostCssTransform {
     config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
+    config_content: Option<RcStr>,
     source_maps: bool,
 }
 
@@ -120,6 +122,7 @@ impl PostCssTransform {
         config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
         execution_context: ResolvedVc<ExecutionContext>,
         config_location: PostCssConfigLocation,
+        config_content: Option<RcStr>,
         source_maps: bool,
     ) -> Vc<Self> {
         PostCssTransform {
@@ -127,6 +130,7 @@ impl PostCssTransform {
             config_tracing_context,
             execution_context,
             config_location,
+            config_content,
             source_maps,
         }
         .cell()
@@ -147,6 +151,7 @@ impl SourceTransform for PostCssTransform {
                 config_tracing_context: self.config_tracing_context,
                 execution_context: self.execution_context,
                 config_location: self.config_location,
+                config_content: self.config_content.clone(),
                 source,
                 asset_context,
                 source_map: self.source_maps,
@@ -162,9 +167,17 @@ struct PostCssTransformedAsset {
     config_tracing_context: ResolvedVc<Box<dyn AssetContext>>,
     execution_context: ResolvedVc<ExecutionContext>,
     config_location: PostCssConfigLocation,
+    config_content: Option<RcStr>,
     source: ResolvedVc<Box<dyn Source>>,
     asset_context: ResolvedVc<Box<dyn AssetContext>>,
     source_map: bool,
+}
+
+#[turbo_tasks::task_input]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, TraceRawVcs, Encode, Decode)]
+enum PostCssConfigSource {
+    Inline(RcStr),
+    Path(FileSystemPath),
 }
 
 #[turbo_tasks::value_impl]
@@ -341,9 +354,22 @@ impl Asset for JsonSource {
 #[turbo_tasks::function]
 pub(crate) async fn config_loader_source(
     project_path: FileSystemPath,
-    postcss_config_path: FileSystemPath,
+    config_source: PostCssConfigSource,
 ) -> Result<Vc<Box<dyn Source>>> {
-    let postcss_config_path_filename = postcss_config_path.file_name();
+    let postcss_config_path = match config_source {
+        PostCssConfigSource::Inline(config_content) => {
+            let code = format!("export default {config_content};\n");
+
+            return Ok(Vc::upcast(VirtualSource::new(
+                project_path.join(".postcss.config.mjs")?,
+                AssetContent::file(FileContent::Content(File::from(code)).cell()),
+            )));
+        }
+        PostCssConfigSource::Path(postcss_config_path) => postcss_config_path,
+    };
+
+    let postcss_config_path_value = postcss_config_path.clone();
+    let postcss_config_path_filename = postcss_config_path_value.file_name();
 
     if postcss_config_path_filename == "package.json" {
         return Ok(Vc::upcast(JsonSource::new(
@@ -353,7 +379,9 @@ pub(crate) async fn config_loader_source(
         )));
     }
 
-    if postcss_config_path.path.ends_with(".json") || postcss_config_path_filename == ".postcssrc" {
+    if postcss_config_path_value.path.ends_with(".json")
+        || postcss_config_path_filename == ".postcssrc"
+    {
         return Ok(Vc::upcast(JsonSource::new(
             postcss_config_path,
             Vc::cell(None),
@@ -362,31 +390,121 @@ pub(crate) async fn config_loader_source(
     }
 
     // We can only load js files with `import()`.
-    if !postcss_config_path.path.ends_with(".js") {
+    if !postcss_config_path_value.path.ends_with(".js") {
         return Ok(Vc::upcast(FileSource::new(postcss_config_path)));
     }
 
-    let Some(config_path) = project_path.get_relative_path_to(&postcss_config_path) else {
-        bail!("Unable to get relative path to postcss config");
-    };
+    let config_path = project_path.get_relative_path_to(&postcss_config_path_value);
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    let config_path_expr =
+        if let Some(config_sys_path) = to_sys_path(postcss_config_path_value.clone()).await? {
+            serde_json::to_string(&config_sys_path.to_string_lossy())
+                .expect("a string should be serializable")
+        } else {
+            let Some(config_path) = config_path.as_ref() else {
+                bail!("Unable to get relative path to postcss config");
+            };
+            format!(
+                "path.join(process.cwd(), {})",
+                serde_json::to_string(config_path).expect("a string should be serializable")
+            )
+        };
 
     // We don't want to bundle the config file, so we load it with `import()`.
     // Bundling would break the ability to use `require.resolve` in the config file.
+    // Resolve string plugins from the config location before passing them to the
+    // evaluated transform module, whose own `module.require` has a different
+    // resolution base.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     let code = formatdoc! {
         r#"
+            import {{ createRequire }} from 'node:module';
             import {{ pathToFileURL }} from 'node:url';
             import path from 'node:path';
 
-            const configPath = path.join(process.cwd(), {config_path});
-            // Absolute paths don't work with ESM imports on Windows:
-            // https://github.com/nodejs/node/issues/31710
-            // convert it to a file:// URL, which works on all platforms
+            const configPath = {config_path_expr};
             const configUrl = pathToFileURL(configPath).toString();
-            const mod = await {TURBOPACK_EXTERNAL_IMPORT}(configUrl);
+            const requireConfig = createRequire(configUrl);
+            let mod;
+            try {{
+                mod = requireConfig(configPath);
+            }} catch (error) {{
+                if (
+                    error == null ||
+                    (error.code !== 'ERR_REQUIRE_ESM' &&
+                        error.code !== 'ERR_REQUIRE_ASYNC_MODULE')
+                ) {{
+                    throw error;
+                }}
+
+                // Absolute paths don't work with ESM imports on Windows:
+                // https://github.com/nodejs/node/issues/31710
+                // convert it to a file:// URL, which works on all platforms
+                mod = await {TURBOPACK_EXTERNAL_IMPORT}(configUrl);
+            }}
+
+            const resolvePlugin = (plugin) => requireConfig.resolve(plugin);
+            const normalizePlugin = (plugin) => {{
+                if (typeof plugin === 'string') {{
+                    return [resolvePlugin(plugin), {{}}];
+                }}
+
+                if (Array.isArray(plugin) && typeof plugin[0] === 'string') {{
+                    return [resolvePlugin(plugin[0]), plugin[1]];
+                }}
+
+                return plugin;
+            }};
+            const normalizePlugins = (plugins) => {{
+                if (Array.isArray(plugins)) {{
+                    return plugins.map(normalizePlugin);
+                }}
+
+                if (plugins && typeof plugins === 'object') {{
+                    return Object.fromEntries(
+                        Object.entries(plugins).map(([plugin, options]) => [
+                            resolvePlugin(plugin),
+                            options,
+                        ]),
+                    );
+                }}
+
+                return plugins;
+            }};
+            const normalizeConfig = (config) => {{
+                if (!config || typeof config !== 'object') {{
+                    return config;
+                }}
+
+                return {{
+                    ...config,
+                    plugins: normalizePlugins(config.plugins),
+                }};
+            }};
+
+            const config = mod.default ?? mod;
+            export default typeof config === 'function'
+                ? async (...args) => normalizeConfig(await config(...args))
+                : normalizeConfig(config);
+        "#,
+        config_path_expr = config_path_expr,
+    };
+
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    let code = formatdoc! {
+        r#"
+            import path from 'node:path';
+
+            const configPath = path.join(process.cwd(), {config_path});
+            const mod = module.require(configPath);
 
             export default mod.default ?? mod;
         "#,
-        config_path = serde_json::to_string(&config_path).expect("a string should be serializable"),
+        config_path = serde_json::to_string(
+            &config_path.context("Unable to get relative path to postcss config")?
+        )
+        .expect("a string should be serializable"),
     };
 
     Ok(Vc::upcast(VirtualSource::new(
@@ -399,24 +517,92 @@ pub(crate) async fn config_loader_source(
 async fn postcss_executor(
     asset_context: Vc<Box<dyn AssetContext>>,
     project_path: FileSystemPath,
-    postcss_config_path: FileSystemPath,
+    config_source: PostCssConfigSource,
+    additional_config_content: Option<RcStr>,
 ) -> Result<Vc<ProcessResult>> {
     let config_asset = asset_context
         .process(
-            config_loader_source(project_path, postcss_config_path.clone()),
+            config_loader_source(project_path.clone(), config_source),
             ReferenceType::Entry(EntryReferenceSubType::Undefined),
         )
         .module()
         .to_resolved()
         .await?;
 
+    let config_asset = if let Some(additional_config_content) = additional_config_content {
+        let additional_config_asset = asset_context
+            .process(
+                config_loader_source(
+                    project_path.clone(),
+                    PostCssConfigSource::Inline(additional_config_content),
+                ),
+                ReferenceType::Entry(EntryReferenceSubType::Undefined),
+            )
+            .module()
+            .to_resolved()
+            .await?;
+        let code = r#"
+            import config from 'CONFIG';
+            import additionalConfig from 'ADDITIONAL_CONFIG';
+
+            const resolveConfig = async (value, args) =>
+                typeof value === 'function' ? await value(...args) : value;
+            const pluginsToArray = (plugins) => {
+                if (Array.isArray(plugins)) {
+                    return plugins;
+                }
+
+                if (plugins && typeof plugins === 'object') {
+                    return Object.entries(plugins).filter(([, options]) => options);
+                }
+
+                return [];
+            };
+
+            export default async (...args) => {
+                const resolvedConfig = await resolveConfig(config, args);
+                const resolvedAdditionalConfig = await resolveConfig(additionalConfig, args);
+
+                if (
+                    typeof resolvedConfig === 'undefined' ||
+                    typeof resolvedAdditionalConfig === 'undefined'
+                ) {
+                    return undefined;
+                }
+
+                return {
+                    plugins: [
+                        ...pluginsToArray(resolvedConfig.plugins),
+                        ...pluginsToArray(resolvedAdditionalConfig.plugins),
+                    ],
+                };
+            };
+        "#;
+
+        asset_context
+            .process(
+                Vc::upcast(VirtualSource::new(
+                    project_path.join(".postcss.merged.config.mjs")?,
+                    AssetContent::file(FileContent::Content(File::from(code)).cell()),
+                )),
+                ReferenceType::Internal(ResolvedVc::cell(fxindexmap! {
+                    rcstr!("CONFIG") => config_asset,
+                    rcstr!("ADDITIONAL_CONFIG") => additional_config_asset,
+                })),
+            )
+            .module()
+            .to_resolved()
+            .await?
+    } else {
+        config_asset
+    };
+
+    let path = embed_file_path(rcstr!("transforms/postcss.ts"))
+        .owned()
+        .await?;
+
     Ok(asset_context.process(
-        Vc::upcast(FileSource::new_with_query(
-            embed_file_path(rcstr!("transforms/postcss.ts"))
-                .owned()
-                .await?,
-            turbofmt!("?config={postcss_config_path}").await?,
-        )),
+        Vc::upcast(FileSource::new(path)),
         ReferenceType::Internal(ResolvedVc::cell(fxindexmap! {
             rcstr!("CONFIG") => config_asset
         })),
@@ -489,17 +675,6 @@ impl PostCssTransformedAsset {
         //     - pkg1/(postcss.config.js) // The actual config we're looking for
         //
         // We look for the config in the project path first, then the source path
-        let Some(config_path) =
-            find_config_in_location(project_path.clone(), self.config_location, *self.source)
-                .await?
-        else {
-            return Ok(ProcessPostCssResult {
-                content: self.source.content().to_resolved().await?,
-                assets: Vec::new(),
-            }
-            .cell());
-        };
-
         let source_content = self.source.content();
         let AssetContent::File(file) = *source_content.await? else {
             bail!("PostCSS transform only support transforming files");
@@ -515,13 +690,39 @@ impl PostCssTransformedAsset {
         let evaluate_context = self.evaluate_context;
         let source_map = self.source_map;
 
-        // This invalidates the transform when the config changes.
-        let config_changed = config_changed(*self.config_tracing_context, config_path.clone())
-            .to_resolved()
-            .await?;
+        let config_path =
+            find_config_in_location(project_path.clone(), self.config_location, *self.source)
+                .await?;
+        let (config_source, additional_config_content, additional_invalidation) =
+            match (config_path, self.config_content.as_ref()) {
+                (Some(config_path), config_content) => (
+                    PostCssConfigSource::Path(config_path.clone()),
+                    config_content.cloned(),
+                    config_changed(*self.config_tracing_context, config_path)
+                        .to_resolved()
+                        .await?,
+                ),
+                (None, Some(config_content)) => (
+                    PostCssConfigSource::Inline(config_content.clone()),
+                    None,
+                    Completion::immutable().to_resolved().await?,
+                ),
+                (None, None) => {
+                    return Ok(ProcessPostCssResult {
+                        content: self.source.content().to_resolved().await?,
+                        assets: Vec::new(),
+                    }
+                    .cell());
+                }
+            };
 
-        let postcss_executor =
-            postcss_executor(*evaluate_context, project_path.clone(), config_path).module();
+        let postcss_executor = postcss_executor(
+            *evaluate_context,
+            project_path.clone(),
+            config_source,
+            additional_config_content,
+        )
+        .module();
 
         let entries =
             get_evaluate_entries(postcss_executor, *evaluate_context, **node_backend, None)
@@ -541,11 +742,15 @@ impl PostCssTransformedAsset {
         .await?;
 
         let source_ident = self.source.ident().await?;
+        let css_fs_path = source_ident.path.clone();
 
-        // We need to get a path relative to the project because the postcss loader
-        // runs with the project as the current working directory.
-        let css_path = if let Some(css_path) = project_path.get_relative_path_to(&source_ident.path)
-        {
+        // Prefer an absolute filesystem path for PostCSS `from`/`to`.
+        // Some plugins resolve dependencies relative to these fields, and on
+        // Windows a cwd-relative path can be joined against the wrong base when
+        // the project path and root path differ.
+        let css_path = if let Some(css_path) = to_sys_path(css_fs_path.clone()).await? {
+            css_path.to_string_lossy().into_owned()
+        } else if let Some(css_path) = project_path.get_relative_path_to(&css_fs_path) {
             css_path.into_owned()
         } else {
             // This shouldn't be an error since it can happen on virtual assets
@@ -568,7 +773,7 @@ impl PostCssTransformedAsset {
                 ResolvedVc::cell(css_path.into()),
                 ResolvedVc::cell(source_map.into()),
             ],
-            additional_invalidation: config_changed,
+            additional_invalidation,
             loader_names: vec![turbo_rcstr::rcstr!("postcss")],
         })
         .await?;

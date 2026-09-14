@@ -44,7 +44,6 @@ impl EsmModuleItem {
         _chunking_context: Vc<Box<dyn ChunkingContext>>,
     ) -> Result<CodeGeneration> {
         let mut visitors = Vec::new();
-        let supports_block_scoping = self.supports_block_scoping;
 
         visitors.push(create_visitor!(
             self.path,
@@ -57,14 +56,7 @@ impl EsmModuleItem {
                             let decl = Decl::Var(Box::new(VarDecl {
                                 span: DUMMY_SP,
                                 ctxt: Default::default(),
-                                kind: if supports_block_scoping {
-                                    swc_core::ecma::ast::VarDeclKind::Const
-                                } else {
-                                    // This is not entirely correct: this hides TDZ errors with
-                                    // circular imports, but there is no way to model this runtime
-                                    // behavior well for older browsers.
-                                    swc_core::ecma::ast::VarDeclKind::Var
-                                },
+                                kind: swc_core::ecma::ast::VarDeclKind::Var,
                                 declare: false,
                                 decls: vec![VarDeclarator {
                                     span: DUMMY_SP,

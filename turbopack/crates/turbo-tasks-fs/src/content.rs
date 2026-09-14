@@ -19,10 +19,11 @@ use turbo_tasks_hash::{
     DeterministicHash, DeterministicHasher, HashAlgorithm, deterministic_hash, hash_xxh3_hash64,
 };
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use crate::retry::retry_blocking;
 use crate::{
     FileSystemEntryType, FileSystemPath, RealPathErrorType,
     json::UnparsableJson,
-    retry::retry_blocking,
     rope::{Rope, RopeReader},
     util::extract_disk_access,
 };
@@ -102,6 +103,7 @@ pub enum PersistedFileContent {
 
 impl PersistedFileContent {
     /// Performs a comparison of self's data against a disk file's streamed read.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
         let old_file =
             extract_disk_access(retry_blocking(|| std::fs::File::open(path)).await, path)?;
@@ -147,6 +149,54 @@ impl PersistedFileContent {
             }
 
             if new_chunk[0..len] != old_chunk[0..len] {
+                break FileComparison::NotEqual;
+            }
+
+            new_contents.consume(len);
+            old_contents.consume(len);
+        })
+    }
+
+    /// Performs the same comparison through the OPFS offload bridge on browser wasm.
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    pub(crate) async fn streaming_compare(&self, path: &Path) -> Result<FileComparison> {
+        let old_meta =
+            extract_disk_access(crate::wasm_fs_offload::CLIENT.metadata(path).await, path)?;
+        let Some(old_meta) = old_meta else {
+            return Ok(match self {
+                PersistedFileContent::NotFound => FileComparison::Equal,
+                _ => FileComparison::Create,
+            });
+        };
+        let PersistedFileContent::Content(new_file) = self else {
+            return Ok(FileComparison::NotEqual);
+        };
+        if new_file.meta != old_meta.into() {
+            return Ok(FileComparison::NotEqual);
+        }
+
+        let old_content =
+            extract_disk_access(crate::wasm_fs_offload::CLIENT.read(path).await, path)?;
+        let Some(old_content) = old_content else {
+            return Ok(FileComparison::Create);
+        };
+        let mut new_contents = new_file.read();
+        let mut old_contents = BufReader::new(std::io::Cursor::new(old_content));
+        Ok(loop {
+            let new_chunk = new_contents.fill_buf()?;
+            let Ok(old_chunk) = old_contents.fill_buf() else {
+                break FileComparison::NotEqual;
+            };
+
+            let len = min(new_chunk.len(), old_chunk.len());
+            if len == 0 {
+                break if new_chunk.len() == old_chunk.len() {
+                    FileComparison::Equal
+                } else {
+                    FileComparison::NotEqual
+                };
+            }
+            if new_chunk[..len] != old_chunk[..len] {
                 break FileComparison::NotEqual;
             }
 
@@ -479,6 +529,13 @@ impl From<std::fs::Metadata> for FileMeta {
             permissions,
             content_type: None,
         }
+    }
+}
+
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+impl From<tokio_fs_ext::Metadata> for FileMeta {
+    fn from(_meta: tokio_fs_ext::Metadata) -> Self {
+        Self::default()
     }
 }
 

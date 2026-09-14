@@ -34,6 +34,8 @@ pub mod rope;
 pub mod source_context;
 pub mod util;
 pub(crate) mod virtual_fs;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub mod wasm_fs_offload;
 mod watcher;
 #[cfg(windows)]
 pub mod windows;
