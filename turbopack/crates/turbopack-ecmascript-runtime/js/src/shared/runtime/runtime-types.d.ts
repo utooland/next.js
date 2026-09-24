@@ -174,4 +174,5 @@ interface TurbopackBaseContext<M> {
   z: CommonJsRequire
   g: typeof globalThis
   p: GetPublicPath
+  runtimePublicPath: unknown
 }
