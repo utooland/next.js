@@ -1329,7 +1329,19 @@ impl ChunkingContext for BrowserChunkingContext {
         if !this.enable_hot_module_replacement {
             unreachable!("hmr_chunk_list called with enable_hot_module_replacement disabled");
         }
-        if chunks.await?.is_empty() {
+        let resolved_chunks = chunks.await?;
+        if resolved_chunks.is_empty() {
+            return Ok(OutputAssets::empty());
+        }
+        // Dynamic chunk groups already append a list covering all their preceding chunks.
+        // A lazy import's manifest must reuse it instead of nesting it inside another list:
+        // chunk-list partial updates are not ECMAScript merged updates.
+        if matches!(source, HmrChunkListSource::Dynamic)
+            && this.enable_dynamic_hmr_chunk_lists
+            && resolved_chunks.last().is_some_and(|chunk| {
+                ResolvedVc::try_downcast_type::<EcmascriptDevChunkList>(*chunk).is_some()
+            })
+        {
             return Ok(OutputAssets::empty());
         }
         Ok(Vc::cell(vec![
