@@ -2534,7 +2534,12 @@ fn hygiene_rename_only(
         }
 
         fn preserve_name(&self, orig: &Id) -> bool {
-            self.preserved_exports.contains(orig) || orig.1.has_mark(self.is_import_mark)
+            self.preserved_exports.contains(orig)
+                || orig.1.has_mark(self.is_import_mark)
+                // Re-exports from another merged module can refer to this generated import by
+                // its original name. Leave collision resolution to the merged-module hygiene
+                // pass so those references and the declaration are renamed together.
+                || orig.0.starts_with("__TURBOPACK__imported__module__")
         }
     }
     swc_core::ecma::transforms::base::rename::renamer_keep_contexts(
