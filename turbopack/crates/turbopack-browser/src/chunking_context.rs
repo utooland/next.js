@@ -194,6 +194,13 @@ impl BrowserChunkingContextBuilder {
         self
     }
 
+    /// Keep an entry's bootstrap as a script asset when sharing the browser runtime.
+    /// Consumers that do not inline bootstrap params into HTML need this asset.
+    pub fn emit_entry_bootstrap(mut self, emit_entry_bootstrap: bool) -> Self {
+        self.chunking_context.emit_entry_bootstrap = emit_entry_bootstrap;
+        self
+    }
+
     /// Marks this context as being shared by multiple independent module graphs (e.g. per-page
     /// graphs), each of which only sees part of what is written to `chunk_root_path`.
     ///
@@ -409,6 +416,8 @@ pub struct BrowserChunkingContext {
     /// entrypoint's chunk group bootstrap params via
     /// `ChunkGroupResult.chunk_group_bootstrap_params`.
     shared_runtime: bool,
+    /// Emit entry bootstrap scripts instead of returning params for HTML inlining.
+    emit_entry_bootstrap: bool,
     /// Whether the runtime chunk is shared with other module graphs using this context.
     /// See [`BrowserChunkingContextBuilder::shared_runtime_chunk`].
     shared_runtime_chunk: bool,
@@ -508,6 +517,7 @@ impl BrowserChunkingContext {
                 enable_dynamic_chunk_content_loading: false,
                 debug_ids: false,
                 shared_runtime: false,
+                emit_entry_bootstrap: false,
                 shared_runtime_chunk: false,
                 environment,
                 runtime_type,
@@ -1267,25 +1277,28 @@ impl ChunkingContext for BrowserChunkingContext {
             // The evaluate chunk registers this entry's chunks/modules onto the
             // browser-global chunk queue. When `shared_runtime` is enabled we return that chunk
             // group's bootstrap params for Next to inline into the HTML and skip emitting the
-            // per-route evaluate chunk file. Only `ChunkGroup::Entry` groups (the page/app client
+            // per-route evaluate chunk file, unless the consumer requests a bootstrap asset.
+            // Only `ChunkGroup::Entry` groups (the page/app client
             // entries Next renders into HTML) can be inlined. When `shared_runtime` is disabled the
             // evaluate chunk itself carries the runtime, so it is always emitted as an asset.
             let evaluate_chunk = self
                 .generate_evaluate_chunk(ident, other_assets, entries, *module_graph)
                 .to_resolved()
                 .await?;
-            let chunk_group_bootstrap_params =
-                if this.shared_runtime && matches!(chunk_group, ChunkGroup::Entry(_)) {
-                    Some(
-                        evaluate_chunk
-                            .chunk_group_bootstrap_params()
-                            .owned()
-                            .await?,
-                    )
-                } else {
-                    assets.push(ResolvedVc::upcast(evaluate_chunk));
-                    None
-                };
+            let chunk_group_bootstrap_params = if this.shared_runtime
+                && !this.emit_entry_bootstrap
+                && matches!(chunk_group, ChunkGroup::Entry(_))
+            {
+                Some(
+                    evaluate_chunk
+                        .chunk_group_bootstrap_params()
+                        .owned()
+                        .await?,
+                )
+            } else {
+                assets.push(ResolvedVc::upcast(evaluate_chunk));
+                None
+            };
 
             // The shared runtime chunk must be the LAST asset of the group. It drains
             // the registration queue set up by the chunks above, so it has to load
