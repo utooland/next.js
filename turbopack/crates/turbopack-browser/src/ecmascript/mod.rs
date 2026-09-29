@@ -6,6 +6,6 @@ pub(crate) mod worker;
 
 pub use chunk::EcmascriptBrowserChunk;
 pub use content::EcmascriptBrowserChunkContent;
-pub use evaluate::chunk::EcmascriptBrowserEvaluateChunk;
+pub use evaluate::{chunk::EcmascriptBrowserEvaluateChunk, runtime::EcmascriptBrowserRuntimeChunk};
 pub use list::asset::EcmascriptDevChunkList;
 pub use worker::EcmascriptBrowserWorkerEntrypoint;
