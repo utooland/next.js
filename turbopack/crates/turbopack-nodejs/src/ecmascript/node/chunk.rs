@@ -77,6 +77,11 @@ impl EcmascriptBuildNodeChunk {
             self.source_map(),
         ))
     }
+
+    #[turbo_tasks::function]
+    pub fn chunk(&self) -> Vc<Box<dyn Chunk>> {
+        Vc::upcast(*self.chunk)
+    }
 }
 
 #[turbo_tasks::value_impl]

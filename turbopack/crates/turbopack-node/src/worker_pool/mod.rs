@@ -17,22 +17,35 @@ use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, duration_span};
 use turbo_tasks_fs::FileSystemPath;
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+use self::web_worker::create_worker;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use self::worker_thread::create_worker;
 use crate::{
     AssetsForSourceMapping,
     backend::{CreatePoolFuture, CreatePoolOptions, NodeBackend},
     evaluate::{EvaluateOperation, EvaluatePool, Operation},
     pool_stats::{AcquiredPermits, PoolStatsSnapshot},
-    worker_pool::{
-        operation::{
-            PoolState, TaskChannels, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions,
-            get_pool_state,
-        },
-        worker_thread::create_worker,
+    worker_pool::operation::{
+        PoolState, TaskChannels, WORKER_POOL_OPERATION, WorkerOperation, WorkerOptions,
+        get_pool_state,
     },
 };
 
 mod operation;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub mod web_worker;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 mod worker_thread;
+
+#[cfg(all(
+    feature = "worker_pool_napi",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
+pub use self::worker_thread::{
+    NapiTaskMessage, NapiWorkerCreation, NapiWorkerTermination, recv_task_message_in_worker,
+    register_worker_scheduler, send_task_message, worker_created,
+};
 
 static OPERATION_TASK_ID: AtomicU32 = AtomicU32::new(1);
 
@@ -126,7 +139,11 @@ impl WorkerThreadPool {
 
         let bootup = async {
             let permit = self.bootup_semaphore.clone().acquire_owned().await;
+
             let wait_time = self.state.stats.lock().wait_time_before_bootup();
+
+            // FIXME: hanging when using wasmtimer::sleep
+            #[cfg(not(target_arch = "wasm32"))]
             sleep(wait_time).await;
             permit
         };
@@ -161,11 +178,25 @@ pub(crate) struct WorkerThreadsBackend;
 #[turbo_tasks::value_impl]
 impl NodeBackend for WorkerThreadsBackend {
     fn runtime_module_path(&self) -> RcStr {
-        rcstr!("worker_thread/evaluate.ts")
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            rcstr!("web_worker/evaluate.ts")
+        }
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            rcstr!("worker_thread/evaluate.ts")
+        }
     }
 
     fn globals_module_path(&self) -> RcStr {
-        rcstr!("worker_thread/globals.ts")
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        {
+            rcstr!("web_worker/globals.ts")
+        }
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        {
+            rcstr!("worker_thread/globals.ts")
+        }
     }
 
     fn create_pool(&self, options: CreatePoolOptions) -> CreatePoolFuture {

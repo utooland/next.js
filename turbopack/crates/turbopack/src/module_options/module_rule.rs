@@ -14,6 +14,7 @@ use turbopack_ecmascript::{
     EcmascriptInputTransforms, EcmascriptOptions, bytes_source_transform::BytesSourceTransform,
     json_source_transform::JsonSourceTransform, text_source_transform::TextSourceTransform,
 };
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbopack_wasm::source::WebAssemblySourceType;
 
 use crate::module_options::{CustomModuleType, RuleCondition, match_mode::MatchMode};
@@ -140,6 +141,7 @@ pub enum ModuleType {
         environment: Option<ResolvedVc<Environment>>,
         lightningcss_features: turbopack_css::LightningCssFeatureFlags,
         module_css_debuggable_idents: bool,
+        css_modules_pattern: Option<RcStr>,
     },
     StaticUrlJs {
         /// The tag that is passed to ChunkingContext::asset_url
@@ -149,6 +151,7 @@ pub enum ModuleType {
         /// The tag that is passed to ChunkingContext::asset_url
         tag: Option<RcStr>,
     },
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     WebAssembly {
         source_ty: WebAssemblySourceType,
     },
@@ -168,6 +171,7 @@ impl Display for ModuleType {
             ModuleType::Css { .. } => write!(f, "Css"),
             ModuleType::StaticUrlJs { .. } => write!(f, "StaticUrlJs"),
             ModuleType::StaticUrlCss { .. } => write!(f, "StaticUrlCss"),
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ModuleType::WebAssembly { .. } => write!(f, "WebAssembly"),
             ModuleType::Custom(_) => write!(f, "Custom"),
         }
@@ -237,6 +241,8 @@ impl ConfiguredModuleType {
         options: ResolvedVc<EcmascriptOptions>,
         environment: Option<ResolvedVc<Environment>>,
         lightningcss_features: turbopack_css::LightningCssFeatureFlags,
+        module_css_debuggable_idents: bool,
+        _css_modules_pattern: Option<RcStr>,
     ) -> Result<ModuleRuleEffect> {
         Ok(match self {
             ConfiguredModuleType::Bytes => {
@@ -281,7 +287,8 @@ impl ConfiguredModuleType {
                 environment,
                 lightningcss_features,
                 // This is global CSS, so the CSS Module naming pattern is unused.
-                module_css_debuggable_idents: false,
+                module_css_debuggable_idents,
+                css_modules_pattern: None,
             }),
             ConfiguredModuleType::CssModule => ModuleRuleEffect::ModuleType(ModuleType::CssModule),
             ConfiguredModuleType::Json => {
@@ -290,9 +297,17 @@ impl ConfiguredModuleType {
                     JsonSourceTransform::new_cjs().to_resolved().await?,
                 )]))
             }
+            #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
             ConfiguredModuleType::Wasm => ModuleRuleEffect::ModuleType(ModuleType::WebAssembly {
                 source_ty: WebAssemblySourceType::Binary,
             }),
+            #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+            ConfiguredModuleType::Wasm => {
+                bail!(
+                    "WebAssembly module type is not supported when the bundler itself runs in a \
+                     WASM environment"
+                )
+            }
             ConfiguredModuleType::Node => ModuleRuleEffect::ModuleType(ModuleType::NodeAddon),
         })
     }
