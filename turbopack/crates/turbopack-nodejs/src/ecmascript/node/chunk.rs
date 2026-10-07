@@ -10,7 +10,7 @@ use turbopack_core::{
     source_map::{GenerateSourceMap, SourceMapAsset},
     version::VersionedContent,
 };
-use turbopack_ecmascript::chunk::EcmascriptChunk;
+use turbopack_ecmascript::chunk::{EcmascriptChunk, EcmascriptChunkContent};
 
 use super::content::EcmascriptNodeChunkContent;
 use crate::NodeJsChunkingContext;
@@ -37,6 +37,12 @@ impl EcmascriptBuildNodeChunk {
             chunk,
         }
         .cell()
+    }
+
+    /// Constituent chunk items and batches, before the Node.js output wrapper.
+    #[turbo_tasks::function]
+    pub fn chunk_content(&self) -> Vc<EcmascriptChunkContent> {
+        self.chunk.chunk_content()
     }
 
     #[turbo_tasks::function]

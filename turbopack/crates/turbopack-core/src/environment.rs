@@ -363,7 +363,7 @@ impl EdgeWorkerEnvironment {
 // TODO preset_env_base::Version implements Serialize/Deserialize incorrectly
 #[derive(Debug)]
 #[turbo_tasks::value(transparent, serialization = "skip")]
-pub struct RuntimeVersions(#[turbo_tasks(trace_ignore)] pub Versions);
+pub struct RuntimeVersions(#[turbo_tasks(unsafe_ignore)] pub Versions);
 
 /// Checks if a browser version field is either absent or at least the given version.
 /// Supports major-only, major.minor, and major.minor.patch comparisons.

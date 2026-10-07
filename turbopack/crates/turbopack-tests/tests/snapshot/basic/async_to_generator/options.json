@@ -1,5 +1,5 @@
 {
   "browserslist": "chrome 41",
   "runtimeType": "Production",
-  "treeShakingMode": "module-fragments"
+  "moduleFragmentsEnabled": true
 }

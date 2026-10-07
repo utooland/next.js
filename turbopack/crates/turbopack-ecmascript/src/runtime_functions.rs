@@ -71,6 +71,7 @@ pub const TURBOPACK_ASYNC_LOADER: &TurbopackRuntimeFunctionShortcut = make_short
 pub const TURBOPACK_MODULE_CONTEXT: &TurbopackRuntimeFunctionShortcut = make_shortcut!("f");
 pub const TURBOPACK_IMPORT: &TurbopackRuntimeFunctionShortcut = make_shortcut!("i");
 pub const TURBOPACK_ESM: &TurbopackRuntimeFunctionShortcut = make_shortcut!("s");
+pub const TURBOPACK_ESM_REEXPORT: &TurbopackRuntimeFunctionShortcut = make_shortcut!("S");
 pub const TURBOPACK_EXPORT_VALUE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("v");
 pub const TURBOPACK_EXPORT_URL: &TurbopackRuntimeFunctionShortcut = make_shortcut!("q");
 pub const TURBOPACK_EXPORT_NAMESPACE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("n");
@@ -78,7 +79,7 @@ pub const TURBOPACK_CACHE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("c
 pub const TURBOPACK_MODULES: &TurbopackRuntimeFunctionShortcut = make_shortcut!("M");
 pub const TURBOPACK_LOAD: &TurbopackRuntimeFunctionShortcut = make_shortcut!("l");
 pub const TURBOPACK_LOAD_BY_URL: &TurbopackRuntimeFunctionShortcut = make_shortcut!("L");
-pub const TURBOPACK_LOAD_SCRIPT: &TurbopackRuntimeFunctionShortcut = make_shortcut!("S");
+pub const TURBOPACK_LOAD_SCRIPT: &TurbopackRuntimeFunctionShortcut = make_shortcut!("Q");
 pub const TURBOPACK_CLEAR_CHUNK_CACHE: &TurbopackRuntimeFunctionShortcut = make_shortcut!("C");
 pub const TURBOPACK_DYNAMIC: &TurbopackRuntimeFunctionShortcut = make_shortcut!("j");
 pub const TURBOPACK_RESOLVE_ABSOLUTE_PATH: &TurbopackRuntimeFunctionShortcut = make_shortcut!("P");
@@ -101,18 +102,16 @@ pub const TURBOPACK_PUBLIC_PATH: &TurbopackRuntimeFunctionShortcut = make_shortc
 
 /// Adding an entry to this list will automatically ensure that `__turbopack_XXX__` can be called
 /// from user code (by inserting a replacement into free_var_references)
-pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 28] = [
+pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 26] = [
     ("__turbopack_require__", TURBOPACK_REQUIRE),
     ("__turbopack_module_context__", TURBOPACK_MODULE_CONTEXT),
     ("__turbopack_import__", TURBOPACK_IMPORT),
     ("__turbopack_export_value__", TURBOPACK_EXPORT_VALUE),
     ("__turbopack_export_url__", TURBOPACK_EXPORT_URL),
     ("__turbopack_export_namespace__", TURBOPACK_EXPORT_NAMESPACE),
-    ("__turbopack_cache__", TURBOPACK_CACHE),
     ("__turbopack_modules__", TURBOPACK_MODULES),
     ("__turbopack_load__", TURBOPACK_LOAD),
     ("__turbopack_load_by_url__", TURBOPACK_LOAD_BY_URL),
-    ("__turbopack_load_script__", TURBOPACK_LOAD_SCRIPT),
     ("__turbopack_load_script__", TURBOPACK_LOAD_SCRIPT),
     ("__turbopack_dynamic__", TURBOPACK_DYNAMIC),
     (

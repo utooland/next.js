@@ -66,7 +66,7 @@ use turbopack_static::{css::StaticUrlCssModule, ecma::StaticUrlJsModule};
 use turbopack_wasm::{module_asset::WebAssemblyModuleAsset, source::WebAssemblySource};
 
 use crate::{
-    evaluate_context::node_evaluate_asset_context,
+    evaluate_context::{config_tracing_module_context, node_evaluate_asset_context},
     module_options::{
         CssOptionsContext, CustomModuleType, EcmascriptOptionsContext, TypescriptTransformOptions,
         package_import_map_from_context, package_import_map_from_import_mapping,
@@ -692,6 +692,7 @@ async fn process_default_internal(
             rename_as.clone(),
             *resolve_options_context,
             source_maps,
+            config_tracing_module_context(*execution_context),
         )
         .to_resolved()
         .await?;
@@ -877,6 +878,7 @@ pub async fn externals_tracing_module_context(
     compile_time_info: Vc<CompileTimeInfo>,
     resolve_typescript: bool,
     prune: Option<(FileSystemPath, ResolvedVc<Glob>)>,
+    trace_file_references: bool,
 ) -> Result<Vc<ModuleAssetContext>> {
     let mut extensions = vec![rcstr!(".js"), rcstr!(".node"), rcstr!(".json")];
     if resolve_typescript {
@@ -930,7 +932,10 @@ pub async fn externals_tracing_module_context(
             // Environment is not passed in order to avoid downleveling JS / CSS for
             // node-file-trace.
             environment: None,
-            analyze_mode: AnalyzeMode::Tracing,
+            analyze_mode: AnalyzeMode {
+                is_codegen: false,
+                trace_file_references,
+            },
             module_rules: prune_rules,
             // Disable tree shaking. Even side-effect-free imports need to be traced, as they will
             // execute at runtime.
@@ -1086,8 +1091,9 @@ impl AssetContext for ModuleAssetContext {
                                     let origin = PlainResolveOrigin::new(
                                         Vc::upcast(externals_tracing_module_context(
                                             *options.compile_time_info,
-                                            false,
-                                            None,
+                                            /* resolve_typescript */ false,
+                                            /* prune */ None,
+                                            /* trace_file_references */ true,
                                         )),
                                         // If target is specified, a symlink will be created to
                                         // make the folder

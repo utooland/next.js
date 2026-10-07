@@ -48,7 +48,7 @@ const url = require('url') as typeof import('url')
 
 const moduleFactories: ModuleFactories = new Map()
 nodeContextPrototype.M = moduleFactories
-const moduleCache: ModuleCache<Module> = Object.create(null)
+const moduleCache: ModuleCache<Module> = new Map()
 nodeContextPrototype.c = moduleCache
 
 /**
@@ -225,7 +225,7 @@ function instantiateModule(
 
   const module: Module = createModuleObject(id)
   const exports = module.exports
-  moduleCache[id] = module
+  moduleCache.set(id, module)
 
   const context = new (Context as any as ContextConstructor<Module>)(
     module,
@@ -256,7 +256,7 @@ function getOrInstantiateModuleFromParent(
   id: ModuleId,
   sourceModule: Module
 ): Module {
-  const module = moduleCache[id]
+  const module = moduleCache.get(id)
 
   if (module) {
     if (module.error) {
@@ -287,7 +287,7 @@ function getOrInstantiateRuntimeModule(
   chunkPath: ChunkPath,
   moduleId: ModuleId
 ): Module {
-  const module = moduleCache[moduleId]
+  const module = moduleCache.get(moduleId)
   if (module) {
     if (module.error) {
       throw module.error

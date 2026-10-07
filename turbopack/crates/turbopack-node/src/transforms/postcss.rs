@@ -3,9 +3,7 @@ use bincode::{Decode, Encode};
 use indoc::formatdoc;
 use serde::Deserialize;
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{
-    Completion, Completions, ResolvedVc, TryFlatJoinIterExt, Vc, fxindexmap, trace::TraceRawVcs,
-};
+use turbo_tasks::{Completion, Completions, ResolvedVc, TryFlatJoinIterExt, Vc, fxindexmap};
 use turbo_tasks_fs::{
     File, FileContent, FileSystemEntryType, FileSystemPath, json::parse_json_with_source_context,
     to_sys_path,
@@ -46,7 +44,7 @@ struct PostCssProcessingResult {
 }
 
 #[turbo_tasks::task_input]
-#[derive(Default, Copy, Clone, PartialEq, Eq, Hash, Debug, TraceRawVcs, Encode, Decode)]
+#[derive(Default, Copy, Clone, PartialEq, Eq, Hash, Debug, Encode, Decode)]
 pub enum PostCssConfigLocation {
     /// Searches for postcss config only starting from the project root directory.
     /// Used for foreign code (node_modules) where per-directory configs should be ignored.
@@ -174,7 +172,7 @@ struct PostCssTransformedAsset {
 }
 
 #[turbo_tasks::task_input]
-#[derive(Clone, PartialEq, Eq, Hash, Debug, TraceRawVcs, Encode, Decode)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Encode, Decode)]
 enum PostCssConfigSource {
     Inline(RcStr),
     Path(FileSystemPath),

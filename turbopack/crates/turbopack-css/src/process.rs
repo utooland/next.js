@@ -52,7 +52,7 @@ pub type CssOutput = (ToCssResult, Option<StructuredSourceMap>);
 
 #[turbo_tasks::value(transparent)]
 struct LightningCssTargets(
-    #[turbo_tasks(trace_ignore)]
+    #[turbo_tasks(unsafe_ignore)]
     #[bincode(with_serde)]
     pub Targets,
 );
@@ -158,15 +158,13 @@ pub struct UnresolvedUrlReferences(pub Vec<(String, ResolvedVc<UrlAssetReference
 pub enum ParseCssResult {
     Ok {
         code: ResolvedVc<FileContent>,
-
-        #[turbo_tasks(trace_ignore)]
+        #[turbo_tasks(unsafe_ignore)]
         stylesheet: StyleSheet<'static>,
 
         references: ResolvedVc<ModuleReferences>,
 
         url_references: ResolvedVc<UnresolvedUrlReferences>,
-
-        #[turbo_tasks(trace_ignore)]
+        #[turbo_tasks(unsafe_ignore)]
         options: ParserOptions<'static>,
     },
     Unparsable,
@@ -181,11 +179,9 @@ pub enum CssWithPlaceholderResult {
         references: ResolvedVc<ModuleReferences>,
 
         url_references: ResolvedVc<UnresolvedUrlReferences>,
-
-        #[turbo_tasks(trace_ignore)]
+        #[turbo_tasks(unsafe_ignore)]
         exports: Option<FxIndexMap<String, CssModuleExport>>,
-
-        #[turbo_tasks(trace_ignore)]
+        #[turbo_tasks(unsafe_ignore)]
         placeholders: FxHashMap<String, Url<'static>>,
     },
     Unparsable,
@@ -196,7 +192,6 @@ pub enum CssWithPlaceholderResult {
 #[allow(clippy::large_enum_variant)] // This is a turbo-tasks value
 pub enum FinalCssResult {
     Ok {
-        #[turbo_tasks(trace_ignore)]
         output_code: String,
 
         source_map: Option<StructuredSourceMap>,
@@ -902,6 +897,8 @@ mod tests {
         assert_ne!(lint_lightningcss(code), vec![], "lightningcss: {code}");
     }
 
+    // Lightning CSS currently triggers a Miri Stacked Borrows violation in its string parser.
+    #[cfg(not(miri))]
     #[test]
     fn css_module_pure_lint() {
         assert_lint_success(
@@ -1030,6 +1027,8 @@ mod tests {
         );
     }
 
+    // Lightning CSS currently triggers a Miri Stacked Borrows violation in its string parser.
+    #[cfg(not(miri))]
     #[test]
     fn strip_bom_lets_lightningcss_parse() {
         let with_bom = "\u{feff}@layer a {}";
