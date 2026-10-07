@@ -56,4 +56,3 @@ swc_core = { workspace = true, features = [
 ] }
 # wasmtime cannot be hosted inside wasm (no JIT, and `wasi-common` needs native filesystem APIs).
 swc_plugin_backend_wasmtime = { workspace = true }
-

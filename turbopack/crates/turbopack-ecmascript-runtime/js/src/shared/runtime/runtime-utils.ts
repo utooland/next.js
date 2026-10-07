@@ -870,6 +870,74 @@ contextPrototype.z = requireStub
 // Make `globalThis` available to the module in a way that cannot be shadowed by a local variable.
 contextPrototype.g = globalThis
 
+// Each runtime keeps its own public path. Other applications on the page may
+// change the global path after this runtime has started.
+let runtimePublicPath: unknown =
+  typeof globalThis !== 'undefined'
+    ? (globalThis as any).publicPath
+    : undefined
+Object.defineProperty(contextPrototype, 'runtimePublicPath', {
+  get: () => runtimePublicPath,
+  set: (value: unknown) => {
+    runtimePublicPath = value
+  },
+})
+
+let cachedAutomaticPublicPath: string | undefined
+
+function getAutomaticPublicPath(): string {
+  if (cachedAutomaticPublicPath !== undefined) {
+    return cachedAutomaticPublicPath
+  }
+
+  let scriptUrl: string | undefined
+  if (typeof document === 'object') {
+    const currentScript = document.currentScript as HTMLScriptElement | null
+    scriptUrl = currentScript?.src
+
+    if (!scriptUrl) {
+      const scripts = document.getElementsByTagName('script')
+      const script = scripts[scripts.length - 1]
+      scriptUrl = script?.src
+    }
+  }
+
+  if (
+    !scriptUrl &&
+    typeof (globalThis as any).importScripts === 'function' &&
+    (globalThis as any).location
+  ) {
+    scriptUrl = String((globalThis as any).location)
+  }
+
+  cachedAutomaticPublicPath = scriptUrl
+    ? scriptUrl
+        .replace(/^blob:/, '')
+        .replace(/#.*$/, '')
+        .replace(/\?.*$/, '')
+        .replace(/\/[^/]*$/, '/')
+    : ''
+
+  return cachedAutomaticPublicPath
+}
+
+/**
+ * Gets the public path for runtime assets.
+ * Uses this runtime's public path and falls back to "/".
+ */
+function getPublicPath(mode?: 'auto'): string {
+  if (mode === 'auto') {
+    return getAutomaticPublicPath()
+  }
+
+  if (typeof runtimePublicPath === 'string') {
+    const publicPath = runtimePublicPath
+    return publicPath.endsWith('/') ? publicPath : `${publicPath}/`
+  }
+  return '/'
+}
+contextPrototype.p = getPublicPath
+
 type ContextConstructor<M> = {
   new (module: Module, exports: Exports): TurbopackBaseContext<M>
 }

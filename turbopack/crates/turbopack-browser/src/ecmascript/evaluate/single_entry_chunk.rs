@@ -77,6 +77,16 @@ impl EcmascriptBrowserSingleEntryChunk {
         let module_chunk = EcmascriptBrowserChunk::new(*this.chunking_context, *this.chunk);
         code.push_code(&*module_chunk.own_content().code().await?);
 
+        let shared_runtime = *this.chunking_context.shared_runtime().await?;
+        let entry_root_export = this.chunking_context.entry_root_export().await?.is_some();
+        if shared_runtime && entry_root_export {
+            let runtime_chunk = this
+                .chunking_context
+                .generate_runtime_chunk(*this.module_graph)
+                .await?;
+            code.push_code(&*runtime_chunk.code().await?);
+        }
+
         let evaluate_chunk = EcmascriptBrowserEvaluateChunk::new(
             *this.chunking_context,
             this.chunk.ident(),
@@ -87,7 +97,7 @@ impl EcmascriptBrowserSingleEntryChunk {
         code.push_code(&*evaluate_chunk.code().await?);
 
         // Append the shared runtime chunk; without `shared_runtime` it's already inlined above.
-        if *this.chunking_context.shared_runtime().await? {
+        if shared_runtime && !entry_root_export {
             let runtime_chunk = this
                 .chunking_context
                 .generate_runtime_chunk(*this.module_graph)

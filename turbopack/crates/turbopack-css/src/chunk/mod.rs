@@ -188,11 +188,20 @@ impl CssChunk {
                 }
             }
         }
+        // CSS cascade order is observable. For multi-item chunks, keep the ordinal in the nested
+        // asset key so the order-independent AssetIdent hash still distinguishes differently
+        // ordered chunks. Preserve the existing ident for single-item chunks.
+        let has_multiple_items = chunk_items.len() > 1;
         let assets = chunk_items
             .iter()
-            .map(async |chunk_item| {
+            .enumerate()
+            .map(async |(index, chunk_item)| {
                 Ok((
-                    rcstr!("chunk item"),
+                    if has_multiple_items {
+                        format!("chunk item {index}").into()
+                    } else {
+                        rcstr!("chunk item")
+                    },
                     chunk_item.content_ident().to_resolved().await?,
                 ))
             })

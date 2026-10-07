@@ -1,13 +1,17 @@
+use std::path::{Path, PathBuf};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use std::{
     env,
     ffi::{OsStr, OsString},
-    path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
 
 use anyhow::Result;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use fs_err::{DirEntry, metadata, read_dir, remove_dir_all, rename};
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use jiff::Timestamp;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use turbo_persistence::read_current_version;
 
 /// Information gathered by `vergen_gitcl` in the top-level binary crate and passed down. This
@@ -25,10 +29,12 @@ pub struct GitVersionInfo<'a> {
 
 /// How many days a database with a version other than the current one is retained since it was
 /// last used. Overridable via the `TURBO_ENGINE_VERSION_TTL_DAYS` environment variable.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 const DEFAULT_OTHER_DB_VERSION_TTL_DAYS: u64 = 3;
 
 /// Directories are prefixed with this before being deleted, so that if we fail to fully delete the
 /// directory, we can pick up where we left off last time.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 const DELETION_PREFIX: &str = "__stale_";
 
 /// Given a base path, creates a version directory for the given `version_info`. Automatically
@@ -47,6 +53,7 @@ const DELETION_PREFIX: &str = "__stale_";
 ///   database when set.
 /// - `TURBO_ENGINE_VERSION_TTL_DAYS`: How many days to retain a database whose version isn't the
 ///   current one, as a whole number. Overrides [`DEFAULT_OTHER_DB_VERSION_TTL_DAYS`].
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub fn handle_db_versioning(
     base_path: &Path,
     version_info: &GitVersionInfo,
@@ -168,8 +175,18 @@ pub fn handle_db_versioning(
     Ok(path)
 }
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub fn handle_db_versioning(
+    _base_path: &Path,
+    _version_info: &GitVersionInfo,
+    _is_ci: bool,
+) -> Result<PathBuf> {
+    anyhow::bail!("persistent cache versioning is unavailable in browser wasm builds")
+}
+
 /// How long to retain a database whose version isn't the current one. Falls back to
 /// [`DEFAULT_OTHER_DB_VERSION_TTL_DAYS`] if `TURBO_ENGINE_VERSION_TTL_DAYS` is unset or unparsable.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn other_db_version_ttl() -> Duration {
     let Ok(raw) = env::var("TURBO_ENGINE_VERSION_TTL_DAYS") else {
         return ttl_from_days(DEFAULT_OTHER_DB_VERSION_TTL_DAYS);
@@ -186,6 +203,7 @@ fn other_db_version_ttl() -> Duration {
     }
 }
 
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn ttl_from_days(days: u64) -> Duration {
     Duration::from_secs(days.saturating_mul(24 * 60 * 60))
 }
@@ -203,6 +221,7 @@ fn ttl_from_days(days: u64) -> Duration {
 /// so it's the only reader that has to tolerate a format it doesn't understand — hence the mtime
 /// fallback rather than propagating the parse error. We only read `commit_time`, which is stable
 /// across every format that has it.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 fn time_since_last_commit(entry: &DirEntry) -> Duration {
     let path = entry.path();
     match read_current_version(&path) {
