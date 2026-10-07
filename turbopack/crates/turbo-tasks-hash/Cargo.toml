@@ -19,3 +19,6 @@ smallvec = { workspace = true }
 sha2 = { workspace = true }
 turbo-tasks-macros = { workspace = true }
 xxhash-rust = { workspace = true }
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
