@@ -68,7 +68,7 @@ thread_local = { workspace = true }
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 turbo-persistence = { workspace = true }
 
-[target.'cfg(target_family = "wasm")'.dependencies]
+[target.'cfg(all(target_family = "wasm", not(target_os = "unknown")))'.dependencies]
 turbo-persistence = { workspace = true, default-features = false }
 
 [dev-dependencies]

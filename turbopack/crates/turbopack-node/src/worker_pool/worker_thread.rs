@@ -114,7 +114,9 @@ pub struct NapiWorkerCreation {
 
 #[napi(object)]
 pub struct NapiWorkerOptions {
+    #[napi(ts_type = "string")]
     pub filename: RcStr,
+    #[napi(ts_type = "string")]
     pub cwd: RcStr,
 }
 

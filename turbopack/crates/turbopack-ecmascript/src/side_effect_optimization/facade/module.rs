@@ -163,7 +163,7 @@ impl Module for EcmascriptModuleFacadeModule {
 
     #[turbo_tasks::function]
     fn side_effects(&self) -> Vc<ModuleSideEffects> {
-        ModuleSideEffects::ModuleEvaluationIsSideEffectFree.cell()
+        self.module.side_effects()
     }
 }
 

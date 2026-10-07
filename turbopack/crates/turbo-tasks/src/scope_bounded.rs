@@ -19,11 +19,11 @@ use std::{
         mpmc::{self, Receiver, Sender},
     },
     thread::{self, Thread},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use parking_lot::Mutex;
-use tokio::{runtime::Handle, task::block_in_place};
+use tokio::{runtime::Handle, task::block_in_place, time::Instant};
 use tracing::{Span, info_span};
 
 use crate::{TurboTasksApi, manager::try_turbo_tasks, turbo_tasks_scope};

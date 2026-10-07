@@ -30,7 +30,6 @@ use crate::{
     EcmascriptModuleContent,
     chunk::{chunk_type::EcmascriptChunkType, placeable::EcmascriptChunkPlaceable},
     references::async_module::{AsyncModuleOptions, OptionAsyncModuleOptions},
-    runtime_functions::TURBOPACK_ASYNC_MODULE,
     utils::StringifyJs,
 };
 
@@ -152,22 +151,6 @@ impl EcmascriptChunkItemContent {
             code += "\n";
         }
 
-        if self.options.async_module.is_some() {
-            write!(code, "return {TURBOPACK_ASYNC_MODULE}")?;
-            if self.options.supports_arrow_functions {
-                code += "(async (";
-            } else {
-                code += "(async function(";
-            }
-            code += "__turbopack_handle_async_dependencies__, __turbopack_async_result__";
-            if self.options.supports_arrow_functions {
-                code += ") => {";
-            } else {
-                code += "){";
-            }
-            code += " try {\n";
-        }
-
         let source_map = match (&self.rewrite_source_path, &self.source_map) {
             (RewriteSourcePath::AbsoluteFilePath(path), Some(map)) => {
                 Some(absolute_fileify_source_map(map, path.clone()).await?)
@@ -179,15 +162,6 @@ impl EcmascriptChunkItemContent {
         };
 
         code.push_source(&self.inner_code, source_map);
-
-        if let Some(opts) = &self.options.async_module {
-            write!(
-                code,
-                "__turbopack_async_result__();\n}} catch(e) {{ __turbopack_async_result__(e); }} \
-                 }}, {});",
-                opts.has_top_level_await
-            )?;
-        }
 
         code += "})";
 

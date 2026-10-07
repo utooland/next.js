@@ -415,6 +415,7 @@ impl<'e> ExecuteContext<'e> {
 
         // Fast path: no backing storage to restore from, so every task that exists is already
         // restored.
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
         if !self.backend.should_restore() {
             for (task_id, category) in task_ids {
                 self.task_lock_counter.acquire();

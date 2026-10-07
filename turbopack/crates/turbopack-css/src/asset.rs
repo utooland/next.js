@@ -1,5 +1,5 @@
 use anyhow::Result;
-use turbo_rcstr::rcstr;
+use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, TryJoinIterExt, Vc, turbofmt};
 use turbo_tasks_fs::{FileContent, FileSystemPath};
 use turbopack_core::{
@@ -46,6 +46,7 @@ pub struct CssModule {
     module_css_debuggable_idents: bool,
     /// The path of `source`, precomputed so that `ResolveOrigin::origin_path` is synchronous.
     origin_path: FileSystemPath,
+    css_modules_pattern: Option<RcStr>,
 }
 
 #[turbo_tasks::value_impl]
@@ -60,6 +61,7 @@ impl CssModule {
         environment: Option<ResolvedVc<Environment>>,
         lightningcss_features: LightningCssFeatureFlags,
         module_css_debuggable_idents: bool,
+        css_modules_pattern: Option<RcStr>,
     ) -> Result<Vc<Self>> {
         Ok(Self::cell(CssModule {
             origin_path: source.ident().await?.path.clone(),
@@ -70,6 +72,7 @@ impl CssModule {
             environment,
             lightningcss_features,
             module_css_debuggable_idents,
+            css_modules_pattern,
         }))
     }
 
@@ -94,6 +97,7 @@ impl ParseCss for CssModule {
             this.environment.as_deref().copied(),
             this.lightningcss_features,
             this.module_css_debuggable_idents,
+            this.css_modules_pattern.clone(),
         ))
     }
 }
@@ -183,7 +187,9 @@ impl StyleModule for CssModule {
     fn style_type(&self) -> Vc<StyleType> {
         match self.ty {
             CssModuleType::Default => StyleType::GlobalStyle.cell(),
-            CssModuleType::Module => StyleType::IsolatedStyle.cell(),
+            // CSS Modules can escape local scoping through `:global(...)`. Until isolation is
+            // derived from the parsed selectors, conservatively prevent cross-group overshipping.
+            CssModuleType::Module => StyleType::GlobalStyle.cell(),
         }
     }
 }

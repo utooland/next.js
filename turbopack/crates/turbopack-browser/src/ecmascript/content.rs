@@ -22,7 +22,7 @@ use turbopack_ecmascript::{
         EcmascriptHmrChunkContent, merger::EcmascriptChunkContentMerger,
         version::EcmascriptChunkVersion,
     },
-    minify::minify,
+    minify::{get_compress_options_for_target, minify},
     utils::StringifyJs,
 };
 
@@ -112,11 +112,12 @@ impl EcmascriptBrowserChunkContent {
         // register all pending chunks, and replace the list of pending chunks
         // with itself so later chunks can register directly with it.
         let chunk_loading_global = this.chunking_context.chunk_loading_global().await?;
+        let browser_global_ident = this.chunking_context.browser_global_ident().await?;
         write!(
             code,
             // `||=` would be better but we need to be es2020 compatible
             //`x || (x = default)` is better than `x = x || default` simply because we avoid _writing_ the property in the common case.
-            r#"(globalThis[{chunk_loading_global}] || (globalThis[{chunk_loading_global}] = [])).push([{script_or_path},"#,
+            r#"({browser_global_ident}[{chunk_loading_global}] || ({browser_global_ident}[{chunk_loading_global}] = [])).push([{script_or_path},"#,
             chunk_loading_global = StringifyJs(&chunk_loading_global),
         )?;
         write_module_factories(
@@ -133,8 +134,15 @@ impl EcmascriptBrowserChunkContent {
 
         let mut code = code.build();
 
-        if let MinifyType::Minify { mangle } = *this.chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } =
+            *this.chunking_context.minify_type().await?
+        {
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options_for_target(compress, mangle, supports_arrow_functions),
+            )?;
         }
 
         Ok(code.cell())
