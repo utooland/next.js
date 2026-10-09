@@ -61,6 +61,8 @@ impl EsmAsyncAssetReference {
         resolve_override: Option<ResolvedVc<Box<dyn Module>>>,
         lazy_compilation: bool,
     ) -> Result<Self> {
+        let lazy_compilation = lazy_compilation && annotations.lazy_compilation().unwrap_or(true);
+
         // Apply any annotation-driven transition eagerly so the stored origin is final and the
         // `annotations` don't need to be retained on the reference.
         let origin = if let Some(transition) = annotations.transition() {

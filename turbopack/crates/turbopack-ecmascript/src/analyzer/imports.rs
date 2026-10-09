@@ -226,6 +226,20 @@ impl ImportAnnotations {
             .map(|v| v.to_string_lossy())
     }
 
+    /// Overrides lazy compilation for this dynamic import edge only.
+    /// A false annotation opts out; true still respects the global option.
+    pub fn lazy_compilation(&self) -> Option<bool> {
+        match self
+            .get(&Wtf8Atom::from("turbopackLazyCompilation"))?
+            .to_string_lossy()
+            .as_ref()
+        {
+            "false" => Some(false),
+            "true" => Some(true),
+            _ => None,
+        }
+    }
+
     /// Whether this import forwards the importing module's export usage
     pub fn export_usage_passthrough(&self) -> bool {
         self.get(&ANNOTATION_EXPORT_USAGE)
@@ -1825,6 +1839,7 @@ mod tests {
     use swc_core::{atoms::Atom, common::DUMMY_SP};
 
     use super::*;
+    use crate::analyzer::BumpVec;
 
     /// Helper to create a string literal expression
     fn str_lit(s: &str) -> Box<Expr> {
@@ -1920,6 +1935,39 @@ mod tests {
 
         let annotations = ImportAnnotations::parse(Some(&with)).unwrap();
         assert!(annotations.export_usage_passthrough());
+    }
+
+    #[test]
+    fn test_dynamic_lazy_compilation_annotations() {
+        let arena = Bump::new();
+        for (value, expected) in [
+            (
+                Some(JsValue::Constant(ConstantValue::Str("false".into()))),
+                Some(false),
+            ),
+            (
+                Some(JsValue::Constant(ConstantValue::Str("true".into()))),
+                Some(true),
+            ),
+            (
+                Some(JsValue::Constant(ConstantValue::Str("invalid".into()))),
+                None,
+            ),
+            (Some(JsValue::Constant(ConstantValue::False)), None),
+            (None, None),
+        ] {
+            let with = JsValue::object(BumpVec::from_iter_in(
+                &arena,
+                value.into_iter().map(|value| {
+                    ObjectPart::KeyValue(
+                        JsValue::Constant(ConstantValue::Str("turbopackLazyCompilation".into())),
+                        value,
+                    )
+                }),
+            ));
+            let annotations = ImportAnnotations::parse_dynamic(&with).unwrap_or_default();
+            assert_eq!(annotations.lazy_compilation(), expected);
+        }
     }
 
     #[test]
