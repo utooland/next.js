@@ -146,13 +146,8 @@ impl EcmascriptBuildNodeRuntimeChunk {
     }
 
     #[turbo_tasks::function]
-    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        let this = self.await?;
-        Ok(SourceMapAsset::new(
-            Vc::upcast(*this.chunking_context),
-            self.ident_for_path(),
-            Vc::upcast(self),
-        ))
+    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
+        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
     }
 }
 
