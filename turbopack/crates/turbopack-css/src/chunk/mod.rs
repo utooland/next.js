@@ -10,6 +10,7 @@ use turbo_tasks_fs::{
     File, FileContent, FileSystem, FileSystemPath,
     rope::{Rope, RopeBuilder},
 };
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{
@@ -425,6 +426,15 @@ impl OutputAsset for CssChunk {
 
 #[turbo_tasks::value_impl]
 impl Asset for CssChunk {
+    #[turbo_tasks::function]
+    fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Vc<Option<RcStr>> {
+        self.code().content_hash(salt, algorithm)
+    }
+
     #[turbo_tasks::function]
     fn content(self: Vc<Self>) -> Vc<AssetContent> {
         self.content()

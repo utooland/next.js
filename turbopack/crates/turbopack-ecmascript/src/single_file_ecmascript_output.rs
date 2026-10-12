@@ -27,13 +27,8 @@ pub struct SingleFileEcmascriptOutput {
 #[turbo_tasks::value_impl]
 impl SingleFileEcmascriptOutput {
     #[turbo_tasks::function]
-    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        let this = self.await?;
-        Ok(SourceMapAsset::new(
-            *this.chunking_context,
-            this.source.ident(),
-            Vc::upcast(self),
-        ))
+    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
+        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
     }
 }
 

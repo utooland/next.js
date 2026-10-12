@@ -10,7 +10,7 @@ use turbo_tasks::{
     FxIndexMap, FxIndexSet, ResolvedVc, TryJoinIterExt, Upcast, ValueToString, ValueToStringRef, Vc,
 };
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::{HashAlgorithm, hash_xxh3_hash64};
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent, no_hash_salt},
     chunk::{
@@ -873,26 +873,21 @@ impl ChunkingContext for BrowserChunkingContext {
                         }
 
                         if match_content_hash_placeholder(&filename) {
-                            let content = asset.content().await?;
-                            if let AssetContent::File(file) = &*content {
-                                let content_hash = hash_xxh3_hash64(&file.await?);
-                                filename = replace_content_hash_placeholder(
-                                    &filename,
-                                    &format!("{content_hash:016x}"),
-                                );
-                            } else {
-                                bail!(
+                            let content_hash = asset
+                                .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
+                                .owned()
+                                .await?
+                                .context(
                                     "chunk_path requires an asset with file content when content \
-                                     hashing is enabled"
-                                );
-                            }
+                                     hashing is enabled",
+                                )?;
+                            filename = replace_content_hash_placeholder(&filename, &content_hash);
                         };
 
                         filename
                     }
                     (None, Some(ContentHashing::Direct { length })) => {
                         let hash = asset
-                            .content()
                             .content_hash(*this.hash_salt, HashAlgorithm::Xxh3Hash128Base38)
                             .await?;
                         let hash = hash.as_ref().context(
