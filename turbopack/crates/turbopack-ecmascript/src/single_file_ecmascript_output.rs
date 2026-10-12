@@ -3,9 +3,13 @@ use std::sync::Arc;
 use anyhow::Result;
 use swc_core::common::{BytePos, FileName, LineCol, SourceMap};
 use tokio::io::AsyncReadExt;
-use turbo_rcstr::rcstr;
+use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, ValueToStringRef, Vc};
-use turbo_tasks_fs::{File, FileContent, FileSystemPath, rope::Rope};
+use turbo_tasks_fs::{
+    File, FileContent, FileSystemPath,
+    rope::{Rope, RopeBuilder},
+};
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::ChunkingContext,
@@ -35,18 +39,52 @@ impl SingleFileEcmascriptOutput {
 #[turbo_tasks::value_impl]
 impl OutputAsset for SingleFileEcmascriptOutput {
     #[turbo_tasks::function]
-    fn path(&self) -> Vc<FileSystemPath> {
-        self.chunking_context.chunk_path(
-            Some(Vc::upcast(*self.source)),
-            self.source.ident(),
+    async fn path(self: Vc<Self>) -> Result<Vc<FileSystemPath>> {
+        let this = self.await?;
+        Ok(this.chunking_context.chunk_path(
+            Some(Vc::upcast(self)),
+            this.source.ident(),
             None,
             rcstr!(".js"),
-        )
+        ))
     }
 }
 
 #[turbo_tasks::value_impl]
 impl Asset for SingleFileEcmascriptOutput {
+    #[turbo_tasks::function]
+    async fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Result<Vc<Option<RcStr>>> {
+        let this = self.await?;
+        let include_source_map = *this
+            .chunking_context
+            .reference_chunk_source_maps(Vc::upcast(self))
+            .await?;
+        if !include_source_map {
+            return Ok(this.source.content_hash(salt, algorithm));
+        }
+
+        let source_content = this.source.content().file_content().await?;
+        let FileContent::Content(file) = &*source_content else {
+            return Ok(this.source.content_hash(salt, algorithm));
+        };
+
+        // The map contains the original source path, which can change without changing the JS.
+        // Hash its content directly so resolving the output filename never reads the map path.
+        let mut content = RopeBuilder::default();
+        content.concat(file.content());
+        content.push_static_bytes(b"\0");
+        if let FileContent::Content(map) = &*self.generate_source_map().await? {
+            content.concat(map.content());
+        }
+        Ok(FileContent::Content(File::from(content.build()))
+            .cell()
+            .content_hash(salt, algorithm))
+    }
+
     #[turbo_tasks::function]
     fn content(&self) -> Vc<AssetContent> {
         self.source.content()
