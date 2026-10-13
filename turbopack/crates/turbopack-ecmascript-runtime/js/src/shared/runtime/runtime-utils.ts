@@ -562,10 +562,12 @@ function interopEsm(
   for (
     let current = raw;
     (typeof current === 'object' || typeof current === 'function') &&
-    !LEAF_PROTOTYPES.includes(current);
+    LEAF_PROTOTYPES.indexOf(current) === -1;
     current = getProto(current)
   ) {
-    for (const key of Object.getOwnPropertyNames(current)) {
+    const keys = Object.getOwnPropertyNames(current)
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
       bindings.push(key, createGetter(raw, key))
       if (defaultLocation === -1 && key === 'default') {
         defaultLocation = bindings.length - 1
@@ -808,7 +810,9 @@ const relativeURL = function relativeURL(this: any, inputUrl: string) {
       value: values[key],
     })
 }
-relativeURL.prototype = URL.prototype
+if (typeof URL === 'function') {
+  relativeURL.prototype = URL.prototype
+}
 contextPrototype.U = relativeURL
 
 /**
@@ -873,9 +877,7 @@ contextPrototype.g = globalThis
 // Each runtime keeps its own public path. Other applications on the page may
 // change the global path after this runtime has started.
 let runtimePublicPath: unknown =
-  typeof globalThis !== 'undefined'
-    ? (globalThis as any).publicPath
-    : undefined
+  typeof globalThis !== 'undefined' ? (globalThis as any).publicPath : undefined
 Object.defineProperty(contextPrototype, 'runtimePublicPath', {
   get: () => runtimePublicPath,
   set: (value: unknown) => {
