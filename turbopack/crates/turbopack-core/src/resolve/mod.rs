@@ -2204,6 +2204,15 @@ async fn resolve_internal_inline(
                         candidate_disk_fses.push(disk_fs_vc);
                     }
 
+                    // Embedded runtime modules have no disk filesystem of their own.
+                    // Use the configured project root to resolve their absolute imports.
+                    if let Some(root) = &options_value.server_relative_root
+                        && let Some(disk_fs_vc) =
+                            ResolvedVc::try_downcast_type::<DiskFileSystem>(root.fs)
+                    {
+                        candidate_disk_fses.push(disk_fs_vc);
+                    }
+
                     for module in &options_value.modules {
                         let fs = match module {
                             ResolveModules::Nested(_) => continue,
