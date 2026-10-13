@@ -536,17 +536,29 @@ impl<'db, K: StoreKey + Send + Sync, S: ParallelScheduler, const FAMILIES: usize
         entries: &[CollectorEntry<K>],
     ) -> Result<SmallVec<[NewFile; 1]>> {
         let shard_bits = self.shard_bits[usize_from_u32(family)];
-        let mut files = SmallVec::new();
+        let mut chunks = SmallVec::<[_; 8]>::new();
         let mut rest = entries;
         while let Some(first) = rest.first() {
             // Entries are sorted by key hash, so each shard is a contiguous range.
             let shard = shard_bits.shard_of(first.key.hash);
             let len = rest.partition_point(|e| shard_bits.shard_of(e.key.hash) == shard);
             let (chunk, remaining) = rest.split_at(len);
-            files.push(self.create_sst_file(family, chunk)?);
+            chunks.push(chunk);
             rest = remaining;
         }
-        Ok(files)
+        match chunks.as_slice() {
+            [] => Ok(SmallVec::new()),
+            [chunk] => self
+                .create_sst_file(family, chunk)
+                .map(|file| smallvec::smallvec![file]),
+            _ => {
+                // Shards cover disjoint key ranges, so their encoding and compression can run
+                // independently. The scheduler joins every write before returning, including on
+                // error, so the batch's rollback cannot race an unfinished file writer.
+                self.parallel_scheduler
+                    .parallel_map_collect(&chunks, |chunk| self.create_sst_file(family, chunk))
+            }
+        }
     }
 
     /// Creates a new SST file with the given collector data.
