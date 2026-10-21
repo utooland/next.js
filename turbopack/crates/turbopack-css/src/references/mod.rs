@@ -36,6 +36,13 @@ pub type AnalyzedRefs = (
     Vec<(String, ResolvedVc<UrlAssetReference>)>,
 );
 
+fn should_resolve_css_url(src: &str) -> bool {
+    !matches!(src.bytes().next(), Some(b'#') | Some(b'/'))
+        && !src
+            .get(..5)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("data:"))
+}
+
 /// Returns `(all_references, urls)`.
 pub async fn analyze_references(
     stylesheet: &mut StyleSheet<'static>,
@@ -129,9 +136,7 @@ impl Visitor<'_> for ModuleReferencesVisitor<'_> {
     fn visit_url(&mut self, u: &mut Url) -> std::result::Result<(), Self::Error> {
         let src = &*u.url;
 
-        // ignore internal urls like `url(#noiseFilter)`
-        // ignore server-relative urls like `url(/foo)`
-        if !matches!(src.bytes().next(), Some(b'#') | Some(b'/')) {
+        if should_resolve_css_url(src) {
             let issue_span = u.loc;
 
             let vc = UrlAssetReference::new(
@@ -181,4 +186,36 @@ pub fn css_resolve(
         issue_source,
         ResolveErrorMode::Error,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_resolve_css_url;
+
+    #[test]
+    fn should_ignore_data_urls() {
+        for url in [
+            "data:image/png;base64,AAAA",
+            "data:font/woff2;charset=utf-8;base64,AAAA",
+            "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+            "DATA:image/png;base64,AAAA",
+            "DaTa:,plain-text",
+        ] {
+            assert!(!should_resolve_css_url(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn should_ignore_internal_and_server_relative_urls() {
+        for url in ["#noiseFilter", "/foo.woff2", "//example.com/foo.png"] {
+            assert!(!should_resolve_css_url(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn should_resolve_relative_urls() {
+        for url in ["./foo.woff2", "../foo.png", "data.png", "图标.png"] {
+            assert!(should_resolve_css_url(url), "{url}");
+        }
+    }
 }
