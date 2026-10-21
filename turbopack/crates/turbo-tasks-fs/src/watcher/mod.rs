@@ -475,7 +475,14 @@ mod non_recursive_helpers {
     ) -> Result<()> {
         debug_assert_ne!(dir_path, root_path);
 
-        match notify_watcher.watch(dir_path, notify::RecursiveMode::NonRecursive) {
+        normalize_watch_result(
+            notify_watcher.watch(dir_path, notify::RecursiveMode::NonRecursive),
+            dir_path,
+        )
+    }
+
+    fn normalize_watch_result(result: notify::Result<()>, dir_path: &Path) -> Result<()> {
+        match result {
             Ok(())
             | Err(notify::Error {
                 // The path was probably deleted before we could process the event, but the parent
@@ -484,10 +491,15 @@ mod non_recursive_helpers {
                 kind: notify::ErrorKind::PathNotFound,
                 ..
             }) => Ok(()),
-            Err(err) => {
-                // ast-grep-ignore: no-context-format
-                return Err(err).context(format!("Unable to watch {}", dir_path.display(),));
+            Err(notify::Error {
+                kind: notify::ErrorKind::Io(err),
+                ..
+            }) if err.kind() == std::io::ErrorKind::InvalidFilename => {
+                // Resolution may probe impossible paths. Treat them as missing, just like
+                // DiskFileSystem reads, rather than failing before the read can return NotFound.
+                Ok(())
             }
+            Err(err) => Err(err).with_context(|| format!("Unable to watch {}", dir_path.display())),
         }
     }
 
@@ -539,6 +551,59 @@ mod non_recursive_helpers {
         }
 
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use std::{io, path::Path};
+
+        use super::normalize_watch_result;
+
+        #[test]
+        fn accepts_success_and_missing_paths() {
+            let path = Path::new("project/missing");
+
+            assert!(normalize_watch_result(Ok(()), path).is_ok());
+            assert!(normalize_watch_result(Err(notify::Error::path_not_found()), path).is_ok());
+        }
+
+        #[test]
+        fn ignores_invalid_filenames() {
+            let path = Path::new("project/invalid");
+            let error = notify::Error::io(io::ErrorKind::InvalidFilename.into());
+
+            assert!(normalize_watch_result(Err(error), path).is_ok());
+        }
+
+        #[test]
+        fn reports_other_watch_errors() {
+            let path = Path::new("project/watched");
+
+            for error in [
+                notify::Error::io(io::ErrorKind::PermissionDenied.into()),
+                notify::Error::io(io::ErrorKind::NotFound.into()),
+                notify::Error::io(io::ErrorKind::NotADirectory.into()),
+                notify::Error::io(io::Error::other("watch I/O failure")),
+                notify::Error::new(notify::ErrorKind::MaxFilesWatch),
+                notify::Error::generic("watch backend failure"),
+            ] {
+                let message = error.to_string();
+                let error = normalize_watch_result(Err(error), path)
+                    .expect_err("watch errors must be reported");
+
+                assert_eq!(
+                    error.to_string(),
+                    format!("Unable to watch {}", path.display())
+                );
+                assert_eq!(
+                    error
+                        .downcast_ref::<notify::Error>()
+                        .expect("the original notify error must be preserved")
+                        .to_string(),
+                    message
+                );
+            }
+        }
     }
 }
 
