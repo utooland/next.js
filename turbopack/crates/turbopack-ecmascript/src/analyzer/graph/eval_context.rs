@@ -49,9 +49,33 @@ impl EvalContext {
             unresolved_mark,
             top_level_mark,
             imports: module.map_or(ImportMap::default(), |m| {
-                ImportMap::analyze(unresolved_mark, m, comments)
+                ImportMap::analyze(unresolved_mark, m, comments, None)
             }),
             force_free_values,
+        }
+    }
+
+    /// Analyze the complete transformed program before splitting it into module
+    /// fragments. Fragments must inherit these globals instead of inferring them
+    /// from their incomplete set of declarations.
+    pub(crate) fn new_full_program(
+        program: &Program,
+        unresolved_mark: Mark,
+        top_level_mark: Mark,
+        mut force_free_values: FxHashSet<Id>,
+        comments: Option<&dyn Comments>,
+    ) -> Self {
+        let imports = ImportMap::analyze(
+            unresolved_mark,
+            program,
+            comments,
+            Some((top_level_mark, &mut force_free_values)),
+        );
+        Self {
+            unresolved_mark,
+            top_level_mark,
+            imports,
+            force_free_values: Arc::new(force_free_values),
         }
     }
 
@@ -130,7 +154,7 @@ impl EvalContext {
         if let Some(imported) = self.imports.get_import(arena, &id) {
             return imported;
         }
-        if is_unresolved_id(&id, self.unresolved_mark) || self.force_free_values.contains(&id) {
+        if self.is_free_id(&id) {
             // These are special globals that we shouldn't consider to be free variables and we can
             // model their values mostly useful for truthy/falsy checks.
             match id.0.as_str() {
@@ -142,6 +166,10 @@ impl EvalContext {
         } else {
             JsValue::Variable(id)
         }
+    }
+
+    pub(crate) fn is_free_id(&self, id: &Id) -> bool {
+        is_unresolved_id(id, self.unresolved_mark) || self.force_free_values.contains(id)
     }
 
     pub fn eval<'a>(&self, arena: &'a Bump, e: &Expr) -> JsValue<'a> {
@@ -549,5 +577,298 @@ impl EvalContext {
         .map_err(|e| e.to_pretty_error())?;
 
         Ok(js_value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use swc_core::{
+        common::{DUMMY_SP, FileName, comments::SingleThreadedComments},
+        ecma::{
+            parser::{Syntax, TsSyntax, parse_file_as_program},
+            transforms::{
+                base::resolver,
+                react::{Options, Runtime, react},
+                typescript::{Config, typescript},
+            },
+            utils::collect_decls,
+            visit::{VisitMut, VisitMutWith},
+        },
+    };
+
+    use super::*;
+    use crate::{AnalyzeMode, analyzer::graph::create_graph};
+
+    fn with_resolved_program(
+        source: &str,
+        check: impl FnOnce(Program, Mark, Mark, Arc<SourceMap>, SingleThreadedComments),
+    ) {
+        GLOBALS.set(&Default::default(), || {
+            let source_map = Arc::new(SourceMap::default());
+            let file = source_map.new_source_file(
+                FileName::Custom("test.tsx".into()).into(),
+                source.to_owned(),
+            );
+            let comments = SingleThreadedComments::default();
+            let mut errors = Vec::new();
+            let mut program = parse_file_as_program(
+                &file,
+                Syntax::Typescript(TsSyntax {
+                    tsx: true,
+                    ..Default::default()
+                }),
+                EsVersion::EsNext,
+                Some(&comments),
+                &mut errors,
+            )
+            .expect("valid fixture");
+            assert!(errors.is_empty(), "unexpected parser recovery: {errors:?}");
+            let unresolved_mark = Mark::new();
+            let top_level_mark = Mark::new();
+            program.mutate(resolver(unresolved_mark, top_level_mark, true));
+            check(
+                program,
+                unresolved_mark,
+                top_level_mark,
+                source_map,
+                comments,
+            );
+        });
+    }
+
+    fn append_reference(program: &mut Program, id: Id) {
+        let span = program.span();
+        let statement = Stmt::Expr(ExprStmt {
+            span,
+            expr: Box::new(Expr::Ident(Ident::new(id.0, span, id.1))),
+        });
+        match program {
+            Program::Module(module) => module.body.push(ModuleItem::Stmt(statement)),
+            Program::Script(script) => script.body.push(statement),
+        }
+    }
+
+    fn context(program: &Program, unresolved_mark: Mark, top_level_mark: Mark) -> EvalContext {
+        EvalContext::new_full_program(
+            program,
+            unresolved_mark,
+            top_level_mark,
+            FxHashSet::default(),
+            None,
+        )
+    }
+
+    #[test]
+    fn synthetic_top_level_references_without_declarations_are_free() {
+        with_resolved_program("export {};", |mut program, unresolved, top_level, _, _| {
+            let id = (
+                "InjectedFactory".into(),
+                SyntaxContext::empty().apply_mark(top_level),
+            );
+            append_reference(&mut program, id.clone());
+            let arena = Bump::default();
+            let context = context(&program, unresolved, top_level);
+            assert!(
+                matches!(context.eval_id(&arena, id), JsValue::FreeVar(name) if name == "InjectedFactory")
+            );
+        });
+    }
+
+    #[test]
+    fn declarations_and_nested_bindings_remain_variables() {
+        for source in [
+            "let Factory; export { Factory };",
+            "var Factory; export { Factory };",
+            "for (var Factory of sources) {} export { Factory };",
+            "for (var Factory in source) {} export { Factory };",
+            "for (var Factory = 0; Factory < 1; Factory++) {} export { Factory };",
+            "export function render() { return Factory; } const Factory = 1;",
+            "export { Factory }; function Factory() {}",
+            "export { Factory }; class Factory {}",
+            "const { Factory } = source; export { Factory };",
+            "const { nested: [Factory = fallback] } = source; export { Factory };",
+            "import Factory from 'factory'; export { Factory };",
+            "import { factory as Factory } from 'factory'; export { Factory };",
+            "import * as Factory from 'factory'; export { Factory };",
+            "export default function Factory() {}",
+            "export default class Factory {}",
+            "const render = function Factory() { return Factory; }; export { render };",
+            "const render = class Factory { method() { return Factory; } }; export { render };",
+            "export function render(Factory) { const Local = Factory; return Local; }",
+            "export const render = ({ Factory }) => Factory;",
+            "export function render() { try { work(); } catch (Factory) { return Factory; } }",
+        ] {
+            with_resolved_program(source, |program, unresolved, top_level, _, _| {
+                let bindings = collect_decls::<Id, _>(&program);
+                let context = context(&program, unresolved, top_level);
+                for id in bindings {
+                    assert!(!context.is_free_id(&id), "{source}: {id:?}");
+                }
+                assert!(context.force_free_values.is_empty(), "{source}");
+            });
+        }
+    }
+
+    #[test]
+    fn erased_typescript_bindings_do_not_hide_transformed_references() {
+        for source in [
+            "import type Factory from 'factory'; export {};",
+            "import { type Factory } from 'factory'; export {};",
+            "namespace Factory { export interface Props {} } export {};",
+            "declare const Factory: any; export {};",
+        ] {
+            with_resolved_program(source, |mut program, unresolved, top_level, _, _| {
+                program.mutate(typescript(Config::default(), unresolved, top_level));
+                let id = (
+                    "Factory".into(),
+                    SyntaxContext::empty().apply_mark(top_level),
+                );
+                append_reference(&mut program, id.clone());
+                let arena = Bump::default();
+                let context = context(&program, unresolved, top_level);
+                assert!(
+                    matches!(context.eval_id(&arena, id), JsValue::FreeVar(name) if name == "Factory"),
+                    "{source}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn classic_jsx_factories_use_generic_free_variable_analysis() {
+        for (source, name) in [
+            ("export default <div />;", "React"),
+            (
+                "/** @jsx Factory.create */ export default <div />;",
+                "Factory",
+            ),
+        ] {
+            with_resolved_program(
+                source,
+                |mut program, unresolved, top_level, source_map, comments| {
+                    program.mutate(typescript(Config::default(), unresolved, top_level));
+                    program.mutate(react(
+                        source_map,
+                        Some(&comments),
+                        Options {
+                            runtime: Some(Runtime::Classic),
+                            ..Default::default()
+                        },
+                        top_level,
+                        unresolved,
+                    ));
+                    let arena = Bump::default();
+                    let context = context(&program, unresolved, top_level);
+                    let id = (name.into(), SyntaxContext::empty().apply_mark(top_level));
+                    assert!(
+                        matches!(context.eval_id(&arena, id), JsValue::FreeVar(actual) if actual == name)
+                    );
+                },
+            );
+        }
+    }
+
+    #[test]
+    fn inferred_globals_keep_assignment_tracking() {
+        struct SyntheticFactory(SyntaxContext);
+        impl VisitMut for SyntheticFactory {
+            fn visit_mut_ident(&mut self, ident: &mut Ident) {
+                if ident.sym == "Factory" {
+                    ident.ctxt = self.0;
+                    ident.span = DUMMY_SP;
+                }
+            }
+        }
+        for source in [
+            "Factory = replacement; export const result = Factory;",
+            "({ Factory } = replacement); export const result = Factory;",
+            "[Factory] = replacement; export const result = Factory;",
+            "Factory++; export const result = Factory;",
+            "for (Factory of replacements) {} export const result = Factory;",
+        ] {
+            with_resolved_program(source, |mut program, unresolved, top_level, _, _| {
+                let ctxt = SyntaxContext::empty().apply_mark(top_level);
+                program.visit_mut_with(&mut SyntheticFactory(ctxt));
+                let arena = Bump::default();
+                let context = context(&program, unresolved, top_level);
+                let graph = create_graph(
+                    &arena,
+                    &program,
+                    &context,
+                    AnalyzeMode::code_generation_and_tracing(),
+                    true,
+                    SpecifiedModuleType::EcmaScript,
+                    true,
+                    false,
+                );
+                assert_eq!(
+                    graph.free_var_ids.get(&atom!("Factory")),
+                    Some(&("Factory".into(), ctxt)),
+                    "{source}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn full_program_analysis_preserves_explicit_globals() {
+        with_resolved_program(
+            "export const Factory = 1;",
+            |program, unresolved, top_level, _, _| {
+                let id = (
+                    "Factory".into(),
+                    SyntaxContext::empty().apply_mark(top_level),
+                );
+                let context = EvalContext::new_full_program(
+                    &program,
+                    unresolved,
+                    top_level,
+                    FxHashSet::from_iter([id.clone()]),
+                    None,
+                );
+                assert!(context.is_free_id(&id));
+            },
+        );
+    }
+
+    #[test]
+    fn module_fragments_inherit_full_program_global_classification() {
+        with_resolved_program(
+            "const Shared = 1; export { Shared };",
+            |mut program, unresolved, top_level, _, _| {
+                let shared = (
+                    "Shared".into(),
+                    SyntaxContext::empty().apply_mark(top_level),
+                );
+                let injected = (
+                    "InjectedFactory".into(),
+                    SyntaxContext::empty().apply_mark(top_level),
+                );
+                append_reference(&mut program, injected.clone());
+                let full_context = context(&program, unresolved, top_level);
+                let mut fragment = Program::Script(Script {
+                    span: DUMMY_SP,
+                    body: vec![],
+                    shebang: None,
+                });
+                append_reference(&mut fragment, shared.clone());
+                append_reference(&mut fragment, injected.clone());
+                let fragment_context = EvalContext::new(
+                    Some(&fragment),
+                    unresolved,
+                    top_level,
+                    full_context.force_free_values.clone(),
+                    None,
+                );
+                let arena = Bump::default();
+                assert!(matches!(
+                    fragment_context.eval_id(&arena, shared),
+                    JsValue::Variable(_)
+                ));
+                assert!(
+                    matches!(fragment_context.eval_id(&arena, injected), JsValue::FreeVar(name) if name == "InjectedFactory")
+                );
+            },
+        );
     }
 }
