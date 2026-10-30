@@ -5,12 +5,7 @@ use rustc_hash::FxHashSet;
 use swc_core::{
     base::try_with_handler,
     common::{GLOBALS, Mark, SourceMap, Spanned, SyntaxContext, comments::Comments, sync::Lrc},
-    ecma::{
-        ast::*,
-        atoms::atom,
-        utils::collect_decls_with_ctxt,
-        visit::{Visit, VisitWith},
-    },
+    ecma::{ast::*, atoms::atom},
 };
 use turbo_rcstr::{RcStr, rcstr};
 
@@ -23,40 +18,6 @@ use crate::{
     references::constant_value::parse_single_expr_lit,
     utils::unparen,
 };
-
-/// Finds references introduced or left unbound by input transforms. This must
-/// run on the complete program, before splitting it into module fragments.
-pub(crate) fn collect_unbound_top_level_references(
-    program: &Program,
-    top_level_mark: Mark,
-) -> FxHashSet<Id> {
-    let top_level_ctxt = SyntaxContext::empty().apply_mark(top_level_mark);
-    let bindings = collect_decls_with_ctxt(program, top_level_ctxt);
-    let mut collector = UnboundTopLevelReferences {
-        top_level_ctxt,
-        bindings: &bindings,
-        references: FxHashSet::default(),
-    };
-    program.visit_with(&mut collector);
-    collector.references
-}
-
-struct UnboundTopLevelReferences<'a> {
-    top_level_ctxt: SyntaxContext,
-    bindings: &'a FxHashSet<Id>,
-    references: FxHashSet<Id>,
-}
-
-impl Visit for UnboundTopLevelReferences<'_> {
-    fn visit_ident(&mut self, ident: &Ident) {
-        if ident.ctxt == self.top_level_ctxt {
-            let id = ident.to_id();
-            if !self.bindings.contains(&id) {
-                self.references.insert(id);
-            }
-        }
-    }
-}
 
 /// A context used for assembling the evaluation graph.
 #[derive(Debug)]
@@ -88,9 +49,33 @@ impl EvalContext {
             unresolved_mark,
             top_level_mark,
             imports: module.map_or(ImportMap::default(), |m| {
-                ImportMap::analyze(unresolved_mark, m, comments)
+                ImportMap::analyze(unresolved_mark, m, comments, None)
             }),
             force_free_values,
+        }
+    }
+
+    /// Analyze the complete transformed program before splitting it into module
+    /// fragments. Fragments must inherit these globals instead of inferring them
+    /// from their incomplete set of declarations.
+    pub(crate) fn new_full_program(
+        program: &Program,
+        unresolved_mark: Mark,
+        top_level_mark: Mark,
+        mut force_free_values: FxHashSet<Id>,
+        comments: Option<&dyn Comments>,
+    ) -> Self {
+        let imports = ImportMap::analyze(
+            unresolved_mark,
+            program,
+            comments,
+            Some((top_level_mark, &mut force_free_values)),
+        );
+        Self {
+            unresolved_mark,
+            top_level_mark,
+            imports,
+            force_free_values: Arc::new(force_free_values),
         }
     }
 
@@ -664,14 +649,11 @@ mod tests {
     }
 
     fn context(program: &Program, unresolved_mark: Mark, top_level_mark: Mark) -> EvalContext {
-        EvalContext::new(
-            Some(program),
+        EvalContext::new_full_program(
+            program,
             unresolved_mark,
             top_level_mark,
-            Arc::new(collect_unbound_top_level_references(
-                program,
-                top_level_mark,
-            )),
+            FxHashSet::default(),
             None,
         )
     }
@@ -697,14 +679,24 @@ mod tests {
         for source in [
             "let Factory; export { Factory };",
             "var Factory; export { Factory };",
+            "for (var Factory of sources) {} export { Factory };",
+            "for (var Factory in source) {} export { Factory };",
+            "for (var Factory = 0; Factory < 1; Factory++) {} export { Factory };",
+            "export function render() { return Factory; } const Factory = 1;",
             "export { Factory }; function Factory() {}",
             "export { Factory }; class Factory {}",
             "const { Factory } = source; export { Factory };",
+            "const { nested: [Factory = fallback] } = source; export { Factory };",
             "import Factory from 'factory'; export { Factory };",
+            "import { factory as Factory } from 'factory'; export { Factory };",
             "import * as Factory from 'factory'; export { Factory };",
             "export default function Factory() {}",
             "export default class Factory {}",
+            "const render = function Factory() { return Factory; }; export { render };",
+            "const render = class Factory { method() { return Factory; } }; export { render };",
             "export function render(Factory) { const Local = Factory; return Local; }",
+            "export const render = ({ Factory }) => Factory;",
+            "export function render() { try { work(); } catch (Factory) { return Factory; } }",
         ] {
             with_resolved_program(source, |program, unresolved, top_level, _, _| {
                 let bindings = collect_decls::<Id, _>(&program);
@@ -787,9 +779,14 @@ mod tests {
                 }
             }
         }
-        with_resolved_program(
+        for source in [
             "Factory = replacement; export const result = Factory;",
-            |mut program, unresolved, top_level, _, _| {
+            "({ Factory } = replacement); export const result = Factory;",
+            "[Factory] = replacement; export const result = Factory;",
+            "Factory++; export const result = Factory;",
+            "for (Factory of replacements) {} export const result = Factory;",
+        ] {
+            with_resolved_program(source, |mut program, unresolved, top_level, _, _| {
                 let ctxt = SyntaxContext::empty().apply_mark(top_level);
                 program.visit_mut_with(&mut SyntheticFactory(ctxt));
                 let arena = Bump::default();
@@ -806,8 +803,30 @@ mod tests {
                 );
                 assert_eq!(
                     graph.free_var_ids.get(&atom!("Factory")),
-                    Some(&("Factory".into(), ctxt))
+                    Some(&("Factory".into(), ctxt)),
+                    "{source}"
                 );
+            });
+        }
+    }
+
+    #[test]
+    fn full_program_analysis_preserves_explicit_globals() {
+        with_resolved_program(
+            "export const Factory = 1;",
+            |program, unresolved, top_level, _, _| {
+                let id = (
+                    "Factory".into(),
+                    SyntaxContext::empty().apply_mark(top_level),
+                );
+                let context = EvalContext::new_full_program(
+                    &program,
+                    unresolved,
+                    top_level,
+                    FxHashSet::from_iter([id.clone()]),
+                    None,
+                );
+                assert!(context.is_free_id(&id));
             },
         );
     }
