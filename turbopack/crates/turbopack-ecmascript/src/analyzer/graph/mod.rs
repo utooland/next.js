@@ -22,6 +22,7 @@ use crate::{
 
 mod effects;
 mod eval_context;
+pub(crate) use eval_context::collect_unbound_top_level_references;
 pub(crate) mod visitor;
 
 #[derive(Debug)]

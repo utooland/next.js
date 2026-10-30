@@ -47,7 +47,7 @@ use turbopack_swc_utils::emitter::IssueEmitter;
 use super::EcmascriptModuleAssetType;
 use crate::{
     EcmascriptInputTransform,
-    analyzer::graph::EvalContext,
+    analyzer::graph::{EvalContext, collect_unbound_top_level_references},
     magic_identifier,
     swc_comments::ImmutableComments,
     transform::{EcmascriptInputTransforms, TransformContext},
@@ -553,7 +553,7 @@ async fn parse_file_content(
                 parsed_program.mutate(explicit_resource_management());
             });
 
-            let var_with_ts_declare = if is_typescript {
+            let mut force_free_values = if is_typescript {
                 VarDeclWithTsDeclareCollector::collect(&parsed_program)
             } else {
                 FxHashSet::default()
@@ -603,11 +603,18 @@ async fn parse_file_content(
                 ));
             });
 
+            // Input transforms may create top-level references after the resolver
+            // has run or erase declarations that those references used to bind to.
+            // Infer globals from the complete program before module splitting.
+            force_free_values.extend(collect_unbound_top_level_references(
+                &parsed_program,
+                top_level_mark,
+            ));
             let eval_context = EvalContext::new(
                 Some(&parsed_program),
                 unresolved_mark,
                 top_level_mark,
-                Arc::new(var_with_ts_declare),
+                Arc::new(force_free_values),
                 Some(&comments),
             );
 
