@@ -16,7 +16,7 @@ use swc_core::{
     ecma::{
         ast::*,
         atoms::{Atom, atom},
-        utils::{IsDirective, find_pat_ids},
+        utils::{IsDirective, find_pat_ids, for_each_binding_ident},
         visit::{Visit, VisitWith},
     },
 };
@@ -852,11 +852,13 @@ impl ImportMap {
         }
     }
 
-    /// Analyze ES import
+    /// Analyze ES imports and optionally infer globals left unbound by input
+    /// transforms. Only complete programs may infer globals, before splitting.
     pub(super) fn analyze(
         unresolved_mark: Mark,
         m: &Program,
         comments: Option<&dyn Comments>,
+        infer_globals: Option<(Mark, &mut FxHashSet<Id>)>,
     ) -> Self {
         let mut data = ImportMap::default();
         let mut analyzer = Analyzer {
@@ -867,6 +869,10 @@ impl ImportMap {
             state: Default::default(),
             program_decl_usage: Default::default(),
             current_module_item_order: 0,
+            top_level_bindings: infer_globals.as_ref().map(|(mark, _)| TopLevelBindings {
+                ctxt: SyntaxContext::empty().apply_mark(*mark),
+                ids: FxHashSet::default(),
+            }),
         };
 
         // A prepass to detect imports to be able to rewrite import+export pairs to true reexports
@@ -971,6 +977,21 @@ impl ImportMap {
 
         m.visit_with(&mut analyzer);
 
+        if let Some((_, force_free_values)) = infer_globals {
+            let bindings = analyzer.top_level_bindings.as_ref().unwrap();
+            // Reuse the references recorded by the import analysis. Delay this
+            // until all declarations have been visited, including forward ones.
+            // Imports are already classified separately and are not in decl_usages.
+            force_free_values.extend(
+                analyzer
+                    .program_decl_usage
+                    .decl_usages
+                    .keys()
+                    .filter(|id| id.1 == bindings.ctxt && !bindings.ids.contains(*id))
+                    .cloned(),
+            );
+        }
+
         data.import_usage = analyzer.program_decl_usage.compute_import_usage();
 
         data
@@ -1053,9 +1074,41 @@ struct Analyzer<'a> {
     current_module_item_order: usize,
 
     state: analyzer_state::AnalyzerState,
+
+    /// Only collected for complete programs. Module fragments inherit their
+    /// globals because their declarations may live in a different fragment.
+    top_level_bindings: Option<TopLevelBindings>,
+}
+
+struct TopLevelBindings {
+    ctxt: SyntaxContext,
+    ids: FxHashSet<Id>,
 }
 
 impl Analyzer<'_> {
+    fn register_binding(&mut self, id: &Id) {
+        if let Some(bindings) = &mut self.top_level_bindings
+            && id.1 == bindings.ctxt
+        {
+            bindings.ids.insert(id.clone());
+        }
+    }
+
+    fn register_pat_bindings(&mut self, pat: &Pat) {
+        if let Some(bindings) = &mut self.top_level_bindings {
+            for_each_binding_ident(pat, |ident| {
+                if ident.id.ctxt == bindings.ctxt {
+                    bindings.ids.insert(ident.to_id());
+                }
+            });
+        }
+    }
+
+    fn register_declaration(&mut self, id: Id) {
+        self.register_binding(&id);
+        self.register_assignment_scope(id);
+    }
+
     fn ensure_reference(
         &mut self,
         span: Span,
@@ -1506,9 +1559,31 @@ impl Visit for Analyzer<'_> {
         });
     }
     fn visit_arrow_expr(&mut self, node: &ArrowExpr) {
+        for param in &node.params {
+            self.register_pat_bindings(param);
+        }
         self.enter_fn(|this| {
             node.visit_children_with(this);
         });
+    }
+
+    fn visit_param(&mut self, node: &Param) {
+        self.register_pat_bindings(&node.pat);
+        node.visit_children_with(self);
+    }
+
+    fn visit_catch_clause(&mut self, node: &CatchClause) {
+        if let Some(param) = &node.param {
+            self.register_pat_bindings(param);
+        }
+        node.visit_children_with(self);
+    }
+
+    fn visit_class_expr(&mut self, node: &ClassExpr) {
+        if let Some(ident) = &node.ident {
+            self.register_binding(&ident.to_id());
+        }
+        node.visit_children_with(self);
     }
 
     fn visit_member_expr(&mut self, node: &MemberExpr) {
@@ -1608,7 +1683,7 @@ impl Visit for Analyzer<'_> {
 
     fn visit_fn_expr(&mut self, node: &FnExpr) {
         if let Some(ident) = &node.ident {
-            self.register_assignment_scope(ident.to_id());
+            self.register_declaration(ident.to_id());
         }
         node.visit_children_with(self);
     }
@@ -1622,24 +1697,34 @@ impl Visit for Analyzer<'_> {
     fn visit_decl(&mut self, node: &Decl) {
         match node {
             Decl::Class(c) => {
-                self.register_assignment_scope(c.ident.to_id());
+                self.register_declaration(c.ident.to_id());
             }
             Decl::Fn(f) => {
-                self.register_assignment_scope(f.ident.to_id());
+                self.register_declaration(f.ident.to_id());
             }
-            Decl::Using(v) => {
-                let ids: Vec<Id> = find_pat_ids(&v.decls);
-                for id in ids {
-                    self.register_assignment_scope(id);
-                }
-            }
-            Decl::Var(v) => {
-                let ids: Vec<Id> = find_pat_ids(&v.decls);
-                for id in ids {
-                    self.register_assignment_scope(id);
-                }
-            }
-            Decl::TsInterface(_) | Decl::TsTypeAlias(_) | Decl::TsEnum(_) | Decl::TsModule(_) => {}
+            Decl::Using(_)
+            | Decl::Var(_)
+            | Decl::TsInterface(_)
+            | Decl::TsTypeAlias(_)
+            | Decl::TsEnum(_)
+            | Decl::TsModule(_) => {}
+        }
+        node.visit_children_with(self);
+    }
+
+    fn visit_var_decl(&mut self, node: &VarDecl) {
+        // Loop heads also contain VarDecl directly, without a wrapping Decl.
+        let ids: Vec<Id> = find_pat_ids(&node.decls);
+        for id in ids {
+            self.register_declaration(id);
+        }
+        node.visit_children_with(self);
+    }
+
+    fn visit_using_decl(&mut self, node: &UsingDecl) {
+        let ids: Vec<Id> = find_pat_ids(&node.decls);
+        for id in ids {
+            self.register_declaration(id);
         }
         node.visit_children_with(self);
     }
@@ -2124,7 +2209,9 @@ mod tests {
             shebang: None,
         });
         let globals = Default::default();
-        let map = GLOBALS.set(&globals, || ImportMap::analyze(Mark::new(), &program, None));
+        let map = GLOBALS.set(&globals, || {
+            ImportMap::analyze(Mark::new(), &program, None, None)
+        });
 
         assert_eq!(map.reference_declaration_orders, vec![0, 1, 0, 2]);
         assert_eq!(
