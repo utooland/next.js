@@ -21,7 +21,8 @@ use crate::BrowserChunkingContext;
 /// A pre-compiled worker entrypoint that bootstraps workers by reading config from URL params.
 ///
 /// The worker receives a JSON array via URL params of the following structure:
-/// `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...forwarded_global_values]`
+/// `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...forwarded_global_values,
+/// worker_registry?]`
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Browser Worker Entrypoint")]

@@ -13,7 +13,7 @@ use turbopack_core::{
     file_source::FileSource,
     ident::AssetIdent,
     module::{Module, ModuleSideEffects},
-    module_graph::{ModuleGraph, chunk_group_info::ChunkGroup},
+    module_graph::{GraphTraversalAction, ModuleGraph, chunk_group_info::ChunkGroup},
     output::{OutputAsset, OutputAssets, OutputAssetsWithReferenced},
     reference::{ModuleReference, ModuleReferences, SingleChunkableModuleReference},
     reference_type::{EcmaScriptModulesReferenceSubType, ReferenceType},
@@ -313,9 +313,44 @@ impl EcmascriptChunkPlaceable for WorkerLoaderModule {
                 // Worker chunks can contain this loader again (directly or through another
                 // worker). Embedding their final paths here makes content hashing depend on
                 // itself. The entry bootstrap supplies those paths in a runtime registry;
-                // module code only needs the loader's stable module ID.
+                // module code only needs stable worker module IDs.
                 let worker_config = if *chunking_context.worker_chunks_in_manifest().await? {
-                    StringifyModuleId(&self.chunk_item_id(chunking_context).await?).to_string()
+                    // Forward only this worker's reachable loaders. Unrelated workers must
+                    // not change its URL, especially a SharedWorker's shared identity.
+                    let mut workers = Vec::new();
+                    module_graph.await?.traverse_nodes_dfs(
+                        [ResolvedVc::upcast(this.inner)],
+                        &mut workers,
+                        |module, workers| {
+                            if let Some(worker) =
+                                ResolvedVc::try_downcast_type::<WorkerLoaderModule>(module)
+                            {
+                                workers.push(worker);
+                            }
+                            Ok(GraphTraversalAction::Continue)
+                        },
+                        |_, _| Ok(()),
+                    )?;
+                    let mut worker_ids = workers
+                        .into_iter()
+                        .map(async |worker| {
+                            if matches!(worker.await?.worker_type, WorkerType::NodeWorkerThread) {
+                                return Ok(None);
+                            }
+                            Ok(Some(worker.chunk_item_id(chunking_context).await?))
+                        })
+                        .try_join()
+                        .await?
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>();
+                    worker_ids.sort_unstable();
+                    worker_ids.dedup();
+                    format!(
+                        "{}, {}",
+                        StringifyModuleId(&self.chunk_item_id(chunking_context).await?),
+                        StringifyJs(&worker_ids)
+                    )
                 } else {
                     let chunks_data = self.chunks_data(chunking_context, module_graph).await?;
                     let chunks_data = chunks_data.iter().try_join().await?;
