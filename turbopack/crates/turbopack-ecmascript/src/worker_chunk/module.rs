@@ -121,7 +121,7 @@ impl WorkerLoaderModule {
     }
 
     #[turbo_tasks::function]
-    async fn chunks_data(
+    pub async fn chunks_data(
         self: Vc<Self>,
         chunking_context: Vc<Box<dyn ChunkingContext>>,
         module_graph: Vc<ModuleGraph>,
@@ -310,20 +310,27 @@ impl EcmascriptChunkPlaceable for WorkerLoaderModule {
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| entrypoint_full_path.path.to_string());
 
-                // Get the chunk data for the worker module
-                let chunks_data = self.chunks_data(chunking_context, module_graph).await?;
-                let chunks_data = chunks_data.iter().try_join().await?;
-                let chunks_data: Vec<_> = chunks_data
-                    .iter()
-                    .map(|chunk_data| EcmascriptChunkData::new(chunk_data))
-                    .collect();
+                // Worker chunks can contain this loader again (directly or through another
+                // worker). Embedding their final paths here makes content hashing depend on
+                // itself. The entry bootstrap supplies those paths in a runtime registry;
+                // module code only needs the loader's stable module ID.
+                let worker_config = if *chunking_context.worker_chunks_in_manifest().await? {
+                    StringifyModuleId(&self.chunk_item_id(chunking_context).await?).to_string()
+                } else {
+                    let chunks_data = self.chunks_data(chunking_context, module_graph).await?;
+                    let chunks_data = chunks_data.iter().try_join().await?;
+                    let chunks_data: Vec<_> = chunks_data
+                        .iter()
+                        .map(|chunk_data| EcmascriptChunkData::new(chunk_data))
+                        .collect();
+                    StringifyJs(&chunks_data).to_string()
+                };
 
                 formatdoc! {
                     r#"
-                        {TURBOPACK_EXPORT_VALUE}({TURBOPACK_REQUIRE}({workers_module})[{export:#}]({entrypoint}, {chunks}));
+                        {TURBOPACK_EXPORT_VALUE}({TURBOPACK_REQUIRE}({workers_module})[{export:#}]({entrypoint}, {worker_config}));
                     "#,
                     entrypoint = StringifyJs(&entrypoint_path),
-                    chunks = StringifyJs(&chunks_data),
                     workers_module = StringifyModuleId(&create_worker_id),
                     export = StringifyJs(&create_worker_export),
                 }

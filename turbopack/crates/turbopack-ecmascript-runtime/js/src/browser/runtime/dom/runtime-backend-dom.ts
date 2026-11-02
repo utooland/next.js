@@ -36,6 +36,7 @@ const chunkResolvers: Map<ChunkUrl, ChunkResolver> = new Map()
 ;(() => {
   BACKEND = {
     async registerChunk(chunk, params) {
+      registerWorkerChunks(params)
       // `chunk` is `undefined` for an inlined entry-only registration, which has no source chunk.
       let chunkPath: ChunkPath | undefined
       if (chunk != null) {

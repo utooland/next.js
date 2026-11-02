@@ -23,6 +23,9 @@ type WorkerConstructor = new (url: URL, options?: object) => Worker
 
 // Mirrors the runtime's `ChunkData`.
 type WorkerChunkData = string | { path: string }
+type WorkerId = string | number
+
+declare const __turbopack_worker_chunks__: Map<WorkerId, WorkerChunkData[]>
 
 /**
  * Creates a web worker by instantiating the given WorkerConstructor with the
@@ -71,6 +74,11 @@ function createWorker(
   for (let i = 0; i < globals.length; i++) {
     params.push((globalThis as Record<string, unknown>)[globals[i]])
   }
+  // Nested workers need the same complete registry. Keeping it in bootstrap params,
+  // rather than worker module code, avoids circular content-hash dependencies.
+  if (__turbopack_worker_chunks__.size > 0) {
+    params.push(Array.from(__turbopack_worker_chunks__))
+  }
 
   const url = new URL(
     __turbopack_chunk_relative_url__(entrypoint, workerBasePath),
@@ -92,15 +100,30 @@ function createWorker(
 
 /**
  * Returns a function, that when called with the constructor + any options calls `createWorker()`.
- * The worker configuration (`entrypoint`, `moduleChunks`) is passed by `turbopack-ecmascript`
- * at build time, leaving the runtime caller to only supply the constructor and options.
+ * Chunk paths are resolved when the worker is started, after the entry bootstrap
+ * has registered all workers' content-hashed output paths.
  */
 export default function generateCreateWorker(
   entrypoint: string,
-  moduleChunks: WorkerChunkData[]
+  workerIdOrChunks: WorkerId | WorkerChunkData[]
 ) {
   return (
     WorkerConstructor: { new (url: URL, options?: object): Worker },
     workerOptions?: object
-  ) => createWorker(WorkerConstructor, entrypoint, moduleChunks, workerOptions)
+  ) => {
+    const moduleChunks = Array.isArray(workerIdOrChunks)
+      ? workerIdOrChunks
+      : __turbopack_worker_chunks__.get(workerIdOrChunks)
+    if (!moduleChunks) {
+      throw new Error(
+        `Missing chunk configuration for worker ${workerIdOrChunks}`
+      )
+    }
+    return createWorker(
+      WorkerConstructor,
+      entrypoint,
+      moduleChunks,
+      workerOptions
+    )
+  }
 }

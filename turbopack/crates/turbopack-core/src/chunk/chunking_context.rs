@@ -384,6 +384,13 @@ pub trait ChunkingContext {
         self.environment().chunk_loading()
     }
 
+    /// Move web-worker chunk paths into the entry bootstrap, so chunks with
+    /// recursive worker references can retain content-hashed filenames.
+    #[turbo_tasks::function]
+    fn worker_chunks_in_manifest(self: Vc<Self>) -> Vc<bool> {
+        Vc::cell(false)
+    }
+
     // TODO(alexkirsz) Remove this from the chunking context. This should be at the
     // discretion of chunking context implementors. However, we currently use this
     // in a couple of places in `turbopack-css`, so we need to remove that

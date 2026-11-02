@@ -20,6 +20,8 @@ declare var TURBOPACK_NEXT_CHUNK_URLS: ChunkUrl[] | undefined
 // Used in WebWorkers to override the regular chunk base path with the base
 // used for the worker entrypoint and its initial chunks.
 declare var TURBOPACK_CHUNK_BASE_PATH: string | undefined
+// Forwarded to nested web workers by the worker bootstrap.
+declare var TURBOPACK_WORKER_CHUNKS: [ModuleId, ChunkData[]][] | undefined
 
 // Injected by rust code
 declare var CHUNK_BASE_PATH: string
@@ -43,6 +45,7 @@ function getRuntimeChunkBasePath(basePath: string = CHUNK_BASE_PATH): string {
 
 interface TurbopackBrowserBaseContext<M> extends TurbopackBaseContext<M> {
   R: ResolvePathFromModule
+  W: Map<ModuleId, ChunkData[]>
 }
 
 const browserContextPrototype =
@@ -63,6 +66,20 @@ declare function instantiateModule(
 type RuntimeParams = {
   otherChunks: ChunkData[]
   runtimeModuleIds: ModuleId[]
+  workerChunks?: [ModuleId, ChunkData[]][]
+}
+
+const workerChunks = new Map<ModuleId, ChunkData[]>(
+  typeof TURBOPACK_WORKER_CHUNKS !== 'undefined' ? TURBOPACK_WORKER_CHUNKS : []
+)
+browserContextPrototype.W = workerChunks
+
+function registerWorkerChunks(params: RuntimeParams | undefined) {
+  if (params?.workerChunks) {
+    for (const [id, chunks] of params.workerChunks) {
+      workerChunks.set(id, chunks)
+    }
+  }
 }
 
 type ChunkRegistrationChunk =

@@ -26,6 +26,7 @@ use turbopack_ecmascript::{
     minify::{get_compress_options_for_target, minify},
     references::external_module::CachedExternalModule,
     utils::StringifyJs,
+    worker_chunk::{WorkerType, module::WorkerLoaderModule},
 };
 use turbopack_ecmascript_runtime::{RuntimeType, browser_runtime_options};
 
@@ -49,6 +50,9 @@ pub struct EcmascriptBrowserEvaluateChunk {
     // TODO(sokra): It's weird to use ModuleGraph here, we should convert evaluatable_assets to a
     // list of chunk items before passing it to this struct.
     module_graph: ResolvedVc<ModuleGraph>,
+    /// Worker chunk paths belong to the outer entry bootstrap, rather than the
+    /// worker's own chunks, so recursive workers do not hash their own paths.
+    include_worker_manifest: bool,
 }
 
 #[turbo_tasks::value_impl]
@@ -61,6 +65,7 @@ impl EcmascriptBrowserEvaluateChunk {
         other_chunks: ResolvedVc<OutputAssets>,
         evaluatable_assets: ResolvedVc<EvaluatableAssets>,
         module_graph: ResolvedVc<ModuleGraph>,
+        include_worker_manifest: bool,
     ) -> Vc<Self> {
         EcmascriptBrowserEvaluateChunk {
             chunking_context,
@@ -68,6 +73,7 @@ impl EcmascriptBrowserEvaluateChunk {
             other_chunks,
             evaluatable_assets,
             module_graph,
+            include_worker_manifest,
         }
         .cell()
     }
@@ -160,9 +166,52 @@ impl EcmascriptBrowserEvaluateChunk {
             .flatten()
             .collect();
 
+        let mut worker_chunks_data = if this.include_worker_manifest {
+            this.module_graph
+                .await?
+                .iter_reachable_modules()?
+                .filter_map(ResolvedVc::try_downcast_type::<WorkerLoaderModule>)
+                .map(async |worker_loader| {
+                    if matches!(
+                        worker_loader.await?.worker_type,
+                        WorkerType::NodeWorkerThread
+                    ) {
+                        return Ok(None);
+                    }
+                    let chunking_context = Vc::upcast(*this.chunking_context);
+                    let id = worker_loader.chunk_item_id(chunking_context).await?;
+                    let chunks_data = worker_loader
+                        .chunks_data(chunking_context, *this.module_graph)
+                        .await?;
+                    Ok(Some((id, chunks_data.iter().try_join().await?)))
+                })
+                .try_join()
+                .await?
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        worker_chunks_data.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+        worker_chunks_data.dedup_by(|left, right| left.0 == right.0);
+        let worker_chunks = worker_chunks_data
+            .iter()
+            .map(|(id, chunks)| {
+                (
+                    id.clone(),
+                    chunks
+                        .iter()
+                        .map(|chunk_data| EcmascriptChunkData::new(chunk_data))
+                        .collect(),
+                )
+            })
+            .collect();
+
         let params = EcmascriptBrowserChunkRuntimeParams {
             other_chunks: &other_chunks_data,
             runtime_module_ids,
+            worker_chunks,
         };
 
         Ok(Vc::cell(serde_json::to_string(&params)?.into()))
@@ -467,4 +516,8 @@ struct EcmascriptBrowserChunkRuntimeParams<'a, T> {
     other_chunks: &'a [T],
     /// List of module IDs that this chunk should instantiate when executed.
     runtime_module_ids: Vec<ModuleId>,
+    /// Web worker loaders look up these paths at runtime. Keeping this table
+    /// outside worker chunks breaks cycles in their content-hashed filenames.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    worker_chunks: Vec<(ModuleId, Vec<T>)>,
 }
