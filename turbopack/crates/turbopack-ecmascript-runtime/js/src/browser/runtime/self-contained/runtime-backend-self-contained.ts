@@ -34,6 +34,7 @@ let BACKEND: RuntimeBackend
       if (chunk == null) {
         throw new Error('inline entry registration is not supported')
       }
+      registerWorkerChunks(params)
       let chunkPath = getPathFromScript(chunk)
 
       registeredChunks.add(chunkPath)

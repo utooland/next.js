@@ -99,10 +99,11 @@ pub const TURBOPACK_RUNTIME_ROOT: &TurbopackRuntimeFunctionShortcut = make_short
 pub const TURBOPACK_CHUNK_BASE_PATH: &TurbopackRuntimeFunctionShortcut = make_shortcut!("b");
 pub const TURBOPACK_ASSET_SUFFIX: &TurbopackRuntimeFunctionShortcut = make_shortcut!("X");
 pub const TURBOPACK_PUBLIC_PATH: &TurbopackRuntimeFunctionShortcut = make_shortcut!("p");
+pub const TURBOPACK_WORKER_CHUNKS: &TurbopackRuntimeFunctionShortcut = make_shortcut!("W");
 
 /// Adding an entry to this list will automatically ensure that `__turbopack_XXX__` can be called
 /// from user code (by inserting a replacement into free_var_references)
-pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 26] = [
+pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctionShortcut); 27] = [
     ("__turbopack_require__", TURBOPACK_REQUIRE),
     ("__turbopack_module_context__", TURBOPACK_MODULE_CONTEXT),
     ("__turbopack_import__", TURBOPACK_IMPORT),
@@ -141,4 +142,5 @@ pub const TURBOPACK_RUNTIME_FUNCTION_SHORTCUTS: [(&str, &TurbopackRuntimeFunctio
     ("__turbopack_chunk_asset_suffix__", TURBOPACK_ASSET_SUFFIX),
     ("__turbopack_runtime_root__", TURBOPACK_RUNTIME_ROOT),
     ("__turbopack_public_path__", TURBOPACK_PUBLIC_PATH),
+    ("__turbopack_worker_chunks__", TURBOPACK_WORKER_CHUNKS),
 ];

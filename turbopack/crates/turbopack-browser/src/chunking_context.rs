@@ -555,6 +555,7 @@ impl BrowserChunkingContext {
         other_chunks: Vc<OutputAssets>,
         evaluatable_assets: Vc<EvaluatableAssets>,
         module_graph: Vc<ModuleGraph>,
+        include_worker_manifest: bool,
     ) -> Vc<EcmascriptBrowserEvaluateChunk> {
         EcmascriptBrowserEvaluateChunk::new(
             self,
@@ -562,6 +563,7 @@ impl BrowserChunkingContext {
             other_chunks,
             evaluatable_assets,
             module_graph,
+            include_worker_manifest,
         )
     }
 
@@ -767,6 +769,13 @@ impl BrowserChunkingContext {
 
 #[turbo_tasks::value_impl]
 impl ChunkingContext for BrowserChunkingContext {
+    #[turbo_tasks::function]
+    fn worker_chunks_in_manifest(&self) -> Vc<bool> {
+        // HMR updates worker loader modules directly, without rerunning the
+        // entry bootstrap. Keep their chunk paths in those modules in dev.
+        Vc::cell(!self.enable_hot_module_replacement)
+    }
+
     #[turbo_tasks::function]
     fn name(&self) -> Vc<RcStr> {
         if let Some(name) = &self.name {
@@ -1277,7 +1286,14 @@ impl ChunkingContext for BrowserChunkingContext {
             // entries Next renders into HTML) can be inlined. When `shared_runtime` is disabled the
             // evaluate chunk itself carries the runtime, so it is always emitted as an asset.
             let evaluate_chunk = self
-                .generate_evaluate_chunk(ident, other_assets, entries, *module_graph)
+                .generate_evaluate_chunk(
+                    ident,
+                    other_assets,
+                    entries,
+                    *module_graph,
+                    matches!(chunk_group, ChunkGroup::Entry(_))
+                        && !this.enable_hot_module_replacement,
+                )
                 .to_resolved()
                 .await?;
             // Exporting entry bootstraps call into the shared registry synchronously. Load the

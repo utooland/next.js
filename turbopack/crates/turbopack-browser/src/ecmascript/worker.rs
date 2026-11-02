@@ -21,7 +21,8 @@ use crate::BrowserChunkingContext;
 /// A pre-compiled worker entrypoint that bootstraps workers by reading config from URL params.
 ///
 /// The worker receives a JSON array via URL params of the following structure:
-/// `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...forwarded_global_values]`
+/// `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...forwarded_global_values,
+/// worker_registry?]`
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Browser Worker Entrypoint")]
@@ -185,6 +186,10 @@ fn generate_worker_bootstrap_code(
         "TURBOPACK_NEXT_CHUNK_URLS: chunkUrls".to_string(),
         "TURBOPACK_ASSET_SUFFIX: param(1)".to_string(),
         "TURBOPACK_CHUNK_BASE_PATH: param(2)".to_string(),
+        format!(
+            "TURBOPACK_WORKER_CHUNKS: Array.isArray(params[{n}]) ? params[{n}] : []",
+            n = 3 + forwarded_globals.len()
+        ),
     ];
     for (i, name) in forwarded_globals.iter().enumerate() {
         // Forwarded globals start at params[3]

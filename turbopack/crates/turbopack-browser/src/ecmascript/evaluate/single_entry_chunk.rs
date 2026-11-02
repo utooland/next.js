@@ -93,6 +93,7 @@ impl EcmascriptBrowserSingleEntryChunk {
             OutputAssets::empty(),
             *this.evaluatable_assets,
             *this.module_graph,
+            true,
         );
         code.push_code(&*evaluate_chunk.code().await?);
 

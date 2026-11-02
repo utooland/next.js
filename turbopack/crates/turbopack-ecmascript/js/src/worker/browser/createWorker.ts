@@ -23,6 +23,9 @@ type WorkerConstructor = new (url: URL, options?: object) => Worker
 
 // Mirrors the runtime's `ChunkData`.
 type WorkerChunkData = string | { path: string }
+type WorkerId = string | number
+
+declare const __turbopack_worker_chunks__: Map<WorkerId, WorkerChunkData[]>
 
 /**
  * Creates a web worker by instantiating the given WorkerConstructor with the
@@ -32,17 +35,19 @@ type WorkerChunkData = string | { path: string }
  * which module chunks to load and which module to run as the entry point.
  *
  * The params are a JSON array of the following structure:
- * `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...workerForwardedGlobals values]`
+ * `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...workerForwardedGlobals values, workerRegistry?]`
  *
  * @param WorkerConstructor The Worker or SharedWorker constructor
  * @param entrypoint path to the worker entrypoint chunk
  * @param moduleChunks list of module chunk paths to load
+ * @param workerIds reachable nested worker loaders whose configuration must be forwarded
  * @param workerOptions options to pass to the Worker constructor (optional)
  */
 function createWorker(
   WorkerConstructor: WorkerConstructor,
   entrypoint: string,
   moduleChunks: WorkerChunkData[],
+  workerIds: WorkerId[],
   workerOptions?: object
 ): Worker {
   const isSharedWorker = WorkerConstructor.name === 'SharedWorker'
@@ -71,6 +76,11 @@ function createWorker(
   for (let i = 0; i < globals.length; i++) {
     params.push((globalThis as Record<string, unknown>)[globals[i]])
   }
+  // Forward only reachable nested workers. Unrelated worker changes must not
+  // change this URL and split a SharedWorker's shared instance.
+  if (workerIds.length > 0) {
+    params.push(workerIds.map((id) => [id, getWorkerChunks(id)]))
+  }
 
   const url = new URL(
     __turbopack_chunk_relative_url__(entrypoint, workerBasePath),
@@ -90,17 +100,37 @@ function createWorker(
   return new WorkerConstructor(url, options)
 }
 
+function getWorkerChunks(workerId: WorkerId): WorkerChunkData[] {
+  const chunks = __turbopack_worker_chunks__.get(workerId)
+  if (!chunks) {
+    throw new Error(`Missing chunk configuration for worker ${workerId}`)
+  }
+  return chunks
+}
+
 /**
  * Returns a function, that when called with the constructor + any options calls `createWorker()`.
- * The worker configuration (`entrypoint`, `moduleChunks`) is passed by `turbopack-ecmascript`
- * at build time, leaving the runtime caller to only supply the constructor and options.
+ * Chunk paths are resolved when the worker is started, after the entry bootstrap
+ * has registered all workers' content-hashed output paths.
  */
 export default function generateCreateWorker(
   entrypoint: string,
-  moduleChunks: WorkerChunkData[]
+  workerIdOrChunks: WorkerId | WorkerChunkData[],
+  workerIds: WorkerId[] = []
 ) {
   return (
     WorkerConstructor: { new (url: URL, options?: object): Worker },
     workerOptions?: object
-  ) => createWorker(WorkerConstructor, entrypoint, moduleChunks, workerOptions)
+  ) => {
+    const moduleChunks = Array.isArray(workerIdOrChunks)
+      ? workerIdOrChunks
+      : getWorkerChunks(workerIdOrChunks)
+    return createWorker(
+      WorkerConstructor,
+      entrypoint,
+      moduleChunks,
+      workerIds,
+      workerOptions
+    )
+  }
 }
