@@ -1,0 +1,41 @@
+turbopack/crates/turbopack-core/src/module_graph/binding_usage_info.rs
+  s_a09ed228621c85::t_89c7f5c8870e36 81-105,449,455-457,459
+turbopack/crates/turbopack-ecmascript/src/chunk/code_module_ids_and_paths.rs
+  s_a09ed228621c85::t_1c2a624e638c0d 18,25,37,41-48,80,90-96,111,115-118,124-126
+turbopack/crates/turbo-tasks-fs/src/watcher/mod.rs
+  s_a09ed228621c85::t_eb15ca73dbe600 1,17,26,37,44,51,53,62,165,318,324,334,1586
+  s_a09ed228621c85::t_90ee85134e0938 14-16
+  s_a09ed228621c85::t_1192ebe03d2e94 18-19
+  s_a09ed228621c85::t_e72c68eb9efca8 27-28
+  s_a09ed228621c85::t_4657f04f79c640 38-40
+  s_a09ed228621c85::t_71a5da90424e7e 45
+  s_a09ed228621c85::t_7a23b6b25b7fbf 52
+  s_a09ed228621c85::t_3b886aca27bfe9 54
+turbopack/crates/turbopack-ecmascript/src/minify.rs
+  s_a09ed228621c85::t_b263c1d4f89dc8 10-11,29,35,41-90,93-118,129,131,148,153,158,160,195,197-198,361,379-381,399,430-435,437-531,930,936-1018
+  s_a09ed228621c85::t_fa7538aaef5fb6 161-162,213-258,260-268,270-307,309-311,313,696-702,708-714,758-764,860-866
+turbopack/crates/turbopack-ecmascript/src/chunk/content.rs
+  s_a09ed228621c85::t_1c2a624e638c0d 7-9,19,31-32,37-38,48-53,55-59,61-65,72,74-84,91-100,151,158-175
+turbopack/crates/turbopack-browser/src/ecmascript/content.rs
+  s_a09ed228621c85::t_48c38a18c3b1af 62-68,76-81,132-133
+turbopack/crates/turbo-tasks-fs/Cargo.toml
+  s_a09ed228621c85::t_7ca1f7111c610c 65
+  s_a09ed228621c85::t_f2b2acd3b1ae5e 62-64
+  s_a09ed228621c85::t_d441b37c4566de 66-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "75c3d22273be851632cca128eaf793be91ad76a3",
+  "prompts": {},
+  "sessions": {
+    "s_a09ed228621c85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a026-acf7-7392-a873-6b4a84dcfce7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
