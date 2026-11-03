@@ -553,7 +553,7 @@ async fn parse_file_content(
                 parsed_program.mutate(explicit_resource_management());
             });
 
-            let var_with_ts_declare = if is_typescript {
+            let force_free_values = if is_typescript {
                 VarDeclWithTsDeclareCollector::collect(&parsed_program)
             } else {
                 FxHashSet::default()
@@ -603,11 +603,11 @@ async fn parse_file_content(
                 ));
             });
 
-            let eval_context = EvalContext::new(
-                Some(&parsed_program),
+            let eval_context = EvalContext::new_full_program(
+                &parsed_program,
                 unresolved_mark,
                 top_level_mark,
-                Arc::new(var_with_ts_declare),
+                force_free_values,
                 Some(&comments),
             );
 

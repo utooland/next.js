@@ -9,6 +9,7 @@ use turbo_tasks_fs::{
     File, FileContent, FileSystem, FileSystemPath,
     rope::{Rope, RopeBuilder},
 };
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{
@@ -65,11 +66,10 @@ impl CssChunk {
 
     #[turbo_tasks::function]
     async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        Ok(SourceMapAsset::new(
+        Ok(SourceMapAsset::new_for_output_asset(
             *self.await?.chunking_context,
-            self.ident_for_path(),
             Vc::upcast(self),
-            rcstr!(".css"),
+            Vc::upcast(self),
         ))
     }
 
@@ -206,11 +206,20 @@ impl CssChunk {
                 }
             }
         }
+        // CSS cascade order is observable. For multi-item chunks, keep the ordinal in the nested
+        // asset key so the order-independent AssetIdent hash still distinguishes differently
+        // ordered chunks. Preserve the existing ident for single-item chunks.
+        let has_multiple_items = chunk_items.len() > 1;
         let assets = chunk_items
             .iter()
-            .map(async |chunk_item| {
+            .enumerate()
+            .map(async |(index, chunk_item)| {
                 Ok((
-                    rcstr!("chunk item"),
+                    if has_multiple_items {
+                        format!("chunk item {index}").into()
+                    } else {
+                        rcstr!("chunk item")
+                    },
                     chunk_item.content_ident().to_resolved().await?,
                 ))
             })
@@ -432,6 +441,20 @@ impl OutputAsset for CssChunk {
 
 #[turbo_tasks::value_impl]
 impl Asset for CssChunk {
+    #[turbo_tasks::function]
+    async fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Result<Vc<Option<RcStr>>> {
+        let emitted_ty = *self
+            .await?
+            .chunking_context
+            .emitted_source_map_type()
+            .await?;
+        Ok(self.code().content_hash(salt, algorithm, emitted_ty))
+    }
+
     #[turbo_tasks::function]
     fn content(self: Vc<Self>) -> Vc<AssetContent> {
         self.content()

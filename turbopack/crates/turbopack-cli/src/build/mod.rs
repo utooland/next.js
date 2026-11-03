@@ -25,8 +25,9 @@ use turbopack_cli_utils::issue::{ConsoleUi, LogOptions};
 use turbopack_core::{
     asset::Asset,
     chunk::{
-        ChunkingConfig, ChunkingContext, ChunkingContextExt, ContentHashing, EvaluatableAsset,
-        MangleType, MinifyType, availability_info::AvailabilityInfo,
+        ChunkingConfig, ChunkingContext, ChunkingContextExt, CompressType, ContentHashing,
+        EvaluatableAsset, MangleType, MinifyType,
+        availability_info::AvailabilityInfo,
     },
     context::AssetContext,
     environment::{BrowserEnvironment, Environment, ExecutionEnvironment, NodeJsEnvironment},
@@ -97,6 +98,7 @@ impl TurbopackBuildBuilder {
             source_maps_type: Some(SourceMapType::Full),
             minify_type: MinifyType::Minify {
                 mangle: Some(MangleType::OptimalSize),
+                compress: Some(CompressType::Default),
             },
             target: Target::Node,
             scope_hoist: true,
@@ -717,6 +719,7 @@ pub async fn build(args: &BuildArguments, exit: &ExitHandler) -> Result<()> {
         } else {
             MinifyType::Minify {
                 mangle: Some(MangleType::OptimalSize),
+                compress: Some(CompressType::Default),
             }
         })
         .scope_hoist(!args.no_scope_hoist)

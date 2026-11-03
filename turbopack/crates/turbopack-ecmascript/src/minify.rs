@@ -7,8 +7,8 @@ use swc_core::{
     base::try_with_handler,
     common::{
         BytePos, DUMMY_SP, FileName, FilePathMapping, GLOBALS, LineCol, Mark,
-        SourceMap as SwcSourceMap,
-        comments::{Comments, SingleThreadedComments},
+        SourceMap as SwcSourceMap, Span,
+        comments::{Comment, CommentKind, Comments, SingleThreadedComments},
     },
     ecma::{
         self,
@@ -26,22 +26,97 @@ use swc_core::{
             fixer::paren_remover,
             hygiene::{self, hygiene_with_config},
         },
-        visit::VisitWith,
+        visit::{Visit, VisitWith},
     },
 };
 use tracing::instrument;
 use turbo_tasks_fs::rope::Rope;
 use turbopack_core::{
-    chunk::MangleType,
+    chunk::{CompressType, MangleType},
     code_builder::{Code, CodeBuilder},
     source_map::{SourceMaps, structured::StructuredSourceMap},
 };
 
 use crate::parse::{IdentCollector, generate_js_source_map};
 
+fn default_compress_options(mangle: Option<MangleType>) -> CompressOptions {
+    CompressOptions {
+        // Only run 2 passes, this is a tradeoff between performance and
+        // compression size. Default is 3 passes.
+        passes: 2,
+        keep_classnames: mangle.is_none(),
+        keep_fnames: mangle.is_none(),
+        ..Default::default()
+    }
+}
+
+pub fn get_compress_options(
+    compress: Option<CompressType>,
+    mangle: Option<MangleType>,
+) -> Option<CompressOptions> {
+    compress.map(|compress| match compress {
+        CompressType::Default => default_compress_options(mangle),
+        CompressType::Options(custom) => {
+            let mut options = default_compress_options(mangle);
+            if let Some(passes) = custom.passes {
+                options.passes = passes as usize;
+            }
+            if let Some(sequences) = custom.sequences {
+                options.sequences = sequences;
+            }
+            if let Some(keep_classnames) = custom.keep_classnames {
+                options.keep_classnames = keep_classnames;
+            }
+            if let Some(keep_fnames) = custom.keep_fnames {
+                options.keep_fnames = keep_fnames;
+            }
+            options
+        }
+    })
+}
+
+pub fn get_compress_options_for_target(
+    compress: Option<CompressType>,
+    mangle: Option<MangleType>,
+    supports_arrow_functions: bool,
+) -> Option<CompressOptions> {
+    let mut options = get_compress_options(compress, mangle);
+    if let Some(options) = &mut options {
+        // SWC's default compression can turn functions and object methods into arrow functions,
+        // even when `ecma` is set to ES5.
+        options.arrows = supports_arrow_functions;
+    }
+    options
+}
+
 /// Minify a whole program, typically a finished chunk.
 #[instrument(level = "info", name = "minify ecmascript code", skip_all)]
-pub fn minify(code: Code, emit_source_maps: bool, mangle: Option<MangleType>) -> Result<Code> {
+pub fn minify(
+    code: Code,
+    emit_source_maps: bool,
+    mangle: Option<MangleType>,
+    compress: Option<CompressOptions>,
+) -> Result<Code> {
+    Ok(minify_internal(code, emit_source_maps, mangle, compress, false)?.0)
+}
+
+#[instrument(level = "info", name = "minify ecmascript code", skip_all)]
+pub fn minify_with_legal_comments(
+    code: Code,
+    emit_source_maps: bool,
+    mangle: Option<MangleType>,
+    compress: Option<CompressOptions>,
+) -> Result<(Code, Vec<String>)> {
+    minify_internal(code, emit_source_maps, mangle, compress, true)
+}
+
+fn minify_internal(
+    code: Code,
+    emit_source_maps: bool,
+    mangle: Option<MangleType>,
+    compress: Option<CompressOptions>,
+    extract_legal_comments: bool,
+) -> Result<(Code, Vec<String>)> {
     // Pass None for the debug ID so we don't needlessly compute it for the pre-minified content, it
     // will be added by the Code object returned from this function
     let original_maps = code.source_maps()?;
@@ -58,7 +133,9 @@ pub fn minify(code: Code, emit_source_maps: bool, mangle: Option<MangleType>) ->
         emit_source_maps,
         generate_debug_id,
         mangle,
+        compress,
         MinifyTarget::Program,
+        extract_legal_comments,
     )
 }
 
@@ -75,6 +152,7 @@ pub fn minify_chunk_item(
     code: &Code,
     emit_source_maps: bool,
     mangle: Option<MangleType>,
+    compress: Option<CompressOptions>,
 ) -> Result<Code> {
     let original_maps = code.source_maps()?;
     let source_maps = code.has_source_map();
@@ -84,14 +162,17 @@ pub fn minify_chunk_item(
     );
     let generate_debug_id = code.should_generate_debug_id();
     let source_code = BytesStr::from_utf8(code.source_code().clone().into_bytes())?;
-    minify_source(
+    Ok(minify_source(
         source_code,
         original_maps,
         emit_source_maps,
         generate_debug_id,
         mangle,
+        compress,
         MinifyTarget::ChunkItem,
-    )
+        false,
+    )?
+    .0)
 }
 
 /// What [`minify_source`] is minifying. Everything except parsing the input and extracting the
@@ -125,8 +206,10 @@ fn minify_source(
     emit_source_maps: bool,
     generate_debug_id: bool,
     mangle: Option<MangleType>,
+    compress: Option<CompressOptions>,
     target: MinifyTarget,
-) -> Result<Code> {
+    extract_legal_comments: bool,
+) -> Result<(Code, Vec<String>)> {
     let source_maps = !matches!(original_maps, SourceMaps::None);
     let cm = Arc::new(SwcSourceMap::new(FilePathMapping::empty()));
     let fm = cm.new_source_file(FileName::Anon.into(), source_code);
@@ -142,99 +225,107 @@ fn minify_source(
     );
     let mut parser = Parser::new_from(lexer);
 
-    let (output, source_map_names) = try_with_handler(cm.clone(), Default::default(), |handler| {
-        GLOBALS.set(&Default::default(), || {
-            // Expressions emitted verbatim in front of a chunk item's factory (its additional
-            // module ids). Always empty for `MinifyTarget::Program`.
-            let mut item_prefix = Vec::new();
-            let parsed = match target {
-                MinifyTarget::Program => parser.parse_program(),
-                MinifyTarget::ChunkItem => parser.parse_expr().map(|expr| {
-                    let factory = match *expr {
-                        Expr::Seq(mut seq) if seq.exprs.len() > 1 => {
-                            let factory = seq.exprs.pop().unwrap();
-                            item_prefix = seq.exprs;
-                            factory
+    let (output, source_map_names, legal_comments) =
+        try_with_handler(cm.clone(), Default::default(), |handler| {
+            GLOBALS.set(&Default::default(), || {
+                // Expressions emitted verbatim in front of a chunk item's factory (its additional
+                // module ids). Always empty for `MinifyTarget::Program`.
+                let mut item_prefix = Vec::new();
+                let parsed = match target {
+                    MinifyTarget::Program => parser.parse_program(),
+                    MinifyTarget::ChunkItem => parser.parse_expr().map(|expr| {
+                        let factory = match *expr {
+                            Expr::Seq(mut seq) if seq.exprs.len() > 1 => {
+                                let factory = seq.exprs.pop().unwrap();
+                                item_prefix = seq.exprs;
+                                factory
+                            }
+                            expr => Box::new(expr),
+                        };
+                        wrap_in_sentinel(factory)
+                    }),
+                };
+                let program = match parsed {
+                    Ok(program) => program,
+                    Err(err) => {
+                        err.into_diagnostic(handler).emit();
+                        bail!("failed to parse source code\n{}", fm.src)
+                    }
+                };
+
+                // Collect identifier names for source maps before minification. Synthetic nodes
+                // (the sentinel) have dummy spans and are skipped by the collector.
+                let source_map_names = if source_maps {
+                    let mut collector = IdentCollector::default();
+                    program.visit_with(&mut collector);
+                    collector.into_map()
+                } else {
+                    Default::default()
+                };
+
+                let (mut program, legal_comments) = optimize(
+                    program,
+                    &cm,
+                    &comments,
+                    mangle,
+                    compress,
+                    extract_legal_comments,
+                );
+
+                let output = match target {
+                    MinifyTarget::Program => {
+                        let (src, src_map_buf) = print(&cm, &program, source_maps)?;
+                        MinifiedOutput {
+                            prefix: None,
+                            src,
+                            src_map_buf,
+                            strict_directive: None,
                         }
-                        expr => Box::new(expr),
-                    };
-                    wrap_in_sentinel(factory)
-                }),
-            };
-            let program = match parsed {
-                Ok(program) => program,
-                Err(err) => {
-                    err.into_diagnostic(handler).emit();
-                    bail!("failed to parse source code\n{}", fm.src)
-                }
-            };
-
-            // Collect identifier names for source maps before minification. Synthetic nodes
-            // (the sentinel) have dummy spans and are skipped by the collector.
-            let source_map_names = if source_maps {
-                let mut collector = IdentCollector::default();
-                program.visit_with(&mut collector);
-                collector.into_map()
-            } else {
-                Default::default()
-            };
-
-            let mut program = optimize(program, &cm, &comments, mangle);
-
-            let output = match target {
-                MinifyTarget::Program => {
-                    let (src, src_map_buf) = print(&cm, &program, source_maps)?;
-                    MinifiedOutput {
-                        prefix: None,
-                        src,
-                        src_map_buf,
-                        strict_directive: None,
                     }
-                }
-                // Emit only the factory expression, so the result can be spliced back into
-                // the chunk. Emitting it as a statement would turn a `function (…) {}`
-                // factory into a declaration.
-                MinifyTarget::ChunkItem => {
-                    let factory = take_sentinel_rhs(&mut program).context(
-                        "chunk item minification lost its sentinel assignment; the compressor \
-                         rewrote the wrapper unexpectedly",
-                    )?;
-                    // The additional module ids are synthetic code without mappings, so they
-                    // are printed on their own, in front of the factory.
-                    let prefix = match item_prefix.len() {
-                        0 => None,
-                        1 => Some(print(&cm, &*item_prefix[0], false)?.0),
-                        _ => Some(
-                            print(
-                                &cm,
-                                &Expr::Seq(SeqExpr {
-                                    span: DUMMY_SP,
-                                    exprs: item_prefix,
-                                }),
-                                false,
-                            )?
-                            .0,
-                        ),
-                    };
-                    let has_directive = body_starts_with_use_strict(factory);
-                    let (src, src_map_buf) = print(&cm, &*factory, source_maps)?;
-                    let strict_directive = if has_directive {
-                        find_leading_use_strict(&src)
-                    } else {
-                        None
-                    };
-                    MinifiedOutput {
-                        prefix,
-                        src,
-                        src_map_buf,
-                        strict_directive,
+                    // Emit only the factory expression, so the result can be spliced back into
+                    // the chunk. Emitting it as a statement would turn a `function (…) {}`
+                    // factory into a declaration.
+                    MinifyTarget::ChunkItem => {
+                        let factory = take_sentinel_rhs(&mut program).context(
+                            "chunk item minification lost its sentinel assignment; the compressor \
+                             rewrote the wrapper unexpectedly",
+                        )?;
+                        // The additional module ids are synthetic code without mappings, so they
+                        // are printed on their own, in front of the factory.
+                        let prefix = match item_prefix.len() {
+                            0 => None,
+                            1 => Some(print(&cm, &*item_prefix[0], false)?.0),
+                            _ => Some(
+                                print(
+                                    &cm,
+                                    &Expr::Seq(SeqExpr {
+                                        span: DUMMY_SP,
+                                        exprs: item_prefix,
+                                    }),
+                                    false,
+                                )?
+                                .0,
+                            ),
+                        };
+                        let has_directive = body_starts_with_use_strict(factory);
+                        let (src, src_map_buf) = print(&cm, &*factory, source_maps)?;
+                        let strict_directive = if has_directive {
+                            find_leading_use_strict(&src)
+                        } else {
+                            None
+                        };
+                        MinifiedOutput {
+                            prefix,
+                            src,
+                            src_map_buf,
+                            strict_directive,
+                        }
                     }
-                }
-            };
-            Ok((output, source_map_names))
+                };
+                Ok((output, source_map_names, legal_comments))
+            })
         })
-    })
-    .map_err(|e| e.to_pretty_error())?;
+        .map_err(|e| e.to_pretty_error())?;
 
     let MinifiedOutput {
         prefix,
@@ -282,7 +373,7 @@ fn minify_source(
             builder.push_source(&src[directive.end..].to_string().into(), maps)?;
         }
     }
-    Ok(builder.build())
+    Ok((builder.build(), legal_comments))
 }
 
 struct MinifiedOutput {
@@ -300,7 +391,9 @@ fn optimize(
     cm: &Arc<SwcSourceMap>,
     comments: &SingleThreadedComments,
     mangle: Option<MangleType>,
-) -> Program {
+    compress: Option<CompressOptions>,
+    extract_legal_comments: bool,
+) -> (Program, Vec<String>) {
     let unresolved_mark = Mark::new();
     let top_level_mark = Mark::new();
 
@@ -318,14 +411,7 @@ fn optimize(
         Some(comments),
         None,
         &MinifyOptions {
-            compress: Some(CompressOptions {
-                // Only run 2 passes, this is a tradeoff between performance and
-                // compression size. Default is 3 passes.
-                passes: 2,
-                keep_classnames: mangle.is_none(),
-                keep_fnames: mangle.is_none(),
-                ..Default::default()
-            }),
+            compress,
             mangle: mangle.map(|mangle| {
                 let reserved = vec![atom!("AbortSignal")];
                 match mangle {
@@ -356,9 +442,108 @@ fn optimize(
         }));
     }
 
-    program.apply(ecma::transforms::base::fixer::fixer(Some(
+    let legal_comments = if extract_legal_comments {
+        collect_legal_comments(comments, &program)
+    } else {
+        Vec::new()
+    };
+    let program = program.apply(ecma::transforms::base::fixer::fixer(Some(
         comments as &dyn Comments,
-    )))
+    )));
+    (program, legal_comments)
+}
+
+struct LegalCommentsCollector<'a> {
+    comments: &'a SingleThreadedComments,
+    legal_comments: Vec<(BytePos, String)>,
+}
+
+impl<'a> LegalCommentsCollector<'a> {
+    fn new(comments: &'a SingleThreadedComments) -> Self {
+        Self {
+            comments,
+            legal_comments: Vec::new(),
+        }
+    }
+
+    fn collect(&mut self, comments: Option<Vec<Comment>>) -> Vec<Comment> {
+        let Some(comments) = comments else {
+            return Vec::new();
+        };
+        let mut remaining = Vec::new();
+        for comment in comments {
+            if is_legal_comment(comment.text.as_ref()) {
+                let text = match comment.kind {
+                    CommentKind::Line => format!("//{}", comment.text),
+                    CommentKind::Block => format!("/*{}*/", comment.text),
+                };
+                self.legal_comments.push((comment.span.lo, text));
+            } else {
+                remaining.push(comment);
+            }
+        }
+        remaining
+    }
+
+    fn collect_leading(&mut self, pos: BytePos) {
+        let remaining = self.collect(self.comments.take_leading(pos));
+        if !remaining.is_empty() {
+            self.comments.add_leading_comments(pos, remaining);
+        }
+    }
+
+    fn collect_trailing(&mut self, pos: BytePos) {
+        let remaining = self.collect(self.comments.take_trailing(pos));
+        if !remaining.is_empty() {
+            self.comments.add_trailing_comments(pos, remaining);
+        }
+    }
+
+    fn into_comments(self) -> Vec<String> {
+        let mut comments = self.legal_comments;
+        comments.sort_by(|(a_position, a_comment), (b_position, b_comment)| {
+            a_comment
+                .cmp(b_comment)
+                .then_with(|| a_position.cmp(b_position))
+        });
+        comments.dedup_by(|a, b| a.1 == b.1);
+        comments.sort_by_key(|(position, _)| *position);
+        comments.into_iter().map(|(_, comment)| comment).collect()
+    }
+}
+
+impl Visit for LegalCommentsCollector<'_> {
+    fn visit_span(&mut self, span: &Span) {
+        if span.is_dummy() {
+            return;
+        }
+
+        self.collect_leading(span.lo);
+        self.collect_trailing(span.hi);
+
+        if span.hi > span.lo {
+            self.collect_leading(span.hi - BytePos(1));
+            self.collect_trailing(span.lo + BytePos(1));
+        }
+    }
+}
+
+fn collect_legal_comments(comments: &SingleThreadedComments, program: &Program) -> Vec<String> {
+    let mut collector = LegalCommentsCollector::new(comments);
+    program.visit_children_with(&mut collector);
+    collector.into_comments()
+}
+
+fn is_legal_comment(comment: &str) -> bool {
+    let comment = comment.trim_start();
+    if comment.trim_start_matches('*').starts_with('!') {
+        return true;
+    }
+    if !comment.contains('@') {
+        return false;
+    }
+    let lowercase = comment.to_ascii_lowercase();
+    lowercase.contains("@preserve") || lowercase.contains("@lic") || lowercase.contains("@cc_on")
 }
 
 /// Wrap a chunk item expression as `CHUNK_ITEM_SENTINEL = <expr>;`. See
@@ -532,13 +717,25 @@ mod tests {
     }
 
     fn minify_item(src: &str, mangle: Option<MangleType>) -> String {
-        let out = minify_chunk_item(&code(src), false, mangle).unwrap();
+        let out = minify_chunk_item(
+            &code(src),
+            false,
+            mangle,
+            Some(default_compress_options(mangle)),
+        )
+        .unwrap();
         out.source_code().to_str().unwrap().into_owned()
     }
 
     /// The minified code and the text of its recorded strict directive.
     fn minify_strict(src: &str) -> (Code, String, Option<String>) {
-        let out = minify_chunk_item(&code(src), false, Some(MangleType::Deterministic)).unwrap();
+        let out = minify_chunk_item(
+            &code(src),
+            false,
+            Some(MangleType::Deterministic),
+            Some(default_compress_options(Some(MangleType::Deterministic))),
+        )
+        .unwrap();
         let text = out.source_code().to_str().unwrap().into_owned();
         let directive = out.strict_directive().map(|range| {
             // The directive starts the factory body.
@@ -584,7 +781,13 @@ mod tests {
                 SourceMaps::<Rope>::None,
             )
             .unwrap();
-        let out = minify_chunk_item(&builder.build(), true, Some(MangleType::OptimalSize)).unwrap();
+        let out = minify_chunk_item(
+            &builder.build(),
+            true,
+            Some(MangleType::OptimalSize),
+            Some(default_compress_options(Some(MangleType::OptimalSize))),
+        )
+        .unwrap();
         assert!(out.has_source_map());
         assert!(
             !out.source_code()
@@ -690,8 +893,13 @@ mod tests {
                 SourceMaps::Shared(Rope::from(map_bytes)),
             )
             .unwrap();
-        let factory =
-            minify_chunk_item(&builder.build(), true, Some(MangleType::Deterministic)).unwrap();
+        let factory = minify_chunk_item(
+            &builder.build(),
+            true,
+            Some(MangleType::Deterministic),
+            Some(default_compress_options(Some(MangleType::Deterministic))),
+        )
+        .unwrap();
         assert!(factory.strict_directive().is_some());
 
         let compose = |without_directive: bool| {
@@ -755,11 +963,13 @@ mod tests {
             code("globalThis.TURBOPACK = [1, function () { return 2 }];"),
             false,
             Some(MangleType::OptimalSize),
+            Some(default_compress_options(Some(MangleType::OptimalSize))),
         )
         .unwrap();
         let out = out.source_code().to_str().unwrap().into_owned();
         assert!(out.contains("globalThis.TURBOPACK"), "{out}");
     }
+
     #[test]
     fn preserves_shared_maps() -> anyhow::Result<()> {
         let mut code = CodeBuilder::new(false, BOTH);
@@ -768,8 +978,97 @@ mod tests {
             SourceMaps::Shared(SourceMap::empty_rope()),
         )
         .unwrap();
-        let minified = minify(code.build(), false, None)?;
+        let minified = minify(
+            code.build(),
+            false,
+            None,
+            Some(default_compress_options(None)),
+        )?;
         assert!(matches!(minified.source_maps()?, SourceMaps::Shared(_)));
         Ok(())
+    }
+
+    fn minified_source(supports_arrow_functions: bool) -> Vec<u8> {
+        let mut code = CodeBuilder::new(false, SourceMapGenerationOptions::NONE);
+        code += "const queue = { delete(value) { return value; } }; globalThis.queue = queue;";
+
+        minify(
+            code.build(),
+            false,
+            None,
+            get_compress_options_for_target(
+                Some(CompressType::Default),
+                None,
+                supports_arrow_functions,
+            ),
+        )
+        .unwrap()
+        .into_source_code()
+        .into_bytes()
+        .to_vec()
+    }
+
+    #[test]
+    fn respects_arrow_function_support() {
+        assert!(
+            minified_source(true)
+                .windows(2)
+                .any(|window| window == b"=>")
+        );
+        assert!(
+            !minified_source(false)
+                .windows(2)
+                .any(|window| window == b"=>")
+        );
+    }
+
+    #[test]
+    fn extracts_and_deduplicates_legal_comments() {
+        let mut builder = CodeBuilder::new(false, SourceMapGenerationOptions::NONE);
+        builder += r#"
+            /*! package license */
+            /**! starred bang license */
+            /** @license another package */
+            // @preserve line license
+            /* ordinary comment */
+            const value = 1;
+            /*! package license */
+            console.log(value);
+        "#;
+
+        let (_, comments) = minify_with_legal_comments(builder.build(), false, None, None).unwrap();
+
+        assert_eq!(
+            comments,
+            vec![
+                "/*! package license */",
+                "/**! starred bang license */",
+                "/** @license another package */",
+                "// @preserve line license",
+            ]
+        );
+    }
+
+    #[test]
+    fn excludes_legal_comments_from_discarded_code() {
+        let mut builder = CodeBuilder::new(false, SourceMapGenerationOptions::NONE);
+        builder += r#"
+            if (false) {
+                /*! discarded package license */
+                console.log("unused");
+            }
+            /*! retained package license */
+            console.log("used");
+        "#;
+
+        let (_, comments) = minify_with_legal_comments(
+            builder.build(),
+            false,
+            None,
+            Some(default_compress_options(None)),
+        )
+        .unwrap();
+
+        assert_eq!(comments, vec!["/*! retained package license */"]);
     }
 }

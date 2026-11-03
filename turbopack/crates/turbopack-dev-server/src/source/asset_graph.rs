@@ -26,13 +26,35 @@ struct OutputAssetsMap(
     FxIndexMap<RcStr, ResolvedVc<Box<dyn OutputAsset>>>,
 );
 
-type ExpandedState = State<FxHashSet<RcStr>>;
+type ExpandedPaths = State<FxHashSet<RcStr>>;
+
+#[turbo_tasks::value(serialization = "skip", evict = "never")]
+struct ExpandedState {
+    paths: ExpandedPaths,
+}
+
+/// The paths exposed by a lazy asset graph.
+///
+/// This state is memoized independently from [`AssetGraphContentSource`] so the source, route
+/// tree, and output asset map can still be evicted without forgetting which assets were served
+/// during the current development session.
+#[turbo_tasks::function]
+fn expanded_state(
+    root_path: FileSystemPath,
+    root_asset: ResolvedVc<Box<dyn OutputAsset>>,
+) -> Vc<ExpandedState> {
+    let _ = (root_path, root_asset);
+    ExpandedState {
+        paths: State::new(FxHashSet::default()),
+    }
+    .cell()
+}
 
 #[turbo_tasks::value(serialization = "skip", eq = "manual", cell = "new")]
 pub struct AssetGraphContentSource {
     root_path: FileSystemPath,
     root_assets: ResolvedVc<OutputAssetsSet>,
-    expanded: Option<ExpandedState>,
+    expanded: Option<ResolvedVc<ExpandedState>>,
 }
 
 #[turbo_tasks::value_impl]
@@ -53,24 +75,32 @@ impl AssetGraphContentSource {
     /// Serves all assets references by root_asset. Only serve references of an
     /// asset when it has served its content before.
     #[turbo_tasks::function]
-    pub fn new_lazy(
+    pub async fn new_lazy(
         root_path: FileSystemPath,
         root_asset: ResolvedVc<Box<dyn OutputAsset>>,
-    ) -> Vc<Self> {
-        Self::cell(AssetGraphContentSource {
+    ) -> Result<Vc<Self>> {
+        let expanded = expanded_state(root_path.clone(), *root_asset)
+            .to_resolved()
+            .await?;
+        Ok(Self::cell(AssetGraphContentSource {
             root_path,
             root_assets: ResolvedVc::cell(fxindexset! { root_asset }),
-            expanded: Some(State::new(FxHashSet::default())),
-        })
+            expanded: Some(expanded),
+        }))
     }
 
     #[turbo_tasks::function]
     async fn all_assets_map(&self) -> Result<Vc<OutputAssetsMap>> {
+        let expanded = if let Some(expanded) = self.expanded {
+            Some(expanded.await?)
+        } else {
+            None
+        };
         Ok(Vc::cell(
             expand(
                 &*self.root_assets.await?,
                 &self.root_path,
-                self.expanded.as_ref(),
+                expanded.as_ref().map(|expanded| &expanded.paths),
             )
             .await?,
         ))
@@ -80,7 +110,7 @@ impl AssetGraphContentSource {
 async fn expand(
     root_assets: &FxIndexSet<ResolvedVc<Box<dyn OutputAsset>>>,
     root_path: &FileSystemPath,
-    expanded: Option<&ExpandedState>,
+    expanded: Option<&ExpandedPaths>,
 ) -> Result<FxIndexMap<RcStr, ResolvedVc<Box<dyn OutputAsset>>>> {
     let mut map = FxIndexMap::default();
     let mut assets = Vec::new();
@@ -273,7 +303,10 @@ impl ContentSourceSideEffect for AssetGraphGetContentSourceContent {
         let source = self.source.await?;
 
         if let Some(expanded) = &source.expanded {
-            expanded.update_conditionally(|expanded| expanded.insert(self.path.clone()));
+            expanded
+                .await?
+                .paths
+                .update_conditionally(|expanded| expanded.insert(self.path.clone()));
         }
         Ok(Completion::new())
     }
@@ -292,12 +325,12 @@ impl Introspectable for AssetGraphContentSource {
     }
 
     #[turbo_tasks::function]
-    fn details(&self) -> Vc<RcStr> {
-        Vc::cell(if let Some(expanded) = &self.expanded {
-            format!("{} assets expanded", expanded.get().len()).into()
+    async fn details(&self) -> Result<Vc<RcStr>> {
+        Ok(Vc::cell(if let Some(expanded) = &self.expanded {
+            format!("{} assets expanded", expanded.await?.paths.get().len()).into()
         } else {
             rcstr!("eager")
-        })
+        }))
     }
 
     #[turbo_tasks::function]
@@ -376,5 +409,21 @@ impl Introspectable for FullyExpanded {
             .collect();
 
         Ok(Vc::cell(children))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use turbo_tasks::{Evictability, VcValueType, registry};
+
+    use super::{AssetGraphContentSource, ExpandedState};
+
+    #[test]
+    fn only_lazy_expansion_state_is_kept_in_memory() {
+        let source = registry::get_value_type(AssetGraphContentSource::get_value_type_id());
+        assert!(matches!(source.evictability, Evictability::Always));
+
+        let state = registry::get_value_type(ExpandedState::get_value_type_id());
+        assert!(matches!(state.evictability, Evictability::Never));
     }
 }

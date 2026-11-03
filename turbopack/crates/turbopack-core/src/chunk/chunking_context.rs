@@ -40,12 +40,37 @@ pub enum MangleType {
     Deterministic,
 }
 
+#[turbo_tasks::task_input]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, DeterministicHash, Encode, Decode,
+)]
+#[serde(rename_all = "kebab-case")]
+pub struct CompressOptions {
+    pub passes: Option<u8>,
+    pub sequences: Option<u8>,
+    pub keep_classnames: Option<bool>,
+    pub keep_fnames: Option<bool>,
+}
+
+#[turbo_tasks::task_input]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, DeterministicHash, Encode, Decode,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum CompressType {
+    Default,
+    Options(CompressOptions),
+}
+
 #[turbo_tasks::value(shared, task_input)]
 #[derive(Debug, Clone, Copy, Hash, DeterministicHash, Deserialize)]
 pub enum MinifyType {
     // TODO instead of adding a new property here,
     // refactor that to Minify(MinifyOptions) to allow defaults on MinifyOptions
-    Minify { mangle: Option<MangleType> },
+    Minify {
+        mangle: Option<MangleType>,
+        compress: Option<CompressType>,
+    },
     NoMinify,
 }
 
@@ -53,6 +78,7 @@ impl Default for MinifyType {
     fn default() -> Self {
         Self::Minify {
             mangle: Some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     }
 }
@@ -355,6 +381,13 @@ pub trait ChunkingContext {
     #[turbo_tasks::function]
     fn chunk_loading(self: Vc<Self>) -> Vc<ChunkLoading> {
         self.environment().chunk_loading()
+    }
+
+    /// Move web-worker chunk paths into the entry bootstrap, so chunks with
+    /// recursive worker references can retain content-hashed filenames.
+    #[turbo_tasks::function]
+    fn worker_chunks_in_manifest(self: Vc<Self>) -> Vc<bool> {
+        Vc::cell(false)
     }
 
     // TODO(alexkirsz) Remove this from the chunking context. This should be at the

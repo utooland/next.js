@@ -36,17 +36,9 @@ impl EsmModuleItem {
     pub async fn code_generation(
         &self,
         trie: &AstPathTrie,
-        chunking_context: Vc<Box<dyn ChunkingContext>>,
+        _chunking_context: Vc<Box<dyn ChunkingContext>>,
     ) -> Result<CodeGeneration> {
         let mut visitors = Vec::new();
-        // Whether we may codegen `const` or should fall back to `var` (at the cost of slightly
-        // less correct circular import errors). Only read here, so that module analysis doesn't
-        // depend on the target environment.
-        let supports_block_scoping = *chunking_context
-            .environment()
-            .runtime_versions()
-            .supports_block_scoping()
-            .await?;
 
         visitors.push(create_visitor!(
             trie,
@@ -60,14 +52,7 @@ impl EsmModuleItem {
                             let decl = Decl::Var(Box::new(VarDecl {
                                 span: DUMMY_SP,
                                 ctxt: Default::default(),
-                                kind: if supports_block_scoping {
-                                    swc_core::ecma::ast::VarDeclKind::Const
-                                } else {
-                                    // This is not entirely correct: this hides TDZ errors with
-                                    // circular imports, but there is no way to model this runtime
-                                    // behavior well for older browsers.
-                                    swc_core::ecma::ast::VarDeclKind::Var
-                                },
+                                kind: swc_core::ecma::ast::VarDeclKind::Var,
                                 declare: false,
                                 decls: vec![VarDeclarator {
                                     span: DUMMY_SP,

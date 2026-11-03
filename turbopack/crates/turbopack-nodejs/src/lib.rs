@@ -7,6 +7,6 @@ pub mod fs;
 pub mod global_virtual_store;
 
 pub use chunking_context::{NodeJsChunkingContext, NodeJsChunkingContextBuilder};
-pub use ecmascript::node::{
-    chunk::EcmascriptBuildNodeChunk, entry::runtime::EcmascriptBuildNodeRuntimeChunk,
+pub use ecmascript::{
+    EcmascriptBuildNodeChunk, EcmascriptBuildNodeEntryChunk, EcmascriptBuildNodeRuntimeChunk,
 };

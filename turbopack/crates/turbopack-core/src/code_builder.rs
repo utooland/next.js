@@ -16,7 +16,7 @@ use turbo_tasks_fs::{
     File, FileContent,
     rope::{Rope, RopeBuilder},
 };
-use turbo_tasks_hash::{DeterministicHash, DeterministicHasher, hash_xxh3_hash128};
+use turbo_tasks_hash::{DeterministicHash, DeterministicHasher, HashAlgorithm, hash_xxh3_hash128};
 
 use crate::{
     code_builder::source_map_sections::Mappings,
@@ -188,6 +188,15 @@ impl Code {
         emitted_source_map_ty: Option<SourceMapType>,
         source_map_path_fn: impl FnOnce() -> Vc<SourceMapAsset>,
     ) -> Result<Rope> {
+        self.to_rope_with_optional_source_map(emitted_source_map_ty, Some(source_map_path_fn))
+            .await
+    }
+
+    async fn to_rope_with_optional_source_map(
+        self: Vc<Self>,
+        emitted_source_map_ty: Option<SourceMapType>,
+        source_map_path_fn: Option<impl FnOnce() -> Vc<SourceMapAsset>>,
+    ) -> Result<Rope> {
         let code = self.await?;
         let emit_source_map = code.should_emit_source_map(emitted_source_map_ty)?;
         Ok(if emit_source_map || code.should_generate_debug_id() {
@@ -223,7 +232,7 @@ impl Code {
                 write!(rope_builder, "\n//# debugId={}", debug_id)?;
             }
 
-            if emit_source_map {
+            if emit_source_map && let Some(source_map_path_fn) = source_map_path_fn {
                 let source_map_path = source_map_path_fn().path().await?;
                 write!(
                     rope_builder,
@@ -430,6 +439,37 @@ pub struct OptionDebugId(Option<RcStr>);
 
 #[turbo_tasks::value_impl]
 impl Code {
+    /// Hashes the code and its emitted map without the self-referencing sourceMappingURL.
+    /// Maps generated only for analysis do not affect the emitted asset's hash.
+    #[turbo_tasks::function]
+    pub async fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+        emitted_source_map_ty: Option<SourceMapType>,
+    ) -> Result<Vc<Option<RcStr>>> {
+        let mut content = RopeBuilder::default();
+        content.concat(
+            &self
+                .to_rope_with_optional_source_map(
+                    emitted_source_map_ty,
+                    None::<fn() -> Vc<SourceMapAsset>>,
+                )
+                .await?,
+        );
+        if let Some(ty) = emitted_source_map_ty
+            && self.await?.has_source_map()
+        {
+            content.push_static_bytes(b"\0");
+            if let FileContent::Content(file) = &*self.generate_source_map(ty).await? {
+                content.concat(file.content());
+            }
+        }
+        Ok(FileContent::Content(File::from(content.build()))
+            .cell()
+            .content_hash(salt, algorithm))
+    }
+
     /// Returns the hash of the source code of this Code.
     #[turbo_tasks::function]
     pub fn source_code_hash(&self) -> Vc<u128> {

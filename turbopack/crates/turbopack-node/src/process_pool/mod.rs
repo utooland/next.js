@@ -629,7 +629,7 @@ impl ProcessArgs {
     eq = "manual",
     shared
 )]
-struct ChildProcessPool {
+pub(crate) struct ChildProcessPool {
     cwd: PathBuf,
     entrypoint: PathBuf,
     env: FxHashMap<RcStr, RcStr>,
@@ -868,14 +868,14 @@ impl ChildProcessPool {
             .context("creating new process")
     }
 
-    fn scale_down() {
+    pub(crate) fn scale_down() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {
             pool.reduce_to_one();
         }
     }
 
-    fn scale_zero() {
+    pub(crate) fn scale_zero() {
         let pools = ACTIVE_POOLS.lock().clone();
         for pool in pools {
             pool.reduce_to_zero(&ACTIVE_POOLS);

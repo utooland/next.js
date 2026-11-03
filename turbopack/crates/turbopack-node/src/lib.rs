@@ -27,7 +27,7 @@ mod process_pool;
 mod source_map;
 pub mod transforms;
 #[cfg(feature = "worker_pool")]
-mod worker_pool;
+pub mod worker_pool;
 
 #[cfg(all(feature = "process_pool", not(target_family = "wasm")))]
 pub fn child_process_backend() -> Vc<Box<dyn backend::NodeBackend>> {

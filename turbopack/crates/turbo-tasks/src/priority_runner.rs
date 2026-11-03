@@ -10,12 +10,13 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering, fence},
     },
     task::{Context, Poll},
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use concurrent_queue::ConcurrentQueue;
 use parking_lot::Mutex;
 use pin_project_lite::pin_project;
+use tokio::time::Instant;
 
 use crate::FxDashMap;
 

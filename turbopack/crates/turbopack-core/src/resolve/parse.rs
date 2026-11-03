@@ -163,6 +163,20 @@ impl Request {
             return Request::Empty;
         }
 
+        // Handle webpack-style tilde prefix (~) for node_modules resolution
+        // This is commonly used in CSS preprocessors like less-loader and sass-loader
+        // Only strip ~ if it's followed by a module path (not a relative path like ~/home)
+        // for utoopack issue: https://github.com/utooland/utoo/issues/2309
+        let r = if let Some(remainder) = r
+            .strip_prefix('~')
+            .filter(|s| !s.is_empty() && !s.starts_with('/') && !s.starts_with('\\'))
+            .filter(|s| MODULE_PATH.is_match(s))
+        {
+            remainder.into()
+        } else {
+            r
+        };
+
         if let Some(remainder) = r.strip_prefix("//") {
             return Request::Uri {
                 protocol: rcstr!("//"),

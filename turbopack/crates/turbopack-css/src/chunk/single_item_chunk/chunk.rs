@@ -4,6 +4,7 @@ use anyhow::Result;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, ValueToString, Vc};
 use turbo_tasks_fs::{File, FileContent, FileSystemPath, rope::RopeBuilder};
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{Chunk, ChunkItem, ChunkingContext, MinifyType},
@@ -45,11 +46,10 @@ impl SingleItemCssChunk {
 impl SingleItemCssChunk {
     #[turbo_tasks::function]
     async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        Ok(SourceMapAsset::new(
+        Ok(SourceMapAsset::new_for_output_asset(
             *self.await?.chunking_context,
-            self.ident_for_path(),
             Vc::upcast(self),
-            rcstr!(".single.css"),
+            Vc::upcast(self),
         ))
     }
 
@@ -144,6 +144,20 @@ impl OutputAsset for SingleItemCssChunk {
 
 #[turbo_tasks::value_impl]
 impl Asset for SingleItemCssChunk {
+    #[turbo_tasks::function]
+    async fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Result<Vc<Option<RcStr>>> {
+        let emitted_ty = *self
+            .await?
+            .chunking_context
+            .emitted_source_map_type()
+            .await?;
+        Ok(self.code().content_hash(salt, algorithm, emitted_ty))
+    }
+
     #[turbo_tasks::function]
     async fn content(self: Vc<Self>) -> Result<Vc<AssetContent>> {
         let code = self.code().await?;

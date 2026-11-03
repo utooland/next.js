@@ -20,7 +20,7 @@ use turbo_tasks::{
     FxIndexMap, JoinIterExt, NonLocalValue, ReadRef, ResolvedVc, TryFlatJoinIterExt,
     TryJoinIterExt, ValueToString, ValueToStringRef, Vc,
 };
-use turbo_tasks_fs::{FileSystemEntryType, FileSystemPath};
+use turbo_tasks_fs::{DiskFileSystem, FileSystem, FileSystemEntryType, FileSystemPath};
 use turbo_unix_path::normalize_request;
 
 use crate::{
@@ -543,7 +543,9 @@ pub enum ExternalType {
     CommonJs,
     EcmaScriptModule,
     Global,
+    Promise,
     Script,
+    Umd,
 }
 
 impl Display for ExternalType {
@@ -553,7 +555,9 @@ impl Display for ExternalType {
             ExternalType::EcmaScriptModule => write!(f, "esm"),
             ExternalType::Url => write!(f, "url"),
             ExternalType::Global => write!(f, "global"),
+            ExternalType::Promise => write!(f, "promise"),
             ExternalType::Script => write!(f, "script"),
+            ExternalType::Umd => write!(f, "umd"),
         }
     }
 }
@@ -1719,12 +1723,57 @@ pub async fn resolve_inline(
             None
         };
 
-        let raw_result = match before_plugins_result {
-            Some(result) => result,
+        let (raw_result, request) = match before_plugins_result {
+            Some(result) => (result, request),
             None => {
-                *resolve_internal(lookup_path.clone(), request, options)
-                    .to_resolved()
-                    .await?
+                // Prefer a literal `#` path for static CommonJS requests, with URL fragments
+                // as a fallback when that path does not exist.
+                let literal_request = if matches!(&reference_type, ReferenceType::CommonJs(_))
+                    && let Request::Relative {
+                        path: Pattern::Constant(_),
+                        query,
+                        fragment,
+                        ..
+                    }
+                    | Request::Module {
+                        module: Pattern::Constant(_),
+                        path: Pattern::Constant(_),
+                        query,
+                        fragment,
+                    } = &*request.await?
+                    && query.is_empty()
+                    && !fragment.is_empty()
+                {
+                    Some(
+                        request
+                            .append_path(fragment.clone())
+                            .with_fragment(RcStr::default()),
+                    )
+                } else {
+                    None
+                };
+                let result = *resolve_internal(
+                    lookup_path.clone(),
+                    literal_request.unwrap_or(request),
+                    options,
+                )
+                .to_resolved()
+                .await?;
+                if literal_request.is_some() && result.await?.is_unresolvable() {
+                    (
+                        resolve_internal(lookup_path.clone(), request, options)
+                            .with_affecting_sources(
+                                result
+                                    .await?
+                                    .get_affecting_sources()
+                                    .map(|source| *source)
+                                    .collect(),
+                            ),
+                        request,
+                    )
+                } else {
+                    (result, literal_request.unwrap_or(request))
+                }
             }
         };
 
@@ -2143,18 +2192,91 @@ async fn resolve_internal_inline(
                 }
             }
             Request::Windows {
-                path: _,
-                query: _,
-                fragment: _,
+                path,
+                query,
+                fragment,
             } => {
+                if let Some(path_str) = path.as_constant_string() {
+                    let sys_path = std::path::Path::new(path_str.as_str());
+
+                    let mut candidate_disk_fses = Vec::new();
+
+                    if let Some(disk_fs_vc) =
+                        ResolvedVc::try_downcast_type::<DiskFileSystem>(lookup_path.fs)
+                    {
+                        candidate_disk_fses.push(disk_fs_vc);
+                    }
+
+                    // Embedded runtime modules have no disk filesystem of their own.
+                    // Use the configured project root to resolve their absolute imports.
+                    if let Some(root) = &options_value.server_relative_root
+                        && let Some(disk_fs_vc) =
+                            ResolvedVc::try_downcast_type::<DiskFileSystem>(root.fs)
+                    {
+                        candidate_disk_fses.push(disk_fs_vc);
+                    }
+
+                    for module in &options_value.modules {
+                        let fs = match module {
+                            ResolveModules::Nested(_) => continue,
+                            ResolveModules::Path { dir, .. } => dir.fs,
+                        };
+                        if let Some(disk_fs_vc) =
+                            ResolvedVc::try_downcast_type::<DiskFileSystem>(fs)
+                        {
+                            candidate_disk_fses.push(disk_fs_vc);
+                        }
+                    }
+
+                    for disk_fs_vc in candidate_disk_fses {
+                        let disk_fs = disk_fs_vc.await?;
+                        if let Some(fs_path) = disk_fs.try_from_sys_path(disk_fs_vc, sys_path, None)
+                        {
+                            let root_path = disk_fs_vc.root().owned().await?;
+                            // Windows absolute requests should be normalized through the
+                            // filesystem root. Otherwise an absolute request can keep the
+                            // importer's lookup path in the resolved identity chain, which may
+                            // create a different module record from a relative request to the same
+                            // physical file.
+                            let (relative_lookup_path, relative_path) = if let Some(relative_path) =
+                                root_path.get_relative_path_to(&fs_path)
+                            {
+                                (root_path.clone(), relative_path)
+                            } else if let Some(relative_path) =
+                                lookup_path.get_relative_path_to(&fs_path)
+                            {
+                                (lookup_path.clone(), relative_path)
+                            } else {
+                                continue;
+                            };
+
+                            return resolve_relative_request(
+                                relative_lookup_path,
+                                request,
+                                options,
+                                options_value,
+                                &Pattern::Constant(relative_path),
+                                query.clone(),
+                                false,
+                                fragment.clone(),
+                            )
+                            .await;
+                        }
+                    }
+                }
+
                 if !has_alias {
                     ResolvingIssue {
                         severity: resolve_error_severity(options).await?,
-                        request_type: "windows import: not implemented yet".to_string(),
+                        request_type: "windows import".to_string(),
                         request: request.to_resolved().await?,
                         file_path: lookup_path.clone(),
                         resolve_options: options.to_resolved().await?,
-                        error_message: Some("windows imports are not implemented yet".to_string()),
+                        error_message: Some(
+                            "Windows absolute path imports can only be resolved if the path is \
+                             within the project root. Please use a relative path instead."
+                                .to_string(),
+                        ),
                         source: None,
                         hint: None,
                     }
@@ -3117,7 +3239,11 @@ async fn resolve_import_map_result(
                     match ty {
                         ExternalType::CommonJs => node_cjs_resolve_options(),
                         ExternalType::EcmaScriptModule => node_esm_resolve_options(),
-                        ExternalType::Script | ExternalType::Url | ExternalType::Global => options,
+                        ExternalType::Script
+                        | ExternalType::Url
+                        | ExternalType::Global
+                        | ExternalType::Promise
+                        | ExternalType::Umd => options,
                     },
                 )
                 .await?

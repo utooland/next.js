@@ -9,9 +9,7 @@ use crate::{
     module_fragments::part::module::EcmascriptModulePartAsset,
     references::{FollowExportsResult, follow_reexports},
     rename::module::EcmascriptModuleRenameModule,
-    side_effect_optimization::{
-        facade::module::EcmascriptModuleFacadeModule, locals::module::EcmascriptModuleLocalsModule,
-    },
+    side_effect_optimization::facade::module::EcmascriptModuleFacadeModule,
 };
 
 #[turbo_tasks::task_input]
@@ -57,8 +55,11 @@ async fn canonicalize_following_reexports(
         return Ok(Vc::upcast(*module));
     }
     Ok(match part {
-        None => Vc::upcast(EcmascriptModuleFacadeModule::new(Vc::upcast(*module))),
-        Some(ModulePart::Evaluation) => Vc::upcast(EcmascriptModuleLocalsModule::new(*module)),
+        // Evaluate the original module record. Otherwise a re-export barrel can be re-entered
+        // through a namespace import and run later re-exports before earlier dependencies finish.
+        None | Some(ModulePart::Evaluation) => {
+            Vc::upcast(EcmascriptModuleFacadeModule::new(Vc::upcast(*module)))
+        }
         Some(part @ (ModulePart::Export(_) | ModulePart::PartialExport { .. })) => {
             apply_reexport_tree_shaking(
                 Vc::upcast(
@@ -92,7 +93,7 @@ async fn apply_reexport_tree_shaking(
         module: final_module,
         export_name: new_export,
         ..
-    } = &*follow_reexports(module, export.clone(), true).await?;
+    } = &*follow_reexports(module, export.clone(), false).await?;
     Ok(if let Some(new_export) = new_export {
         if *new_export == *export {
             **final_module

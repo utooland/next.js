@@ -25,6 +25,9 @@ enum PathType {
         ident_for_path: ResolvedVc<AssetIdent>,
         extension: RcStr,
     },
+    FromAsset {
+        output_asset: ResolvedVc<Box<dyn OutputAsset>>,
+    },
 }
 
 /// Represents the source map of an output asset.
@@ -50,6 +53,21 @@ impl SourceMapAsset {
                 ident_for_path,
                 extension,
             },
+            source_map_ty: *chunking_context.emitted_source_map_type().await?,
+            generate_source_map,
+        }
+        .cell())
+    }
+
+    /// Uses the emitted filename so the output and its map share the same content hash.
+    #[turbo_tasks::function]
+    pub async fn new_for_output_asset(
+        chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
+        output_asset: ResolvedVc<Box<dyn OutputAsset>>,
+        generate_source_map: ResolvedVc<Box<dyn GenerateSourceMap>>,
+    ) -> Result<Vc<Self>> {
+        Ok(SourceMapAsset {
+            path_ty: PathType::FromAsset { output_asset },
             source_map_ty: *chunking_context.emitted_source_map_type().await?,
             generate_source_map,
         }
@@ -96,6 +114,9 @@ impl OutputAsset for SourceMapAsset {
                 .await?
                 .append(".map")?
                 .cell(),
+            PathType::FromAsset { output_asset } => {
+                output_asset.path().await?.append(".map")?.cell()
+            }
             PathType::Fixed { path } => path.append(".map")?.cell(),
         })
     }

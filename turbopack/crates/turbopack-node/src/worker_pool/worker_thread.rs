@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, OnceLock},
+    sync::{Arc, LazyLock, OnceLock},
 };
 
 use bytes::Bytes;
@@ -11,7 +11,7 @@ use napi::{
 };
 use napi_derive::napi;
 use parking_lot::Mutex;
-use tokio::sync::oneshot;
+use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard, oneshot};
 use turbo_rcstr::RcStr;
 
 use crate::worker_pool::{
@@ -33,12 +33,20 @@ static WORKER_CREATOR: OnceLock<FatalThreadsafeFunction<NapiWorkerCreation>> = O
 static WORKER_TERMINATOR: OnceLock<FatalThreadsafeFunction<NapiWorkerTermination>> =
     OnceLock::new();
 
-static PENDING_CREATIONS: OnceLock<Mutex<VecDeque<oneshot::Sender<u32>>>> = OnceLock::new();
+struct PendingCreation {
+    sender: oneshot::Sender<u32>,
+    _creation_guard: OwnedMutexGuard<()>,
+}
+
+static PENDING_CREATIONS: OnceLock<Mutex<VecDeque<PendingCreation>>> = OnceLock::new();
+
+static WORKER_CREATION_LOCK: LazyLock<Arc<AsyncMutex<()>>> =
+    LazyLock::new(|| Arc::new(AsyncMutex::new(())));
 
 // Allow dead_code for test builds where napi exports are not entry points
 #[allow(dead_code)]
 #[napi]
-fn register_worker_scheduler(
+pub fn register_worker_scheduler(
     #[napi(ts_arg_type = "(arg: NapiWorkerCreation) => any")] creator: FatalThreadsafeFunction<
         NapiWorkerCreation,
     >,
@@ -54,6 +62,13 @@ fn register_worker_scheduler(
 }
 
 pub(super) async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
+    let creator = WORKER_CREATOR
+        .get()
+        .ok_or_else(|| anyhow::anyhow!("Worker creator not registered"))?;
+    // Workers can finish booting out of creation order. Keep only one creation
+    // pending until worker_created pairs its worker id with these WorkerOptions.
+    // The pending creation owns the guard even if this future is canceled.
+    let creation_guard = WORKER_CREATION_LOCK.clone().lock_owned().await;
     let (tx, rx) = oneshot::channel();
 
     let napi_options = (&options).into();
@@ -66,18 +81,21 @@ pub(super) async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result
             .lock()
             .entry(options.clone())
             .or_default();
-        pending.lock().push_back(tx);
+        pending.lock().push_back(PendingCreation {
+            sender: tx,
+            _creation_guard: creation_guard,
+        });
     }
 
-    if let Some(creator) = WORKER_CREATOR.get() {
-        creator.call(
-            NapiWorkerCreation {
-                options: napi_options,
-            },
-            ThreadsafeFunctionCallMode::NonBlocking,
-        );
-    } else {
-        anyhow::bail!("Worker creator not registered");
+    let status = creator.call(
+        NapiWorkerCreation {
+            options: napi_options,
+        },
+        ThreadsafeFunctionCallMode::NonBlocking,
+    );
+    if status != Status::Ok {
+        PENDING_CREATIONS.get().unwrap().lock().pop_back();
+        anyhow::bail!("Worker creator call failed: {status:?}");
     }
 
     let worker_id = rx.await?;
@@ -87,11 +105,11 @@ pub(super) async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result
 // Allow dead_code for test builds where napi exports are not entry points
 #[allow(dead_code)]
 #[napi]
-fn worker_created(worker_id: u32) {
+pub fn worker_created(worker_id: u32) {
     if let Some(pending) = PENDING_CREATIONS.get()
-        && let Some(tx) = pending.lock().pop_front()
+        && let Some(creation) = pending.lock().pop_front()
     {
-        let _ = tx.send(worker_id);
+        let _ = creation.sender.send(worker_id);
     }
 }
 
@@ -108,13 +126,15 @@ pub(super) fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
 }
 
 #[napi(object)]
-struct NapiWorkerCreation {
+pub struct NapiWorkerCreation {
     pub options: NapiWorkerOptions,
 }
 
 #[napi(object)]
-struct NapiWorkerOptions {
+pub struct NapiWorkerOptions {
+    #[napi(ts_type = "string")]
     pub filename: RcStr,
+    #[napi(ts_type = "string")]
     pub cwd: RcStr,
 }
 
@@ -132,7 +152,7 @@ where
 }
 
 #[napi(object)]
-struct NapiWorkerTermination {
+pub struct NapiWorkerTermination {
     pub options: NapiWorkerOptions,
     pub worker_id: u32,
 }
@@ -140,7 +160,7 @@ struct NapiWorkerTermination {
 // Allow dead_code for test builds where napi exports are not entry points
 #[allow(dead_code)]
 #[napi(object)]
-struct NapiTaskMessage {
+pub struct NapiTaskMessage {
     pub task_id: u32,
     pub data: napi::bindgen_prelude::Buffer,
 }
@@ -165,7 +185,7 @@ impl From<NapiTaskMessage> for TaskMessage {
 // Allow dead_code for test builds where napi exports are not entry points
 #[allow(dead_code)]
 #[napi]
-async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTaskMessage> {
+pub async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTaskMessage> {
     let (task_id, message) = WORKER_POOL_OPERATION
         .recv_task_message_in_worker(worker_id)
         .await?;
@@ -178,6 +198,6 @@ async fn recv_task_message_in_worker(worker_id: u32) -> napi::Result<NapiTaskMes
 // Allow dead_code for test builds where napi exports are not entry points
 #[allow(dead_code)]
 #[napi]
-fn send_task_message(message: NapiTaskMessage) -> napi::Result<()> {
+pub fn send_task_message(message: NapiTaskMessage) -> napi::Result<()> {
     Ok(WORKER_POOL_OPERATION.send_task_message(message.into())?)
 }
