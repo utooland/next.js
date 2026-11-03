@@ -462,7 +462,8 @@ impl RuntimeVersions {
         // "opera_mobile": "34",
         // "electron": "0.36"
         let data = &self.0;
-        let supported = version_at_least!(data, chrome, 47)
+        let supported = data.ie.is_none()
+            && version_at_least!(data, chrome, 47)
             && version_at_least!(data, opera, 34)
             && version_at_least!(data, edge, 13)
             && version_at_least!(data, firefox, 43)

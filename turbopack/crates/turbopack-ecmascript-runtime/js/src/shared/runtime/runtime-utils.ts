@@ -53,6 +53,12 @@ declare function getOrInstantiateModuleFromParent<M>(
 let createModuleWithDirectionFlag = false
 
 const REEXPORTED_OBJECTS = new WeakMap<Module, ReexportedObjects>()
+// Legacy re-exports need the original CommonJS enumerable keys, not the
+// namespace's synthetic getters for non-enumerable properties.
+const LEGACY_CJS_SOURCES =
+  typeof Proxy === 'function'
+    ? undefined
+    : new WeakMap<EsmNamespaceObject, Exports>()
 
 /**
  * Constructs the `__turbopack_context__` object for a module.
@@ -383,6 +389,10 @@ function ensureDynamicExports(
 
   if (!reexportedObjects) {
     REEXPORTED_OBJECTS.set(module, (reexportedObjects = []))
+    if (typeof Proxy !== 'function') {
+      module.exports = module.namespaceObject = exports
+      return reexportedObjects
+    }
     // Returns the re-exported object that provides `prop` as an own property,
     // or `undefined` if none does. The traps share this logic so they always
     // agree on which keys are synthesized from `reexportedObjects`. `default`
@@ -495,7 +505,25 @@ function dynamicExport(
   }
   const reexportedObjects = ensureDynamicExports(module, exports)
 
-  if (typeof object === 'object' && object !== null) {
+  if (typeof Proxy !== 'function') {
+    if (
+      object !== null &&
+      (typeof object === 'object' || typeof object === 'function')
+    ) {
+      const source = LEGACY_CJS_SOURCES?.has(object)
+        ? LEGACY_CJS_SOURCES.get(object)
+        : object
+      // Like webpack, snapshot export names while keeping their values live.
+      for (const key in source) {
+        if (key !== 'default' && key !== '__esModule') {
+          defineProp(exports, key, {
+            enumerable: true,
+            get: createGetter(source, key),
+          })
+        }
+      }
+    }
+  } else if (typeof object === 'object' && object !== null) {
     reexportedObjects.push(object)
   }
 }
@@ -562,10 +590,12 @@ function interopEsm(
   for (
     let current = raw;
     (typeof current === 'object' || typeof current === 'function') &&
-    !LEAF_PROTOTYPES.includes(current);
+    LEAF_PROTOTYPES.indexOf(current) === -1;
     current = getProto(current)
   ) {
-    for (const key of Object.getOwnPropertyNames(current)) {
+    const keys = Object.getOwnPropertyNames(current)
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
       bindings.push(key, createGetter(raw, key))
       if (defaultLocation === -1 && key === 'default') {
         defaultLocation = bindings.length - 1
@@ -586,6 +616,7 @@ function interopEsm(
   }
 
   esm(ns, bindings)
+  LEGACY_CJS_SOURCES?.set(ns, raw)
   return ns
 }
 
@@ -808,7 +839,9 @@ const relativeURL = function relativeURL(this: any, inputUrl: string) {
       value: values[key],
     })
 }
-relativeURL.prototype = URL.prototype
+if (typeof URL === 'function') {
+  relativeURL.prototype = URL.prototype
+}
 contextPrototype.U = relativeURL
 
 /**
@@ -873,9 +906,7 @@ contextPrototype.g = globalThis
 // Each runtime keeps its own public path. Other applications on the page may
 // change the global path after this runtime has started.
 let runtimePublicPath: unknown =
-  typeof globalThis !== 'undefined'
-    ? (globalThis as any).publicPath
-    : undefined
+  typeof globalThis !== 'undefined' ? (globalThis as any).publicPath : undefined
 Object.defineProperty(contextPrototype, 'runtimePublicPath', {
   get: () => runtimePublicPath,
   set: (value: unknown) => {
