@@ -13,7 +13,7 @@ use turbopack_core::{
     file_source::FileSource,
     ident::AssetIdent,
     module::{Module, ModuleSideEffects},
-    module_graph::{ModuleGraph, chunk_group_info::ChunkGroupKey},
+    module_graph::{GraphTraversalAction, ModuleGraph, chunk_group_info::ChunkGroupKey},
     output::{OutputAsset, OutputAssets, OutputAssetsWithReferenced},
     reference::{ModuleReference, ModuleReferences, SingleChunkableModuleReference},
     reference_type::{EcmaScriptModulesReferenceSubType, ReferenceType},
@@ -131,7 +131,7 @@ impl WorkerLoaderModule {
     }
 
     #[turbo_tasks::function]
-    async fn chunks_data(
+    pub async fn chunks_data(
         self: Vc<Self>,
         chunking_context: Vc<Box<dyn ChunkingContext>>,
         module_graph: Vc<ModuleGraph>,
@@ -320,20 +320,62 @@ impl EcmascriptChunkPlaceable for WorkerLoaderModule {
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| entrypoint_full_path.path.to_string());
 
-                // Get the chunk data for the worker module
-                let chunks_data = self.chunks_data(chunking_context, module_graph).await?;
-                let chunks_data = chunks_data.iter().try_join().await?;
-                let chunks_data: Vec<_> = chunks_data
-                    .iter()
-                    .map(|chunk_data| EcmascriptChunkData::new(chunk_data))
-                    .collect();
+                // Worker chunks can contain this loader again (directly or through another
+                // worker). Embedding their final paths here makes content hashing depend on
+                // itself. The entry bootstrap supplies those paths in a runtime registry;
+                // module code only needs stable worker module IDs.
+                let worker_config = if *chunking_context.worker_chunks_in_manifest().await? {
+                    // Forward only this worker's reachable loaders. Unrelated workers must
+                    // not change its URL, especially a SharedWorker's shared identity.
+                    let mut workers = Vec::new();
+                    module_graph.await?.traverse_nodes_dfs(
+                        [ResolvedVc::upcast(this.inner)],
+                        &mut workers,
+                        |module, workers| {
+                            if let Some(worker) =
+                                ResolvedVc::try_downcast_type::<WorkerLoaderModule>(module)
+                            {
+                                workers.push(worker);
+                            }
+                            Ok(GraphTraversalAction::Continue)
+                        },
+                        |_, _| Ok(()),
+                    )?;
+                    let mut worker_ids = workers
+                        .into_iter()
+                        .map(async |worker| {
+                            if matches!(worker.await?.worker_type, WorkerType::NodeWorkerThread) {
+                                return Ok(None);
+                            }
+                            Ok(Some(worker.chunk_item_id(chunking_context).await?))
+                        })
+                        .try_join()
+                        .await?
+                        .into_iter()
+                        .flatten()
+                        .collect::<Vec<_>>();
+                    worker_ids.sort_unstable();
+                    worker_ids.dedup();
+                    format!(
+                        "{}, {}",
+                        StringifyModuleId(&self.chunk_item_id(chunking_context).await?),
+                        StringifyJs(&worker_ids)
+                    )
+                } else {
+                    let chunks_data = self.chunks_data(chunking_context, module_graph).await?;
+                    let chunks_data = chunks_data.iter().try_join().await?;
+                    let chunks_data: Vec<_> = chunks_data
+                        .iter()
+                        .map(|chunk_data| EcmascriptChunkData::new(chunk_data))
+                        .collect();
+                    StringifyJs(&chunks_data).to_string()
+                };
 
                 formatdoc! {
                     r#"
-                        {TURBOPACK_EXPORT_VALUE}({TURBOPACK_REQUIRE}({workers_module})[{export:#}]({entrypoint}, {chunks}));
+                        {TURBOPACK_EXPORT_VALUE}({TURBOPACK_REQUIRE}({workers_module})[{export:#}]({entrypoint}, {worker_config}));
                     "#,
                     entrypoint = StringifyJs(&entrypoint_path),
-                    chunks = StringifyJs(&chunks_data),
                     workers_module = StringifyModuleId(&create_worker_id),
                     export = StringifyJs(&create_worker_export),
                 }

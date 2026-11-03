@@ -15,13 +15,14 @@ use crate::{
         EcmascriptChunkItemBatchGroup, EcmascriptChunkItemExt,
         EcmascriptChunkItemOrBatchWithAsyncInfo, EcmascriptChunkItemWithAsyncInfo,
     },
-    minify::minify_chunk_item,
+    minify::{get_compress_options_for_target, minify_chunk_item},
 };
 
 async fn code_module_id_and_path(
     item: &EcmascriptChunkItemWithAsyncInfo,
     minify: MinifyType,
     source_maps: bool,
+    supports_arrow_functions: bool,
 ) -> Result<CodeModuleIdAndPath> {
     let factory = item
         .chunk_item
@@ -33,14 +34,18 @@ async fn code_module_id_and_path(
     // its `"use strict"` directive either way; the chunk drops it where it places the factory in a
     // strict context (see `write_module_factories`).
     let code = match minify {
-        MinifyType::Minify { mangle } => ReadRef::new_owned(minify_chunk_item(
-            &code,
-            source_maps,
+        MinifyType::Minify { mangle, compress } => {
             // `OptimalSize` orders mangled names by the character frequency of the code being
             // minified. Per item, that order differs from factory to factory, which hurts gzip
             // across the chunk. A fixed order keeps names consistent between factories.
-            mangle.map(|_| MangleType::Deterministic),
-        )?),
+            let mangle = mangle.map(|_| MangleType::Deterministic);
+            ReadRef::new_owned(minify_chunk_item(
+                &code,
+                source_maps,
+                mangle,
+                get_compress_options_for_target(compress, mangle, supports_arrow_functions),
+            )?)
+        }
         MinifyType::NoMinify => code,
     };
     Ok(CodeModuleIdAndPath {
@@ -72,6 +77,7 @@ pub async fn batch_group_code_module_ids_and_paths(
     batch_group: Vc<EcmascriptChunkItemBatchGroup>,
     minify: MinifyType,
     source_maps: bool,
+    supports_arrow_functions: bool,
 ) -> Result<Vc<BatchGroupCodeModuleIdsAndPaths>> {
     Ok(Vc::cell(
         batch_group
@@ -81,7 +87,13 @@ pub async fn batch_group_code_module_ids_and_paths(
             .map(async |item| {
                 Ok((
                     item.clone(),
-                    item_code_module_ids_and_paths(item.clone(), minify, source_maps).await?,
+                    item_code_module_ids_and_paths(
+                        item.clone(),
+                        minify,
+                        source_maps,
+                        supports_arrow_functions,
+                    )
+                    .await?,
                 ))
             })
             .try_join()
@@ -96,16 +108,22 @@ pub async fn item_code_module_ids_and_paths(
     item: EcmascriptChunkItemOrBatchWithAsyncInfo,
     minify: MinifyType,
     source_maps: bool,
+    supports_arrow_functions: bool,
 ) -> Result<Vc<CodeModuleIdsAndPaths>> {
     Ok(Vc::cell(match item {
         EcmascriptChunkItemOrBatchWithAsyncInfo::ChunkItem(item) => {
-            smallvec![code_module_id_and_path(&item, minify, source_maps).await?]
+            smallvec![
+                code_module_id_and_path(&item, minify, source_maps, supports_arrow_functions)
+                    .await?
+            ]
         }
         EcmascriptChunkItemOrBatchWithAsyncInfo::Batch(batch) => batch
             .await?
             .chunk_items
             .iter()
-            .map(async |item| code_module_id_and_path(item, minify, source_maps).await)
+            .map(async |item| {
+                code_module_id_and_path(item, minify, source_maps, supports_arrow_functions).await
+            })
             .try_join()
             .await?
             .into(),

@@ -1,7 +1,8 @@
 use anyhow::Result;
-use turbo_rcstr::rcstr;
+use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, ValueToString, Vc};
 use turbo_tasks_fs::{File, FileContent, FileSystem, FileSystemPath};
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{ChunkingContext, MinifyType},
@@ -10,8 +11,8 @@ use turbopack_core::{
     output::{OutputAsset, OutputAssetsReference, OutputAssetsWithReferenced},
     source_map::{GenerateSourceMap, SourceMapAsset},
 };
-use turbopack_ecmascript::minify::minify;
-use turbopack_ecmascript_runtime::RuntimeType;
+use turbopack_ecmascript::minify::{get_compress_options_for_target, minify};
+use turbopack_ecmascript_runtime::{RuntimeType, browser_runtime_options};
 
 use crate::BrowserChunkingContext;
 
@@ -27,6 +28,7 @@ use crate::BrowserChunkingContext;
 pub struct EcmascriptBrowserRuntimeChunk {
     chunking_context: ResolvedVc<BrowserChunkingContext>,
     include_async_module_runtime: bool,
+    has_external_modules: bool,
 }
 
 #[turbo_tasks::value_impl]
@@ -35,10 +37,12 @@ impl EcmascriptBrowserRuntimeChunk {
     pub fn new(
         chunking_context: ResolvedVc<BrowserChunkingContext>,
         include_async_module_runtime: bool,
+        has_external_modules: bool,
     ) -> Vc<Self> {
         EcmascriptBrowserRuntimeChunk {
             chunking_context,
             include_async_module_runtime,
+            has_external_modules,
         }
         .cell()
     }
@@ -63,6 +67,7 @@ impl EcmascriptBrowserRuntimeChunk {
                 let runtime_code = turbopack_ecmascript_runtime::get_browser_runtime_code(
                     asset_context,
                     chunking_context.chunk_base_path(),
+                    chunking_context.worker_configuration_options(),
                     chunking_context.asset_suffix(),
                     runtime_type,
                     output_root_to_root_path,
@@ -70,9 +75,13 @@ impl EcmascriptBrowserRuntimeChunk {
                     chunking_context.chunk_loading_global(),
                     chunking_context.cross_origin(),
                     chunking_context.chunk_load_retry(),
-                    this.include_async_module_runtime,
                     chunking_context.chunk_loading(),
-                    *chunking_context.generate_component_chunks().await?,
+                    browser_runtime_options(
+                        this.include_async_module_runtime,
+                        this.has_external_modules,
+                        chunking_context.entry_root_export().owned().await?,
+                        *chunking_context.generate_component_chunks().await?,
+                    ),
                 );
                 code.push_code(&*runtime_code.await?);
             }
@@ -85,8 +94,17 @@ impl EcmascriptBrowserRuntimeChunk {
 
         let mut code = code.build();
 
-        if let MinifyType::Minify { mangle } = *chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } = *chunking_context.minify_type().await? {
+            let supports_arrow_functions = *environment
+                .runtime_versions()
+                .supports_arrow_functions()
+                .await?;
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options_for_target(compress, mangle, supports_arrow_functions),
+            )?;
         }
 
         Ok(code.cell())
@@ -104,13 +122,8 @@ impl EcmascriptBrowserRuntimeChunk {
     }
 
     #[turbo_tasks::function]
-    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        let this = self.await?;
-        Ok(SourceMapAsset::new(
-            Vc::upcast(*this.chunking_context),
-            self.ident_for_path(),
-            Vc::upcast(self),
-        ))
+    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
+        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
     }
 }
 
@@ -152,6 +165,15 @@ impl OutputAsset for EcmascriptBrowserRuntimeChunk {
 
 #[turbo_tasks::value_impl]
 impl Asset for EcmascriptBrowserRuntimeChunk {
+    #[turbo_tasks::function]
+    fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Vc<Option<RcStr>> {
+        self.code().content_hash(salt, algorithm)
+    }
+
     #[turbo_tasks::function]
     async fn content(self: Vc<Self>) -> Result<Vc<AssetContent>> {
         Ok(AssetContent::file(

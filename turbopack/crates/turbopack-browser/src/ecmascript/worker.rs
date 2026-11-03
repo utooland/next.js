@@ -5,7 +5,7 @@ use indoc::writedoc;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, ValueToString, Vc};
 use turbo_tasks_fs::{File, FileContent, FileSystemPath};
-use turbo_tasks_hash::hash_xxh3_hash64;
+use turbo_tasks_hash::{HashAlgorithm, hash_xxh3_hash64};
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{ChunkingContext, MinifyType},
@@ -14,14 +14,15 @@ use turbopack_core::{
     output::{OutputAsset, OutputAssetsReference, OutputAssetsWithReferenced},
     source_map::{GenerateSourceMap, SourceMapAsset},
 };
-use turbopack_ecmascript::minify::minify;
+use turbopack_ecmascript::minify::{get_compress_options_for_target, minify};
 
 use crate::BrowserChunkingContext;
 
 /// A pre-compiled worker entrypoint that bootstraps workers by reading config from URL params.
 ///
 /// The worker receives a JSON array via URL params of the following structure:
-/// `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...forwarded_global_values]`
+/// `[TURBOPACK_NEXT_CHUNK_URLS, ASSET_SUFFIX, WORKER_CHUNK_BASE_PATH, ...forwarded_global_values,
+/// worker_registry?]`
 #[turbo_tasks::value(shared)]
 #[derive(ValueToString)]
 #[value_to_string("Ecmascript Browser Worker Entrypoint")]
@@ -57,19 +58,37 @@ impl EcmascriptBrowserWorkerEntrypoint {
             .await?;
 
         let forwarded_globals = this.forwarded_globals.await?;
-        // The shared-runtime worker bootstrap loads a dedicated last `runtime.js`; without it the
-        // runtime is inlined into the module/evaluate chunks, so load the chunk list as-is.
-        let shared_runtime =
+        // Exporting entries need their shared registry before the entry factory returns. Ordinary
+        // entries instead queue their registrations before the shared runtime executes.
+        let (shared_runtime, entry_root_export) =
             match ResolvedVc::try_downcast_type::<BrowserChunkingContext>(this.chunking_context) {
-                Some(browser_chunking_context) => {
-                    *browser_chunking_context.shared_runtime().await?
-                }
-                None => false,
+                Some(browser_chunking_context) => (
+                    *browser_chunking_context.shared_runtime().await?,
+                    browser_chunking_context
+                        .entry_root_export()
+                        .await?
+                        .is_some(),
+                ),
+                None => (false, false),
             };
-        let mut code = generate_worker_bootstrap_code(&forwarded_globals, shared_runtime)?;
+        let mut code =
+            generate_worker_bootstrap_code(&forwarded_globals, shared_runtime, entry_root_export)?;
 
-        if let MinifyType::Minify { mangle } = *this.chunking_context.minify_type().await? {
-            code = minify(code, source_maps, mangle)?;
+        if let MinifyType::Minify { mangle, compress } =
+            *this.chunking_context.minify_type().await?
+        {
+            let supports_arrow_functions = *this
+                .chunking_context
+                .environment()
+                .runtime_versions()
+                .supports_arrow_functions()
+                .await?;
+            code = minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options_for_target(compress, mangle, supports_arrow_functions),
+            )?;
         }
 
         Ok(code.cell())
@@ -87,13 +106,8 @@ impl EcmascriptBrowserWorkerEntrypoint {
     }
 
     #[turbo_tasks::function]
-    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        let this = self.await?;
-        Ok(SourceMapAsset::new(
-            *this.chunking_context,
-            self.ident_for_path(),
-            Vc::upcast(self),
-        ))
+    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
+        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
     }
 }
 
@@ -125,6 +139,15 @@ impl OutputAsset for EcmascriptBrowserWorkerEntrypoint {
 #[turbo_tasks::value_impl]
 impl Asset for EcmascriptBrowserWorkerEntrypoint {
     #[turbo_tasks::function]
+    fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Vc<Option<RcStr>> {
+        self.code().content_hash(salt, algorithm)
+    }
+
+    #[turbo_tasks::function]
     async fn content(self: Vc<Self>) -> Result<Vc<AssetContent>> {
         Ok(AssetContent::file(
             FileContent::Content(File::from(
@@ -152,6 +175,7 @@ impl GenerateSourceMap for EcmascriptBrowserWorkerEntrypoint {
 fn generate_worker_bootstrap_code(
     forwarded_globals: &[RcStr],
     shared_runtime: bool,
+    entry_root_export: bool,
 ) -> Result<Code> {
     let mut code: CodeBuilder = CodeBuilder::default();
 
@@ -162,6 +186,10 @@ fn generate_worker_bootstrap_code(
         "TURBOPACK_NEXT_CHUNK_URLS: chunkUrls".to_string(),
         "TURBOPACK_ASSET_SUFFIX: param(1)".to_string(),
         "TURBOPACK_CHUNK_BASE_PATH: param(2)".to_string(),
+        format!(
+            "TURBOPACK_WORKER_CHUNKS: Array.isArray(params[{n}]) ? params[{n}] : []",
+            n = 3 + forwarded_globals.len()
+        ),
     ];
     for (i, name) in forwarded_globals.iter().enumerate() {
         // Forwarded globals start at params[3]
@@ -213,9 +241,26 @@ fn generate_worker_bootstrap_code(
         "##,
     )?;
 
-    if shared_runtime {
-        // With a shared runtime the runtime is a separate last chunk. Pull it off the front (the
-        // list is reversed by `createWorker`) so we can load it after the module chunks below.
+    if shared_runtime && entry_root_export {
+        // `createWorker` reverses the group's asset list. Exporting groups end in runtime, entry
+        // bootstrap; ordinary groups end in entry bootstrap, runtime.
+        writedoc!(
+            code,
+            r##"
+
+            // Chunks are relative to the origin; only allow loading same-origin scripts.
+            function sameOriginUrl(chunk) {{
+                var chunkUrl = new URL(chunk, location.origin);
+                if (chunkUrl.origin !== location.origin) {{
+                    abort("Refusing to load script from foreign origin: " + chunkUrl.origin);
+                }}
+                return chunkUrl.toString();
+            }}
+
+            var runtimeUrl = chunkUrls.length > 1 ? chunkUrls.splice(1, 1)[0] : undefined;
+            "##,
+        )?;
+    } else if shared_runtime {
         writedoc!(
             code,
             r##"
@@ -248,7 +293,28 @@ fn generate_worker_bootstrap_code(
         globals_js
     )?;
 
-    if shared_runtime {
+    if shared_runtime && entry_root_export {
+        writedoc!(
+            code,
+            r##"
+
+            if (chunkUrls.length > 0 || runtimeUrl) {{
+                var scriptsToLoad = [];
+                // The runtime has no registration to pop from TURBOPACK_NEXT_CHUNK_URLS.
+                if (runtimeUrl) {{
+                    scriptsToLoad.push(sameOriginUrl(runtimeUrl));
+                }}
+                // Keep chunkUrls as a stack matching the original asset load order. Both the
+                // original module chunks and the exporting bootstrap consume their own URLs.
+                for (var i = chunkUrls.length - 1; i >= 0; i--) {{
+                    scriptsToLoad.push(sameOriginUrl(chunkUrls[i]));
+                }}
+                importScripts.apply(self, scriptsToLoad);
+            }}
+            }})();
+            "##,
+        )?;
+    } else if shared_runtime {
         writedoc!(
             code,
             r##"

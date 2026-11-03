@@ -34,6 +34,10 @@ use turbopack_core::{
     virtual_source::VirtualSource,
 };
 
+#[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+use crate::process_pool::ChildProcessPool;
+#[cfg(feature = "worker_pool")]
+use crate::worker_pool::WorkerThreadPool;
 use crate::{
     AssetsForSourceMapping,
     backend::{CreatePoolOptions, NodeBackend},
@@ -56,12 +60,26 @@ pub enum EvaluateArg {
     /// This is converted when the evaluation runs, so that machine-specific system paths aren't
     /// stored in task inputs or cells.
     Path(FileSystemPath),
+    /// Prefer an absolute system path for transforms such as PostCSS. Virtual paths on the
+    /// same filesystem fall back to a cwd-relative path; unrelated virtual paths are empty.
+    /// Conversion is deferred until evaluation so system paths do not enter task inputs.
+    AbsolutePath(FileSystemPath),
 }
 
 impl EvaluateArg {
     async fn to_json(&self, cwd: &FileSystemPath) -> Result<EvaluatedArg> {
         Ok(match self {
             Self::Vc(value) => EvaluatedArg::ReadRef(value.await?),
+            Self::AbsolutePath(path) => {
+                let path = if let Some(path) = to_sys_path(path.clone()).await? {
+                    path.to_string_lossy().into_owned()
+                } else {
+                    cwd.get_relative_path_to(path)
+                        .map(|path| path.into_owned())
+                        .unwrap_or_default()
+                };
+                EvaluatedArg::Owned(JsonValue::String(path))
+            }
             Self::Path(path) => {
                 let path = if let Some(relative) = cwd.get_relative_path_to(path) {
                     // prefer to give the loader a relative path if we can, to reduce the risk of
@@ -129,6 +147,7 @@ pub struct EvaluatePool {
 }
 
 impl EvaluatePool {
+    #[allow(dead_code)]
     pub(crate) fn new(
         pool: Box<dyn EvaluateOperation>,
         assets_for_source_mapping: ResolvedVc<AssetsForSourceMapping>,
@@ -319,7 +338,13 @@ pub async fn get_evaluate_pool(
             assets_for_source_mapping,
             assets_root: output_root.clone(),
             project_dir: chunking_context.root_path().owned().await?,
-            concurrency: available_parallelism().map_or(1, |v| v.get()),
+            concurrency: if cfg!(all(target_family = "wasm", target_os = "unknown")) {
+                //TODO: Enable concurrency may cause OPFS error, which can't resolve files under
+                // .turbopack/
+                1
+            } else {
+                available_parallelism().map_or(1, |v| v.get())
+            },
             debug,
         })
         .await?;
@@ -948,5 +973,27 @@ impl Issue for NodeJsConnectIssue {
         rcstr!(
             "https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackPluginRuntimeStrategy"
         )
+    }
+}
+
+pub fn scale_down() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_down();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_down();
+    }
+}
+
+pub fn scale_zero() {
+    #[cfg(all(feature = "process_pool", not(feature = "worker_pool")))]
+    {
+        ChildProcessPool::scale_zero();
+    }
+    #[cfg(feature = "worker_pool")]
+    {
+        WorkerThreadPool::scale_zero();
     }
 }

@@ -78,6 +78,31 @@ impl ModuleExportUsage {
 }
 
 impl BindingUsageInfo {
+    /// Releases code-generation data of modules unused by this analysis.
+    ///
+    /// Call only after this graph's entry discovery is complete and the graph determines which
+    /// modules will be code generated. Keeping this separate allows callers to reuse an earlier
+    /// analysis without releasing data needed while discovering additional entries.
+    pub async fn drop_unused_module_data(&self, graph: Vc<ModuleGraph>) -> Result<()> {
+        let graph = graph.await?;
+        graph
+            .iter_nodes()
+            .map(async |module| {
+                // Analysis records usage for every module reached through used references.
+                if !self.used_exports.contains_key(&module).await? {
+                    module
+                        .into_trait_ref()
+                        .await?
+                        .drop_code_gen_data_hint()
+                        .await?;
+                }
+                Ok(())
+            })
+            .try_join()
+            .await?;
+        Ok(())
+    }
+
     pub async fn used_exports(
         &self,
         module: ResolvedVc<Box<dyn Module>>,
@@ -381,23 +406,6 @@ pub async fn compute_binding_usage_info(
         span.record("visit_count", visit_count);
         span.record("unused_reference_count", unused_references.len());
 
-        if drop_unused_module_data {
-            // The traversal visits every module that is reachable via used references (and sets
-            // its usage), so the remaining ones are unused.
-            graph_ref
-                .iter_nodes()
-                .filter(|module| !used_exports.contains_key(module))
-                .map(async |module| {
-                    module
-                        .into_trait_ref()
-                        .await?
-                        .drop_code_gen_data_hint()
-                        .await
-                })
-                .try_join()
-                .await?;
-        }
-
         #[cfg(debug_assertions)]
         {
             use std::sync::LazyLock;
@@ -438,14 +446,17 @@ pub async fn compute_binding_usage_info(
             }
         }
 
-        Ok(BindingUsageInfo {
+        let binding_usage_info = BindingUsageInfo {
             unused_references: ResolvedVc::cell(unused_references),
             unused_references_edges: ResolvedVc::cell(unused_references_edges),
             used_exports: ResolvedVc::cell(used_exports),
             export_circuit_breakers: ResolvedVc::cell(export_circuit_breakers),
             partial_namespace_modules: ResolvedVc::cell(partial_namespace_modules),
+        };
+        if drop_unused_module_data {
+            binding_usage_info.drop_unused_module_data(graph).await?;
         }
-        .cell())
+        Ok(binding_usage_info.cell())
     }
     .instrument(span_outer)
     .await

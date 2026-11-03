@@ -27,7 +27,6 @@ use crate::{
             define_property_sets_es_module, is_exports_object, is_global, is_module_exports_chain,
         },
         graph::{ConditionalKind, Effect, EffectArg, EffectsBlock, EvalContext, VarGraph},
-        is_unresolved_id,
     },
     ast_path_trie::{AstPathId, AstPathTrieBuilder},
     chunk::CjsStaticExports,
@@ -1011,7 +1010,7 @@ impl CallOrNewExpr<'_> {
 
 impl<'a> Analyzer<'a, '_> {
     fn add_value(&mut self, id: Id, value: JsValue<'a>) {
-        if is_unresolved_id(&id, self.eval_context.unresolved_mark) {
+        if self.eval_context.is_free_id(&id) {
             self.data.free_var_ids.insert(id.0.clone(), id.clone());
         }
 

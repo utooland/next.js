@@ -5,7 +5,7 @@ use indoc::writedoc;
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{ResolvedVc, Vc};
 use turbopack_core::{
-    chunk::{AssetSuffix, ChunkLoadRetry, CrossOrigin},
+    chunk::{AssetSuffix, ChunkLoadRetry, CrossOrigin, WorkerConfigurationOptions},
     code_builder::{Code, CodeBuilder},
     context::AssetContext,
     environment::ChunkLoading,
@@ -31,11 +31,36 @@ mod tests {
     }
 }
 
+#[turbo_tasks::value(cell = "new")]
+pub struct BrowserRuntimeOptions {
+    pub include_async_module_runtime: bool,
+    pub has_external_modules: bool,
+    pub entry_root_export: Option<RcStr>,
+    pub support_component_chunks: bool,
+}
+
+#[turbo_tasks::function]
+pub fn browser_runtime_options(
+    include_async_module_runtime: bool,
+    has_external_modules: bool,
+    entry_root_export: Option<RcStr>,
+    support_component_chunks: bool,
+) -> Vc<BrowserRuntimeOptions> {
+    BrowserRuntimeOptions {
+        include_async_module_runtime,
+        has_external_modules,
+        entry_root_export,
+        support_component_chunks,
+    }
+    .cell()
+}
+
 /// Returns the code for the ECMAScript runtime.
 #[turbo_tasks::function]
 pub async fn get_browser_runtime_code(
     asset_context: ResolvedVc<Box<dyn AssetContext>>,
     chunk_base_path: Vc<Option<RcStr>>,
+    worker_configuration_options: Vc<WorkerConfigurationOptions>,
     asset_suffix: Vc<AssetSuffix>,
     runtime_type: RuntimeType,
     output_root_to_root_path: RcStr,
@@ -43,9 +68,8 @@ pub async fn get_browser_runtime_code(
     chunk_loading_global: Vc<RcStr>,
     cross_origin: Vc<CrossOrigin>,
     chunk_load_retry: Vc<ChunkLoadRetry>,
-    include_async_module_runtime: bool,
     chunk_loading: Vc<ChunkLoading>,
-    support_component_chunks: bool,
+    options: Vc<BrowserRuntimeOptions>,
 ) -> Result<Vc<Code>> {
     let asset_context = *asset_context;
     let environment = asset_context.compile_time_info().environment();
@@ -107,43 +131,60 @@ pub async fn get_browser_runtime_code(
     let relative_root_path = output_root_to_root_path;
     let chunk_base_path = chunk_base_path.await?;
     let chunk_base_path = chunk_base_path.as_ref().map_or_else(|| "", |f| f.as_str());
+    let worker_configuration_options = worker_configuration_options.await?;
+    // `null` (no override) and `Some("")` (empty-string prefix) are distinct
+    // states, so inject as a JS literal instead of collapsing both to "".
+    let worker_asset_prefix_js: String = worker_configuration_options
+        .asset_prefix
+        .as_ref()
+        .map_or_else(
+            || "null".to_string(),
+            |f| format!("{}", StringifyJs(f.as_str())),
+        );
     let asset_suffix = asset_suffix.await?;
     let chunk_loading_global = chunk_loading_global.await?;
     let cross_origin = *cross_origin.await?;
     let chunk_lists_global = format!("{}_CHUNK_LISTS", chunk_loading_global);
     let chunk_update_listeners_global =
         chunk_update_listeners_global_name(chunk_loading_global.as_str());
+    let options = options.await?;
+    let include_async_module_runtime = options.include_async_module_runtime;
+    let entry_root_export = &options.entry_root_export;
+    let support_component_chunks = options.support_component_chunks;
 
-    if *environment
-        .runtime_versions()
-        .supports_arrow_functions()
-        .await?
-    {
+    let runtime_versions = environment.runtime_versions();
+    if *runtime_versions.supports_arrow_functions().await? {
         code += "(() => {\n";
     } else {
         code += "(function(){\n";
     }
-
-    // A shared runtime can execute before any async chunk has initialized the chunk queue.
-    // Treat a missing queue as empty, but return when another runtime has already installed its
-    // registry object.
+    if !*runtime_versions.supports_global_this().await? {
+        // Browser chunks use `self` until this runtime executes. Defining `globalThis` here keeps
+        // the embedded runtime and module factories compatible without changing application code.
+        code += "if (typeof globalThis === \"undefined\") self.globalThis = self;\n";
+    }
+    // A shared runtime can execute before any async chunk has initialized the chunk queue. The
+    // wrapper treats a missing queue as empty, while still returning when another
+    // runtime has already installed its registry object.
     writedoc!(
         code,
         r#"
-            var chunksToRegister = globalThis[{}];
-            if (chunksToRegister === undefined) {{
-                chunksToRegister = [];
-            }} else if (!Array.isArray(chunksToRegister)) {{
-                return;
-            }}
+                var chunksToRegister = globalThis[{}];
+                if (chunksToRegister === undefined) {{
+                    chunksToRegister = [];
+                }} else if (!Array.isArray(chunksToRegister)) {{
+                    return;
+                }}
 
-            var CHUNK_BASE_PATH = {};
-            var RELATIVE_ROOT_PATH = {};
-            var RUNTIME_PUBLIC_PATH = {};
-            const SUPPORT_COMPONENT_CHUNKS = {};
-        "#,
+                var CHUNK_BASE_PATH = {};
+                var WORKER_BASE_PATH = {};
+                var RELATIVE_ROOT_PATH = {};
+                var RUNTIME_PUBLIC_PATH = {};
+                const SUPPORT_COMPONENT_CHUNKS = {};
+            "#,
         StringifyJs(&chunk_loading_global),
         StringifyJs(chunk_base_path),
+        worker_asset_prefix_js,
         StringifyJs(relative_root_path.as_str()),
         StringifyJs(chunk_base_path),
         support_component_chunks,
@@ -229,6 +270,14 @@ pub async fn get_browser_runtime_code(
         chunk_load_retry.max_jitter_ms,
     )?;
 
+    writedoc!(
+        code,
+        r#"
+            var WORKER_FORWARDED_GLOBALS = {};
+        "#,
+        StringifyJs(&worker_configuration_options.forwarded_globals)
+    )?;
+
     code.push_code(&*shared_runtime_utils_code.await?);
     if include_async_module_runtime {
         code.push_code(
@@ -246,7 +295,7 @@ pub async fn get_browser_runtime_code(
         );
     }
 
-    if *environment.supports_commonjs_externals().await? {
+    if options.has_external_modules || *environment.supports_commonjs_externals().await? {
         code.push_code(
             &*embed_static_code(
                 asset_context,
@@ -275,14 +324,41 @@ pub async fn get_browser_runtime_code(
     // Registering chunks/chunk lists depends on the BACKEND variable set by the specific
     // runtime code, so it must be appended after it. `registerChunk` handles both queued forms:
     // chunk-registration arrays and inlined entry-only params objects.
-    writedoc!(
-        code,
-        r#"
-            globalThis[{chunk_loading_global}] = {{ push: registerChunk }};
-            chunksToRegister.forEach(registerChunk);
-        "#,
-        chunk_loading_global = StringifyJs(&chunk_loading_global),
-    )?;
+    if entry_root_export.is_some() {
+        // Entry bootstraps register their initial factories before requesting their own exports.
+        // Keep this on the registry so an entry can use the same runtime as another entry.
+        writedoc!(
+            code,
+            r#"
+                globalThis[{chunk_loading_global}] = {{
+                    push: registerChunk,
+                    getEntryExports: function(registration) {{
+                        var chunk = registration[0];
+                        var chunkPath = chunk == null ? undefined : getPathFromScript(getChunkFromRegistration(chunk));
+                        var runtimeModuleIds = registration[1].runtimeModuleIds;
+                        var entryModule;
+                        for (var i = 0; i < runtimeModuleIds.length; i++) {{
+                            entryModule = getOrInstantiateRuntimeModule(chunkPath, runtimeModuleIds[i]);
+                        }}
+                        // Async modules already expose a promise; synchronous entries keep their
+                        // namespace value without an additional asynchronous boundary.
+                        return entryModule && (entryModule.namespaceObject || entryModule.exports);
+                    }}
+                }};
+                chunksToRegister.forEach(registerChunk);
+            "#,
+            chunk_loading_global = StringifyJs(&chunk_loading_global),
+        )?;
+    } else {
+        writedoc!(
+            code,
+            r#"
+                globalThis[{chunk_loading_global}] = {{ push: registerChunk }};
+                chunksToRegister.forEach(registerChunk);
+            "#,
+            chunk_loading_global = StringifyJs(&chunk_loading_global),
+        )?;
+    }
     if matches!(runtime_type, RuntimeType::Development) {
         writedoc!(
             code,
@@ -294,11 +370,12 @@ pub async fn get_browser_runtime_code(
             chunk_lists_global = StringifyJs(&chunk_lists_global),
         )?;
     }
+
     writedoc!(
         code,
         r#"
             }})();
-        "#
+            "#
     )?;
 
     Ok(Code::cell(code.build()))

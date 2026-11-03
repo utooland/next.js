@@ -14,7 +14,7 @@
     "checkJs": false,
 
     // environment
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "WebWorker"],
     "target": "esnext",
 
     // modules

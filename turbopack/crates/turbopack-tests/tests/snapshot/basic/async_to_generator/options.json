@@ -1,0 +1,5 @@
+{
+  "browserslist": "chrome 41",
+  "runtimeType": "Production",
+  "moduleFragmentsEnabled": true
+}

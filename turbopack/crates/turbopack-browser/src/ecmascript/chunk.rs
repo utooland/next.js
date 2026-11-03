@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{FxIndexSet, ResolvedVc, ValueToString, Vc};
 use turbo_tasks_fs::{FileContent, FileSystemPath};
+use turbo_tasks_hash::HashAlgorithm;
 use turbopack_core::{
     asset::{Asset, AssetContent},
     chunk::{Chunk, ChunkingContext, OutputChunk, OutputChunkRuntimeInfo},
@@ -40,13 +41,8 @@ impl EcmascriptBrowserChunk {
     }
 
     #[turbo_tasks::function]
-    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
-        let this = self.await?;
-        Ok(SourceMapAsset::new(
-            Vc::upcast(*this.chunking_context),
-            this.ident_for_path().await?,
-            Vc::upcast(self),
-        ))
+    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
+        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
     }
 }
 
@@ -176,6 +172,15 @@ impl OutputAsset for EcmascriptBrowserChunk {
 
 #[turbo_tasks::value_impl]
 impl Asset for EcmascriptBrowserChunk {
+    #[turbo_tasks::function]
+    fn content_hash(
+        self: Vc<Self>,
+        salt: Vc<RcStr>,
+        algorithm: HashAlgorithm,
+    ) -> Vc<Option<RcStr>> {
+        self.own_content().code().content_hash(salt, algorithm)
+    }
+
     #[turbo_tasks::function]
     fn content(self: Vc<Self>) -> Vc<AssetContent> {
         self.own_content().content()

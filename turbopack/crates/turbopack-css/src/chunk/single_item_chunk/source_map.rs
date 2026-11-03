@@ -1,10 +1,8 @@
 use anyhow::Result;
-use turbo_rcstr::rcstr;
 use turbo_tasks::{ResolvedVc, Vc};
 use turbo_tasks_fs::{File, FileContent, FileSystemPath};
 use turbopack_core::{
     asset::{Asset, AssetContent},
-    chunk::ChunkingContext,
     output::{OutputAsset, OutputAssetsReference},
     source_map::{GenerateSourceMap, SourceMap},
 };
@@ -33,19 +31,7 @@ impl OutputAsset for SingleItemCssChunkSourceMapAsset {
     #[turbo_tasks::function]
     async fn path(self: Vc<Self>) -> Result<Vc<FileSystemPath>> {
         let this = self.await?;
-        Ok(this
-            .chunk
-            .await?
-            .chunking_context
-            .chunk_path(
-                Some(Vc::upcast(self)),
-                this.chunk.ident_for_path(),
-                None,
-                rcstr!(".single.css"),
-            )
-            .await?
-            .append(".map")?
-            .cell())
+        Ok(this.chunk.path().await?.append(".map")?.cell())
     }
 }
 

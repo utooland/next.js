@@ -14,7 +14,7 @@ use turbopack_ecmascript::{
         EcmascriptChunkItemContent, EcmascriptChunkItemOptions, EcmascriptChunkPlaceable,
         EcmascriptExports, ecmascript_chunk_item,
     },
-    runtime_functions::{TURBOPACK_EXPORT_URL, TURBOPACK_EXPORT_VALUE},
+    runtime_functions::{TURBOPACK_EXPORT_URL, TURBOPACK_EXPORT_VALUE, TURBOPACK_PUBLIC_PATH},
     utils::StringifyJs,
 };
 
@@ -102,6 +102,34 @@ impl EcmascriptChunkPlaceable for StaticUrlJsModule {
         let url = chunking_context
             .asset_url(static_asset.path().owned().await?, this.tag.clone())
             .await?;
+
+        /*
+         * TODO: @fireairefore
+         * remove this, switch to use AssetSuffix::FromGlobal
+         */
+        if let Some(asset_path) = url.strip_prefix("__RUNTIME_PUBLIC_PATH__") {
+            // For runtime publicPath, use the getPublicPath() runtime function
+            let code = format!(
+                "{TURBOPACK_EXPORT_VALUE}({TURBOPACK_PUBLIC_PATH}() + {path});",
+                path = StringifyJs(asset_path)
+            );
+            return Ok(EcmascriptChunkItemContent {
+                inner_code: code.into(),
+                ..Default::default()
+            }
+            .cell());
+        }
+        if let Some(asset_path) = url.strip_prefix("__AUTO_PUBLIC_PATH__") {
+            let code = format!(
+                "{TURBOPACK_EXPORT_VALUE}({TURBOPACK_PUBLIC_PATH}(\"auto\") + {path});",
+                path = StringifyJs(asset_path)
+            );
+            return Ok(EcmascriptChunkItemContent {
+                inner_code: code.into(),
+                ..Default::default()
+            }
+            .cell());
+        }
 
         let url_behavior = chunking_context.url_behavior(this.tag.clone()).await?;
 

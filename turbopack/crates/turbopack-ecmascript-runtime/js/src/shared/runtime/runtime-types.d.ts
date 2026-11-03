@@ -91,6 +91,7 @@ type DynamicExport = (
 
 type LoadChunk = (chunkPath: ChunkPath) => Promise<any> | undefined
 type LoadChunkByUrl = (chunkUrl: ChunkUrl) => Promise<any> | undefined
+type LoadScript = (scriptUrl: string) => Promise<void>
 
 /**
  * The runtime's module cache.  Stores the memoized 'Module' object for each instantiated module.
@@ -125,6 +126,8 @@ type AsyncModule = (
 type ResolveAbsolutePath = (modulePath?: string) => string
 type ResolveFileUrl = (modulePath: string, root?: string) => string
 
+type GetPublicPath = (mode?: 'auto') => string
+
 type ExternalRequire = (
   id: DependencySpecifier,
   thunk: () => any,
@@ -133,6 +136,7 @@ type ExternalRequire = (
 type ExternalImport = (
   id: DependencySpecifier
 ) => Promise<Exports | EsmNamespaceObject>
+type ExternalNamespace = (value: any) => any
 
 interface Module {
   exports: Function | Exports | Promise<Exports> | AsyncModulePromise
@@ -169,6 +173,7 @@ interface TurbopackBaseContext<M> {
   l: LoadChunk
   L: LoadChunkByUrl
   h: GetChunkRelativeURL
+  Q: LoadScript
   w: string
   P: ResolveAbsolutePath
   F: ResolveFileUrl
@@ -177,6 +182,9 @@ interface TurbopackBaseContext<M> {
   X: AssetSuffix
   x: ExternalRequire
   y: ExternalImport
+  N: ExternalNamespace
   z: CommonJsRequire
   g: typeof globalThis
+  p: GetPublicPath
+  runtimePublicPath: unknown
 }

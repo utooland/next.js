@@ -59,6 +59,13 @@ impl EcmascriptBrowserChunkContent {
 
     #[turbo_tasks::function]
     pub(crate) async fn code(self: Vc<Self>) -> Result<Vc<Code>> {
+        Ok(self.code_with_chunk_path(false))
+    }
+
+    /// Inline registrations keep the original chunk path instead of borrowing the entry script's
+    /// identity, so the runtime recognizes these factories as already loaded.
+    #[turbo_tasks::function]
+    pub(crate) async fn code_with_chunk_path(self: Vc<Self>, inline: bool) -> Result<Vc<Code>> {
         let this = self.await?;
         let source_maps = *this
             .chunking_context
@@ -66,7 +73,12 @@ impl EcmascriptBrowserChunkContent {
             .await?;
         // Lifetime hack to pull out the var into this scope
         let chunk_path;
-        let script_or_path = match *this.chunking_context.current_chunk_method().await? {
+        let current_chunk_method = if inline {
+            CurrentChunkMethod::StringLiteral
+        } else {
+            *this.chunking_context.current_chunk_method().await?
+        };
+        let script_or_path = match current_chunk_method {
             CurrentChunkMethod::StringLiteral => {
                 let output_root = this.chunking_context.output_root().await?;
                 let chunk_path_vc = this.chunk.path();
@@ -117,7 +129,8 @@ impl EcmascriptBrowserChunkContent {
         // The scaffolding is written in minified form, so it needs no minification pass of its
         // own when the factories are minified individually.
         let chunk_loading_global = this.chunking_context.chunk_loading_global().await?;
-        let global = PropertyAccessJs("globalThis", &chunk_loading_global);
+        let browser_global_ident = this.chunking_context.browser_global_ident().await?;
+        let global = PropertyAccessJs(&browser_global_ident, &chunk_loading_global);
         write!(
             code,
             // `||=` would be better but we need to be es2020 compatible

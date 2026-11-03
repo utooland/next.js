@@ -8,8 +8,6 @@ use turbo_tasks_fs::{File, FileContent, FileSystemPath};
 
 use crate::{
     asset::{Asset, AssetContent},
-    chunk::ChunkingContext,
-    ident::AssetIdent,
     introspect::{Introspectable, IntrospectableChildren},
     output::{OutputAsset, OutputAssetsReference},
     source_map::{GenerateSourceMap, SourceMap},
@@ -20,9 +18,8 @@ enum PathType {
     Fixed {
         path: FileSystemPath,
     },
-    FromIdent {
-        chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
-        ident_for_path: ResolvedVc<AssetIdent>,
+    FromAsset {
+        output_asset: ResolvedVc<Box<dyn OutputAsset>>,
     },
 }
 
@@ -37,15 +34,11 @@ pub struct SourceMapAsset {
 impl SourceMapAsset {
     #[turbo_tasks::function]
     pub fn new(
-        chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
-        ident_for_path: ResolvedVc<AssetIdent>,
+        output_asset: ResolvedVc<Box<dyn OutputAsset>>,
         generate_source_map: ResolvedVc<Box<dyn GenerateSourceMap>>,
     ) -> Vc<Self> {
         SourceMapAsset {
-            path_ty: PathType::FromIdent {
-                chunking_context,
-                ident_for_path,
-            },
+            path_ty: PathType::FromAsset { output_asset },
             generate_source_map,
         }
         .cell()
@@ -75,19 +68,9 @@ impl OutputAsset for SourceMapAsset {
         // but this caused `all_assets_map` to be recomputed on every change.
         let this = self.await?;
         Ok(match &this.path_ty {
-            PathType::FromIdent {
-                chunking_context,
-                ident_for_path,
-            } => chunking_context
-                .chunk_path(
-                    Some(Vc::upcast(self)),
-                    **ident_for_path,
-                    None,
-                    rcstr!(".js"),
-                )
-                .await?
-                .append(".map")?
-                .cell(),
+            PathType::FromAsset { output_asset } => {
+                output_asset.path().await?.append(".map")?.cell()
+            }
             PathType::Fixed { path } => path.append(".map")?.cell(),
         })
     }

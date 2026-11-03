@@ -14,9 +14,9 @@ use turbopack_browser::{
 };
 use turbopack_core::{
     chunk::{
-        AssetSuffix, ChunkLoadRetry, ChunkingConfig, ChunkingContext, ContentHashing, CrossOrigin,
-        MangleType, MinifyType, SourceMapSourceType, SourceMapsType, UnusedReferences, UrlBehavior,
-        chunk_id_strategy::ModuleIdStrategy,
+        AssetSuffix, ChunkLoadRetry, ChunkingConfig, ChunkingContext, CompressType, ContentHashing,
+        CrossOrigin, MangleType, MinifyType, SourceMapSourceType, SourceMapsType, UnusedReferences,
+        UrlBehavior, chunk_id_strategy::ModuleIdStrategy,
     },
     compile_time_info::{CompileTimeDefines, CompileTimeInfo, FreeVarReference, FreeVarReferences},
     environment::{BrowserEnvironment, Environment, ExecutionEnvironment},
@@ -592,6 +592,7 @@ pub async fn get_client_chunking_context(
     .minify_type(if *minify.await? {
         MinifyType::Minify {
             mangle: (!*no_mangling.await?).then_some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify
@@ -711,6 +712,7 @@ pub async fn get_service_worker_chunking_context(
     .minify_type(if *minify.await? {
         MinifyType::Minify {
             mangle: (!*no_mangling.await?).then_some(MangleType::OptimalSize),
+            compress: Some(CompressType::Default),
         }
     } else {
         MinifyType::NoMinify
