@@ -3282,3 +3282,206 @@ fn commits_with_more_shards_than_collectors_split_files_at_shard_boundaries(
     }
     Ok(())
 }
+
+/// A small commit still spans every storage shard, even though it never fills a global collector.
+/// Reopening and compacting must preserve both single-value updates and multi-value tombstones.
+#[rstest]
+#[case(true, Compression::Lz4)]
+#[case(false, Compression::Lz4)]
+#[case(true, Compression::Zstd3)]
+#[case(false, Compression::Zstd3)]
+fn small_sharded_commits_preserve_updates_after_reopen(
+    #[case] mmap: bool,
+    #[case] compression: Compression,
+) -> Result<()> {
+    let tempdir = tempfile::tempdir()?;
+    let shard_bits = crate::shard::ShardBits::new(3);
+    let mut config = config_with_mmap::<2>(mmap);
+    for family in &mut config.family_configs {
+        family.initial_shard_bits = shard_bits;
+        family.compression = compression;
+    }
+    config.family_configs[1].kind = FamilyKind::MultiValue;
+    const KEYS: u32 = 256;
+    let original_value = |key: u32| vec![key as u8; 160 + (key % 7) as usize * 200];
+
+    let db = open_db_with_config(tempdir.path(), config.clone())?;
+    let batch = db.write_batch()?;
+    for key in 0..KEYS {
+        batch.put(0, key.to_be_bytes(), original_value(key).into())?;
+        for value in [10u32, 20] {
+            batch.put(1, key.to_be_bytes(), value.to_be_bytes().to_vec().into())?;
+        }
+    }
+    db.commit_write_batch(batch)?;
+    let metas = db.meta_info()?;
+    for family in 0..2 {
+        let entries = metas
+            .iter()
+            .filter(|meta| meta.family == family)
+            .flat_map(|meta| &meta.entries)
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), shard_bits.count() as usize);
+        let mut shards = entries
+            .iter()
+            .map(|entry| {
+                let shard = shard_bits.shard_of(entry.min_hash);
+                assert_eq!(shard, shard_bits.shard_of(entry.max_hash));
+                shard
+            })
+            .collect::<Vec<_>>();
+        shards.sort_unstable();
+        assert_eq!(shards, (0..shard_bits.count()).collect::<Vec<_>>());
+    }
+    db.shutdown()?;
+    drop(db);
+
+    let db = open_db_with_config(tempdir.path(), config.clone())?;
+    let batch = db.write_batch()?;
+    for key in 0..KEYS {
+        assert_eq!(
+            &*db.get(0, &key.to_be_bytes())?.unwrap(),
+            original_value(key)
+        );
+        assert_eq!(db.get_multiple(1, &key.to_be_bytes())?.len(), 2);
+        match key % 3 {
+            0 => {
+                batch.put(0, key.to_be_bytes(), vec![42; 256].into())?;
+                batch.delete_value(1, key.to_be_bytes(), 10u32.to_be_bytes().to_vec().into())?;
+            }
+            1 => {
+                batch.delete(0, key.to_be_bytes())?;
+                batch.delete(1, key.to_be_bytes())?;
+            }
+            _ => {}
+        }
+    }
+    db.commit_write_batch(batch)?;
+    db.shutdown()?;
+    drop(db);
+
+    let db = open_db_with_config(tempdir.path(), config)?;
+    for compact in [false, true] {
+        if compact {
+            db.full_compact()?;
+        }
+        for key in 0..KEYS {
+            let actual = db.get(0, &key.to_be_bytes())?;
+            match key % 3 {
+                0 => assert_eq!(&*actual.unwrap(), &[42; 256]),
+                1 => assert!(actual.is_none()),
+                _ => assert_eq!(&*actual.unwrap(), original_value(key)),
+            }
+            let mut values = db
+                .get_multiple(1, &key.to_be_bytes())?
+                .iter()
+                .map(|value| u32::from_be_bytes((**value).try_into().unwrap()))
+                .collect::<Vec<_>>();
+            values.sort_unstable();
+            assert_eq!(
+                values,
+                match key % 3 {
+                    0 => vec![20],
+                    1 => vec![],
+                    _ => vec![10, 20],
+                }
+            );
+        }
+    }
+    db.shutdown()?;
+    Ok(())
+}
+
+/// Dropping a flushed multi-shard batch removes every uncommitted file before permitting another
+/// writer. The previous commit remains readable throughout and survives reopening the database.
+#[rstest]
+#[case(true, Compression::Lz4)]
+#[case(false, Compression::Lz4)]
+#[case(true, Compression::Zstd3)]
+#[case(false, Compression::Zstd3)]
+fn dropped_sharded_flush_rolls_back_all_files(
+    #[case] mmap: bool,
+    #[case] compression: Compression,
+) -> Result<()> {
+    let tempdir = tempfile::tempdir()?;
+    let mut config = config_with_mmap::<1>(mmap);
+    config.family_configs[0].initial_shard_bits = crate::shard::ShardBits::new(3);
+    config.family_configs[0].compression = compression;
+    const KEYS: u32 = 256;
+    let files = || -> std::io::Result<Vec<_>> {
+        let mut files = fs::read_dir(tempdir.path())?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<std::io::Result<Vec<_>>>()?;
+        files.sort();
+        Ok(files)
+    };
+
+    let db = open_db_with_config(tempdir.path(), config.clone())?;
+    let batch = db.write_batch()?;
+    for key in 0..KEYS {
+        batch.put(0, key.to_be_bytes(), vec![key as u8; 128].into())?;
+    }
+    db.commit_write_batch(batch)?;
+    // The initial shard count is only a hint: the next write otherwise shrinks this small
+    // database to one shard. Size the target from the committed bytes and reopen so the batch
+    // being rolled back also writes multiple shards, for both compression algorithms.
+    config.target_shard_size = (db
+        .meta_info()?
+        .iter()
+        .flat_map(|meta| &meta.entries)
+        .map(|entry| entry.sst_size)
+        .sum::<u64>()
+        / 8)
+    .max(1);
+    db.shutdown()?;
+    drop(db);
+    let db = open_db_with_config(tempdir.path(), config.clone())?;
+    let committed_files = files()?;
+    let committed_current = fs::read(tempdir.path().join("CURRENT"))?;
+    let committed_version = read_current_version(tempdir.path())?.unwrap();
+
+    let batch = db.write_batch()?;
+    for key in 0..KEYS {
+        if key % 2 == 0 {
+            batch.put(0, key.to_be_bytes(), vec![42; 128].into())?;
+        } else {
+            batch.delete(0, key.to_be_bytes())?;
+        }
+        batch.put(0, (key + KEYS).to_be_bytes(), vec![99; 128].into())?;
+    }
+    // SAFETY: all puts/deletes above have returned and no other thread can access this batch.
+    unsafe { batch.flush(0)? };
+    assert!(files()?.len() >= committed_files.len() + 8);
+    assert_eq!(fs::read(tempdir.path().join("CURRENT"))?, committed_current);
+    for key in 0..KEYS {
+        assert_eq!(&*db.get(0, &key.to_be_bytes())?.unwrap(), &[key as u8; 128]);
+        assert!(db.get(0, &(key + KEYS).to_be_bytes())?.is_none());
+    }
+    drop(batch);
+    assert_eq!(
+        files()?,
+        committed_files,
+        "all uncommitted SST files removed"
+    );
+    // Rollback rewrites CURRENT to the same committed sequence, refreshing its commit time.
+    let rolled_back_version = read_current_version(tempdir.path())?.unwrap();
+    assert_eq!(
+        rolled_back_version.max_sequence_number,
+        committed_version.max_sequence_number
+    );
+    // Rollback releases the writer slot, so a subsequent successful commit is still possible.
+    let batch = db.write_batch()?;
+    batch.put(0, 0u32.to_be_bytes(), vec![7; 128].into())?;
+    db.commit_write_batch(batch)?;
+    db.shutdown()?;
+    drop(db);
+
+    let db = open_db_with_config(tempdir.path(), config)?;
+    for key in 0..KEYS {
+        let value = if key == 0 { 7 } else { key as u8 };
+        assert_eq!(&*db.get(0, &key.to_be_bytes())?.unwrap(), &[value; 128]);
+        assert!(db.get(0, &(key + KEYS).to_be_bytes())?.is_none());
+    }
+    db.shutdown()?;
+    Ok(())
+}
