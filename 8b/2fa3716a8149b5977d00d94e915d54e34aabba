@@ -1,0 +1,19 @@
+turbopack/crates/turbopack-core/src/module_graph/binding_usage_info.rs
+  s_a09ed228621c85::t_89c7f5c8870e36 81-105,449,455-457,459
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8b2fa3716a8149b5977d00d94e915d54e34aabba",
+  "prompts": {},
+  "sessions": {
+    "s_a09ed228621c85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a026-acf7-7392-a873-6b4a84dcfce7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
