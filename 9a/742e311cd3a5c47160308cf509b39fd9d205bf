@@ -1,0 +1,354 @@
+Cargo.lock
+  h_05d0a07afcde4c 1689,1691,2671,2673,3295-3303,3664,3674,3703,3932,4579,4677,4679,4715,4717,4803,5154,5156,5329,6819,6829,8610-8611,8622-8623,8627-8646,8704,9204-9205,9226,9354,9370,9406,9561-9562,9575,9724,9984,10008-10009,10572,10574,10576,10585,10629,10711-10721,11006-11019,11183,11185,11187,11388-11395,11418,11420,11442,11444,11466,11468,11478,11480,11502,11504,11526,11528,11550,11552,11574,11576,11613-11618
+Cargo.toml
+  h_05d0a07afcde4c 291,319,321,333,362,386-391
+crates/next-core/src/next_client/context.rs
+  h_05d0a07afcde4c 17-19,593,712
+crates/next-core/src/next_edge/context.rs
+  h_05d0a07afcde4c 9-10,249,363
+crates/next-core/src/next_server/context.rs
+  h_05d0a07afcde4c 18-19,1103,1219
+crates/next-napi-bindings/Cargo.toml
+  h_05d0a07afcde4c 96
+packages/next/src/client/next-dev-turbopack.ts
+  h_05d0a07afcde4c 7
+test/production/escheck-output/app/foo/page.js
+  h_05d0a07afcde4c 3-7,9-13
+test/production/escheck-output/app/tla-page/page.js
+  h_05d0a07afcde4c 1-7
+test/production/escheck-output/app/tla.js
+  h_05d0a07afcde4c 1-3
+test/production/escheck-output/index.test.ts
+  h_05d0a07afcde4c 100-134
+turbopack/crates/turbo-rcstr-macros/src/lib.rs
+  h_05d0a07afcde4c 41-50,56,60-71,79
+turbopack/crates/turbo-tasks-backend/Cargo.toml
+  h_05d0a07afcde4c 69
+turbopack/crates/turbo-tasks-backend/src/backend/operation/aggregation_update.rs
+  h_05d0a07afcde4c 21,29
+turbopack/crates/turbo-tasks-backend/src/backend/operation/mod.rs
+  h_05d0a07afcde4c 451
+turbopack/crates/turbo-tasks-backend/src/database/db_versioning.rs
+  h_05d0a07afcde4c 1-2,10,12,14,32,37,56,178-186,189,206,224
+turbopack/crates/turbo-tasks-backend/src/database/key_value_database.rs
+  h_05d0a07afcde4c 1,11-12
+turbopack/crates/turbo-tasks-backend/src/database/mod.rs
+  h_05d0a07afcde4c 4
+turbopack/crates/turbo-tasks-backend/src/kv_backing_storage.rs
+  h_05d0a07afcde4c 1-2,5,8-10,12,16-17,18-19,29-32,34,42-48,50,58,65,68,75,82,85,92,99,113,125,145,151-154,218,252,544-611,621
+turbopack/crates/turbo-tasks-backend/src/lib.rs
+  h_05d0a07afcde4c 16,19-22,52-55,72,77-85,92
+turbopack/crates/turbo-tasks-fs/Cargo.toml
+  h_05d0a07afcde4c 62-68
+turbopack/crates/turbo-tasks-fs/src/content.rs
+  h_05d0a07afcde4c 22-23,106,159-206,512-518
+turbopack/crates/turbo-tasks-fs/src/disk.rs
+  h_05d0a07afcde4c 444-464,525,816,845-900,913,916-920,932,964,982-995,1010,1033-1051,1113-1118,1413,1486-1516,1542-1545,1714,1724-1728,1815,1822-1827
+turbopack/crates/turbo-tasks-fs/src/embed/dir.rs
+  h_05d0a07afcde4c 1,18,23-24,26
+turbopack/crates/turbo-tasks-fs/src/lib.rs
+  h_05d0a07afcde4c 39-40
+turbopack/crates/turbo-tasks-fs/src/path.rs
+  h_05d0a07afcde4c 191
+turbopack/crates/turbo-tasks-fs/src/util.rs
+  h_05d0a07afcde4c 1-2,10,41-42,44-61
+turbopack/crates/turbo-tasks-fs/src/wasm_fs_offload.rs
+  h_05d0a07afcde4c 1-21
+turbopack/crates/turbo-tasks-fs/src/watcher/mod.rs
+  h_05d0a07afcde4c 1,12-19,21,26-28,37-40,44-45,48,51-54,56-57,62,165,185-189,192,194-197,215-220,223-224,227-228,234-236,289,305,318,324,334,340,469,477-484,493-499,501,511,554-606,611-616,621-641,645-647,651-660,746-824,838,904-909,1012,1022,1191,1204,1394-1469,1555,1636-1693,2111-2215
+turbopack/crates/turbo-tasks-hash/Cargo.toml
+  h_05d0a07afcde4c 22-24
+turbopack/crates/turbo-tasks-malloc/Cargo.toml
+  h_05d0a07afcde4c 2-4,6,32,39,54-55
+turbopack/crates/turbo-tasks/Cargo.toml
+  h_05d0a07afcde4c 46-47,56-61,78-82
+turbopack/crates/turbo-tasks/src/duration_span.rs
+  h_05d0a07afcde4c 1
+turbopack/crates/turbo-tasks/src/manager.rs
+  h_05d0a07afcde4c 18,29,716-719,922,1342-1345,1691-1692
+turbopack/crates/turbo-tasks/src/parallel.rs
+  h_05d0a07afcde4c 36,42-63
+turbopack/crates/turbo-tasks/src/priority_runner.rs
+  h_05d0a07afcde4c 13,19
+turbopack/crates/turbo-tasks/src/scope_bounded.rs
+  h_05d0a07afcde4c 22,26
+turbopack/crates/turbopack-browser/Cargo.toml
+  h_05d0a07afcde4c 33-34,44
+turbopack/crates/turbopack-browser/src/chunking_context.rs
+  h_05d0a07afcde4c 1-2,5-6,16,28,38,45,84-90,96-100,198-204,278-302,406-407,420-421,459,466-480,515,521,542-547,559,567,574-575,583,585-595,599,706-711,734-749,773-779,827,831-855,857-860,862-914,917-922,924-929,936-939,947-948,998-999,1001,1004-1038,1107,1129,1135-1165,1239-1264,1292,1294-1295,1299-1306,1309-1334,1336,1345,1378-1390,1749-1795
+turbopack/crates/turbopack-browser/src/ecmascript/chunk.rs
+  h_05d0a07afcde4c 5,44-45,175-183
+turbopack/crates/turbopack-browser/src/ecmascript/content.rs
+  h_05d0a07afcde4c 25,63-69,77-82,127,132,149-157
+turbopack/crates/turbopack-browser/src/ecmascript/evaluate/chunk.rs
+  h_05d0a07afcde4c 10,27-28,30,32,37,41,46,54-56,69,77,83,90-110,112-113,118-137,170-211,215,234,257-288,290-292,297,303,306-307,328-339,345,354-359,371-381,384-398,433-434,479-487,520-523
+turbopack/crates/turbopack-browser/src/ecmascript/evaluate/runtime.rs
+  h_05d0a07afcde4c 2,5,14-15,31,40,45,70,79-84,97-107,125-126,168-176
+turbopack/crates/turbopack-browser/src/ecmascript/evaluate/single_entry_chunk.rs
+  h_05d0a07afcde4c 80-89,96,101
+turbopack/crates/turbopack-browser/src/ecmascript/list/asset.rs
+  h_05d0a07afcde4c 32
+turbopack/crates/turbopack-browser/src/ecmascript/list/content.rs
+  h_05d0a07afcde4c 40,76-80,83,116,133,142,145-146,150,153
+turbopack/crates/turbopack-browser/src/ecmascript/mod.rs
+  h_05d0a07afcde4c 10-11,13
+turbopack/crates/turbopack-browser/src/ecmascript/worker.rs
+  h_05d0a07afcde4c 8,17,24-25,61-63,65-72,74-91,109-110,141-149,178,189-192,244-263,296-317
+turbopack/crates/turbopack-browser/src/lib.rs
+  h_05d0a07afcde4c 4
+turbopack/crates/turbopack-cli/src/build/mod.rs
+  h_05d0a07afcde4c 28-30,97,612
+turbopack/crates/turbopack-core/src/chunk/chunking_context.rs
+  h_05d0a07afcde4c 42-63,69-72,80,389-395
+turbopack/crates/turbopack-core/src/chunk/mod.rs
+  h_05d0a07afcde4c 31-33
+turbopack/crates/turbopack-core/src/code_builder.rs
+  h_05d0a07afcde4c 17,124-131,168-170,347-371
+turbopack/crates/turbopack-core/src/environment.rs
+  h_05d0a07afcde4c 8,368-426,429-447,465-476,497-539,583-622
+turbopack/crates/turbopack-core/src/ident.rs
+  h_05d0a07afcde4c 9-11,228-242,244-246,349-350,356-359,439-441,470,478-528
+turbopack/crates/turbopack-core/src/resolve/mod.rs
+  h_05d0a07afcde4c 542,544,554,556,1722-1723,1725-1772,2190-2192,2194-2262,2266,2270-2274,3228-3232
+turbopack/crates/turbopack-core/src/resolve/parse.rs
+  h_05d0a07afcde4c 166-179
+turbopack/crates/turbopack-core/src/resolve/plugin.rs
+  h_05d0a07afcde4c 16
+turbopack/crates/turbopack-core/src/source_map/source_map_asset.rs
+  h_05d0a07afcde4c 21-22,37,41,71-73
+turbopack/crates/turbopack-core/src/source_map/utils.rs
+  h_05d0a07afcde4c 10-11,118-125,127-129,131-135,283-284,288-291
+turbopack/crates/turbopack-css/Cargo.toml
+  h_05d0a07afcde4c 37
+turbopack/crates/turbopack-css/src/asset.rs
+  h_05d0a07afcde4c 2,49,64,75,100,190-192
+turbopack/crates/turbopack-css/src/chunk/mod.rs
+  h_05d0a07afcde4c 13,192-195,198-199,201-205,429-437
+turbopack/crates/turbopack-css/src/chunk/single_item_chunk/chunk.rs
+  h_05d0a07afcde4c 7,141-149
+turbopack/crates/turbopack-css/src/chunk/single_item_chunk/source_map.rs
+  h_05d0a07afcde4c 34
+turbopack/crates/turbopack-css/src/chunk/source_map.rs
+  h_05d0a07afcde4c 34
+turbopack/crates/turbopack-css/src/module_asset.rs
+  h_05d0a07afcde4c 281-298
+turbopack/crates/turbopack-css/src/process.rs
+  h_05d0a07afcde4c 367,394,437-438,443-452,466,468-484,491,508-513,517,533,549-556,558,561-565,568-570,623-631,642-646,691,696,703
+turbopack/crates/turbopack-css/src/references/mod.rs
+  h_05d0a07afcde4c 39-45,139,190-221
+turbopack/crates/turbopack-css/src/references/url.rs
+  h_05d0a07afcde4c 85
+turbopack/crates/turbopack-dev-server/Cargo.toml
+  h_05d0a07afcde4c 33,48-55
+turbopack/crates/turbopack-dev-server/src/source/asset_graph.rs
+  h_05d0a07afcde4c 29-51,57,78,81-85,88-89,94-98,103,113,306-309,328-330,333,414-429
+turbopack/crates/turbopack-dev-server/src/source/mod.rs
+  h_05d0a07afcde4c 7,9
+turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/dev/hmr-client/hmr-client.ts
+  h_05d0a07afcde4c 88-90,97-98,103-104,111,132-133,139,151-156,589-590,597-598,605-606,614-615,619-622,644-650
+turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/base/dev-base.ts
+  h_05d0a07afcde4c 47-58,70-73,215,550,560
+turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/base/runtime-base.ts
+  h_05d0a07afcde4c 23-24,35-45,48,69-82,312-342,407,409,554,581-583,585-587
+turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/dom/runtime-backend-dom.ts
+  h_05d0a07afcde4c 121,126,267-268,272-293,295,298-314
+turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/self-contained/runtime-backend-self-contained.ts
+  h_05d0a07afcde4c 37
+turbopack/crates/turbopack-ecmascript-runtime/js/src/nodejs/runtime.web.ts
+  h_05d0a07afcde4c 1-312
+turbopack/crates/turbopack-ecmascript-runtime/js/src/shared-node/base-externals-utils.ts
+  h_05d0a07afcde4c 59-93
+turbopack/crates/turbopack-ecmascript-runtime/js/src/shared/module-cache.ts
+  h_05d0a07afcde4c 7-8,23,33-75,77-175
+turbopack/crates/turbopack-ecmascript-runtime/js/src/shared/runtime/dev-globals.d.ts
+  h_05d0a07afcde4c 11-13
+turbopack/crates/turbopack-ecmascript-runtime/js/src/shared/runtime/dev-protocol.d.ts
+  h_05d0a07afcde4c 102
+turbopack/crates/turbopack-ecmascript-runtime/js/src/shared/runtime/runtime-types.d.ts
+  h_05d0a07afcde4c 94,129-130,139,176,185,188-189
+turbopack/crates/turbopack-ecmascript-runtime/js/src/shared/runtime/runtime-utils.ts
+  h_05d0a07afcde4c 888-955
+turbopack/crates/turbopack-ecmascript-runtime/src/browser_runtime.rs
+  h_05d0a07afcde4c 8,34-57,63,72,134-143,150-153,155-156,161-168,172-177,179-184,187,273-280,298,327-361,373,378
+turbopack/crates/turbopack-ecmascript-runtime/src/lib.rs
+  h_05d0a07afcde4c 12-13
+turbopack/crates/turbopack-ecmascript/Cargo.toml
+  h_05d0a07afcde4c 53,105
+turbopack/crates/turbopack-ecmascript/js/src/worker/browser/createWorker.ts
+  h_05d0a07afcde4c 26-28,38,43,50,79-83,103-110,113-114,118-119,124-135
+turbopack/crates/turbopack-ecmascript/src/analyzer/graph/eval_context.rs
+  h_05d0a07afcde4c 52,58-81,157,171-174,582-874
+turbopack/crates/turbopack-ecmascript/src/analyzer/graph/visitor.rs
+  h_05d0a07afcde4c 1013
+turbopack/crates/turbopack-ecmascript/src/analyzer/imports.rs
+  h_05d0a07afcde4c 19,855-856,861,872-875,980-994,1077-1085,1089-1111,1562-1564,1570-1588,1686,1700,1703,1705-1727,2212-2214
+turbopack/crates/turbopack-ecmascript/src/analyzer/well_known/mod.rs
+  h_05d0a07afcde4c 595-623
+turbopack/crates/turbopack-ecmascript/src/async_chunk/module.rs
+  h_05d0a07afcde4c 162-166,168,171-190,195-196,230-231,242-243,255,264-265
+turbopack/crates/turbopack-ecmascript/src/async_chunk/proxy.rs
+  h_05d0a07afcde4c 73-75
+turbopack/crates/turbopack-ecmascript/src/chunk/chunk_type.rs
+  h_05d0a07afcde4c 2,5-7,33-66,68
+turbopack/crates/turbopack-ecmascript/src/code_gen.rs
+  h_05d0a07afcde4c 48-50,60-63
+turbopack/crates/turbopack-ecmascript/src/lib.rs
+  h_05d0a07afcde4c 1349-1356,1385-1392,1395-1413,1482,1815-1817,1820,1869,2484,2505-2508,2543-2559,2573-2579,2618-2623
+turbopack/crates/turbopack-ecmascript/src/manifest/loader_module.rs
+  h_05d0a07afcde4c 22-23,132,137-165,220-221,223-225,242
+turbopack/crates/turbopack-ecmascript/src/minify.rs
+  h_05d0a07afcde4c 10-11,26,31,37-86,88-113,122,136,173,204-209,214,220,243-336,375-468
+turbopack/crates/turbopack-ecmascript/src/module_canonicalization.rs
+  h_05d0a07afcde4c 12,46-51,94
+turbopack/crates/turbopack-ecmascript/src/module_fragments/graph.rs
+  h_05d0a07afcde4c 1137
+turbopack/crates/turbopack-ecmascript/src/parse.rs
+  h_05d0a07afcde4c 556,606-607,610
+turbopack/crates/turbopack-ecmascript/src/references/async_module.rs
+  h_05d0a07afcde4c 5-11,24,220-227,233-237,244-281,283-287,293-421
+turbopack/crates/turbopack-ecmascript/src/references/esm/base.rs
+  h_05d0a07afcde4c 1061
+turbopack/crates/turbopack-ecmascript/src/references/esm/export.rs
+  h_05d0a07afcde4c 42-44,1168,1170-1221,1223-1232,1234,1238-1240,1244-1277
+turbopack/crates/turbopack-ecmascript/src/references/esm/module_item.rs
+  h_05d0a07afcde4c 59
+turbopack/crates/turbopack-ecmascript/src/references/external_module.rs
+  h_05d0a07afcde4c 41-43,55,57,78,80,153,156-186,191,207-216,225-247,253-259,261-266,269-277,281,284,289-290,294,297-298,300-304,321-331,336-355,377-398,439-442,486,524,542,548,551-561
+turbopack/crates/turbopack-ecmascript/src/references/mod.rs
+  h_05d0a07afcde4c 1309-1317,1319-1340,2119-2130
+turbopack/crates/turbopack-ecmascript/src/references/pattern_mapping.rs
+  h_05d0a07afcde4c 34,409-415
+turbopack/crates/turbopack-ecmascript/src/runtime_functions.rs
+  h_05d0a07afcde4c 82,92,101-102,106,116,144-145
+turbopack/crates/turbopack-ecmascript/src/side_effect_optimization/facade/module.rs
+  h_05d0a07afcde4c 166
+turbopack/crates/turbopack-ecmascript/src/single_file_ecmascript_output.rs
+  h_05d0a07afcde4c 6,8-12,34-35,42-46,49,55-87
+turbopack/crates/turbopack-ecmascript/src/transform/mod.rs
+  h_05d0a07afcde4c 12-13,25,69-90,163-164,172,409,420-429,435,441
+turbopack/crates/turbopack-ecmascript/src/worker_chunk/module.rs
+  h_05d0a07afcde4c 134,323-372,376
+turbopack/crates/turbopack-mdx/src/lib.rs
+  h_05d0a07afcde4c 7,132-135,137-140,142-144,146-148,150-158,160-163,165-180,182,184-190,192-221,223-236
+turbopack/crates/turbopack-node/Cargo.toml
+  h_05d0a07afcde4c 17-18,61-65
+turbopack/crates/turbopack-node/build.rs
+  h_05d0a07afcde4c 1-6
+turbopack/crates/turbopack-node/js/src/transforms/postcss.ts
+  h_05d0a07afcde4c 8,50-54,136-149
+turbopack/crates/turbopack-node/js/src/transforms/webpack-loaders.ts
+  h_05d0a07afcde4c 20,538,641-650
+turbopack/crates/turbopack-node/js/src/web_worker/evaluate.ts
+  h_05d0a07afcde4c 1-116
+turbopack/crates/turbopack-node/js/src/web_worker/globals.ts
+  h_05d0a07afcde4c 1-9
+turbopack/crates/turbopack-node/js/src/web_worker/transforms.ts
+  h_05d0a07afcde4c 1
+turbopack/crates/turbopack-node/js/tsconfig.json
+  h_05d0a07afcde4c 17
+turbopack/crates/turbopack-node/src/evaluate.rs
+  h_05d0a07afcde4c 37-40,89,280-286,840,914-934
+turbopack/crates/turbopack-node/src/pool_stats.rs
+  h_05d0a07afcde4c 40,46,51,153
+turbopack/crates/turbopack-node/src/transforms/postcss.rs
+  h_05d0a07afcde4c 6,9,68,111,123,131,152,168,174-180,355,357-370,380-382,391,395-410,414-417,420,424,426-498,502-505,518-519,523,530-601,603,691-723,743-751,774
+turbopack/crates/turbopack-node/src/worker_pool/mod.rs
+  h_05d0a07afcde4c 20-23,29-31,36-38,41-49,142,144-146,181-188,192-199
+turbopack/crates/turbopack-node/src/worker_pool/operation.rs
+  h_05d0a07afcde4c 17-20,73-75,158,160-161
+turbopack/crates/turbopack-node/src/worker_pool/web_worker.rs
+  h_05d0a07afcde4c 1-185
+turbopack/crates/turbopack-node/src/worker_pool/worker_thread.rs
+  h_05d0a07afcde4c 3,14,36-44,65-71,84-87,90-98,110,112,135,137
+turbopack/crates/turbopack-nodejs/src/chunking_context.rs
+  h_05d0a07afcde4c 11,483-489,531-532,534,539,541-545
+turbopack/crates/turbopack-nodejs/src/ecmascript/mod.rs
+  h_05d0a07afcde4c 2-5
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/chunk.rs
+  h_05d0a07afcde4c 49-50,70-74
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/content.rs
+  h_05d0a07afcde4c 21,94-102
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/entry/chunk.rs
+  h_05d0a07afcde4c 9,11,33,71-93,186-197
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/entry/mod.rs
+  h_05d0a07afcde4c 1,4
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/entry/runtime.rs
+  h_05d0a07afcde4c 149-150
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/mod.rs
+  h_05d0a07afcde4c 1,4-6
+turbopack/crates/turbopack-nodejs/src/lib.rs
+  h_05d0a07afcde4c 9-10
+turbopack/crates/turbopack-resolve/src/typescript.rs
+  h_05d0a07afcde4c 97,282-283,289,303-310
+turbopack/crates/turbopack-static/src/ecma.rs
+  h_05d0a07afcde4c 17,106-133
+turbopack/crates/turbopack-test-utils/src/snapshot.rs
+  h_05d0a07afcde4c 25-30,39-43,47,204-210
+turbopack/crates/turbopack-tests/tests/execution.rs
+  h_05d0a07afcde4c 36,627
+turbopack/crates/turbopack-tests/tests/snapshot.rs
+  h_05d0a07afcde4c 81-82,144,492-501,507
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/async_module.js
+  h_05d0a07afcde4c 1
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/chained_async.js
+  h_05d0a07afcde4c 1-5
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/index.js
+  h_05d0a07afcde4c 1-20
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/nested_async.js
+  h_05d0a07afcde4c 1-11
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/side-effect.js
+  h_05d0a07afcde4c 1-2
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/input/util.js
+  h_05d0a07afcde4c 1-3
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/options.json
+  h_05d0a07afcde4c 1-5
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/output/_0a277ndz0thmo.js
+  h_05d0a07afcde4c 1-507
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/output/_0a277ndz0thmo.js.map
+  h_05d0a07afcde4c 1-17
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/output/ad3e4_tests_snapshot_basic_async_to_generator_input_index_0jq76iu6tj3cp.js
+  h_05d0a07afcde4c 1-2339
+turbopack/crates/turbopack-tests/tests/snapshot/basic/async_to_generator/output/bf321_tests_snapshot_basic_async_to_generator_input_index_0jq76iu6tj3cp.js.map
+  h_05d0a07afcde4c 1-10
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/input/index.js
+  h_05d0a07afcde4c 1
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/input/runtime.js
+  h_05d0a07afcde4c 1-3
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/options.json
+  h_05d0a07afcde4c 1-5
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/output/_turbopack__runtime.js
+  h_05d0a07afcde4c 1-1135
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/output/_turbopack__runtime.js.map
+  h_05d0a07afcde4c 1-11
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/output/bf321_tests_snapshot_evaluated_entrry_async_runtime_entry_input_2050ggixfvipd.js
+  h_05d0a07afcde4c 1-21
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/output/bf321_tests_snapshot_evaluated_entrry_async_runtime_entry_input_2050ggixfvipd.js.map
+  h_05d0a07afcde4c 1-7
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/output/index.entry.js
+  h_05d0a07afcde4c 1-5
+turbopack/crates/turbopack-tests/tests/snapshot/evaluated_entrry/async_runtime_entry/output/index.entry.js.map
+  h_05d0a07afcde4c 1-5
+turbopack/crates/turbopack/Cargo.toml
+  h_05d0a07afcde4c 40-41,45
+turbopack/crates/turbopack/src/evaluate_context.rs
+  h_05d0a07afcde4c 76
+turbopack/crates/turbopack/src/lib.rs
+  h_05d0a07afcde4c 65,242,252,267,720-721,1232,1234
+turbopack/crates/turbopack/src/module_options/mod.rs
+  h_05d0a07afcde4c 40,267,486-488,535-536,712,726,883,896,933-934,939,963,979,995,1012
+turbopack/crates/turbopack/src/module_options/module_options_context.rs
+  h_05d0a07afcde4c 336-338
+turbopack/crates/turbopack/src/module_options/module_rule.rs
+  h_05d0a07afcde4c 17,144,154,174,244-245,290-291,300,304-310
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9a742e311cd3a5c47160308cf509b39fd9d205bf",
+  "prompts": {},
+  "humans": {
+    "h_05d0a07afcde4c": {
+      "author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
