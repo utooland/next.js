@@ -1,5 +1,14 @@
 turbopack/crates/turbopack-core/src/module_graph/binding_usage_info.rs
   s_a09ed228621c85::t_89c7f5c8870e36 81-105,449,455-457,459
+turbopack/crates/turbopack-ecmascript/src/chunk/code_module_ids_and_paths.rs
+  s_a09ed228621c85::t_1c2a624e638c0d 18,25,37,41-48,80,90-96,111,115-118,124-126
+turbopack/crates/turbopack-ecmascript/src/minify.rs
+  s_a09ed228621c85::t_b263c1d4f89dc8 10-11,29,35,41-90,93-118,129,131,148,153,158,160,195,197-198,361,379-381,399,430-435,437-531,930,936-1018
+  s_a09ed228621c85::t_fa7538aaef5fb6 161-162,213-258,260-268,270-307,309-311,313,696-702,708-714,758-764,860-866
+turbopack/crates/turbopack-browser/src/ecmascript/content.rs
+  s_a09ed228621c85::t_48c38a18c3b1af 62-68,76-81,132-133
+turbopack/crates/turbopack-ecmascript/src/chunk/content.rs
+  s_a09ed228621c85::t_1c2a624e638c0d 7-9,19,31-32,37-38,48-53,55-59,61-65,72,74-84,91-100,151,158-175
 ---
 {
   "schema_version": "authorship/3.0.0",
