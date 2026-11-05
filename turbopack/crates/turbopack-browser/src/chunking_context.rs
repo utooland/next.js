@@ -11,7 +11,7 @@ use turbo_tasks::{
     FxIndexMap, FxIndexSet, ResolvedVc, TryJoinIterExt, Upcast, ValueToString, ValueToStringRef, Vc,
 };
 use turbo_tasks_fs::FileSystemPath;
-use turbo_tasks_hash::HashAlgorithm;
+use turbo_tasks_hash::{HashAlgorithm, hash_xxh3_hash64};
 use turbopack_core::{
     asset::{Asset, AssetContent, no_hash_salt},
     chunk::{
@@ -782,6 +782,14 @@ impl BrowserChunkingContext {
 #[turbo_tasks::value_impl]
 impl ChunkingContext for BrowserChunkingContext {
     #[turbo_tasks::function]
+    fn is_hot_module_replacement_enabled(&self) -> Vc<bool> {
+        Vc::cell(
+            self.enable_hot_module_replacement
+                && matches!(self.runtime_type, RuntimeType::Development),
+        )
+    }
+
+    #[turbo_tasks::function]
     fn worker_chunks_in_manifest(&self) -> Vc<bool> {
         // HMR updates worker loader modules directly, without rerunning the
         // entry bootstrap. Keep their chunk paths in those modules in dev.
@@ -848,17 +856,11 @@ impl ChunkingContext for BrowserChunkingContext {
         let mut filename = match asset {
             Some(asset) => {
                 let ident = ident.await?;
-
-                let mut evaluate = false;
-                let mut dev_chunk_list = false;
-                ident.modifiers.iter().for_each(|m| {
-                    if m.contains("evaluate") {
-                        evaluate = true;
-                    }
-                    if m.contains("dev chunk list") {
-                        dev_chunk_list = true;
-                    }
-                });
+                let resolved_asset = asset.to_resolved().await?;
+                let dev_chunk_list =
+                    ResolvedVc::try_downcast_type::<EcmascriptDevChunkList>(resolved_asset)
+                        .is_some();
+                let evaluate = ident.modifiers.iter().any(|m| m.contains("evaluate"));
                 let query = QString::from(ident.query.as_str());
                 let name = if dev_chunk_list {
                     output_name.as_str()
@@ -869,18 +871,15 @@ impl ChunkingContext for BrowserChunkingContext {
                 let this = self.await?;
                 let filename_template = if evaluate {
                     this.filename.clone()
+                } else if ResolvedVc::try_downcast_type::<CssChunk>(resolved_asset).is_some()
+                    || ResolvedVc::try_downcast_type::<CssChunkSourceMapAsset>(resolved_asset)
+                        .is_some()
+                {
+                    // TODO: distinguash initial or non-initial css chunk, the non-initial css
+                    // chunk should use css_chunk_filename for template
+                    this.css_filename.clone()
                 } else {
-                    let resolved_asset = asset.to_resolved().await?;
-                    if ResolvedVc::try_downcast_type::<CssChunk>(resolved_asset).is_some()
-                        || ResolvedVc::try_downcast_type::<CssChunkSourceMapAsset>(resolved_asset)
-                            .is_some()
-                    {
-                        // TODO: distinguash initial or non-initial css chunk, the non-initial css
-                        // chunk should use css_chunk_filename for template
-                        this.css_filename.clone()
-                    } else {
-                        this.chunk_filename.clone()
-                    }
+                    this.chunk_filename.clone()
                 };
 
                 // Explicit templates take precedence over the default content-hashed names.
@@ -894,14 +893,20 @@ impl ChunkingContext for BrowserChunkingContext {
                         }
 
                         if match_content_hash_placeholder(&filename) {
-                            let content_hash = asset
-                                .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
-                                .owned()
-                                .await?
-                                .context(
-                                    "chunk_path requires an asset with file content when content \
-                                     hashing is enabled",
-                                )?;
+                            let content_hash = if dev_chunk_list {
+                                // HMR subscribes to this URL. Hash the list's logical name so
+                                // editing its chunks cannot change the subscription's identity.
+                                format!("{:016x}", hash_xxh3_hash64(output_name.as_str())).into()
+                            } else {
+                                asset
+                                    .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
+                                    .owned()
+                                    .await?
+                                    .context(
+                                        "chunk_path requires an asset with file content when \
+                                         content hashing is enabled",
+                                    )?
+                            };
                             filename = replace_content_hash_placeholder(&filename, &content_hash);
                         };
 
@@ -1808,4 +1813,270 @@ pub fn replace_content_hash_placeholder(s: &str, hash: &str) -> String {
             hash[..len].to_string()
         })
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use turbo_tasks::{Completion, TurboTasks};
+    use turbo_tasks_backend::{BackendOptions, TurboTasksBackend, noop_backing_storage};
+    use turbo_tasks_fs::{File, FileContent, FileSystem, VirtualFileSystem};
+    use turbopack_core::{
+        environment::{BrowserEnvironment, ExecutionEnvironment},
+        virtual_output::VirtualOutputAsset,
+    };
+    use turbopack_ecmascript::references::external_module::{
+        CachedExternalTracingMode, CachedExternalType,
+    };
+
+    use super::*;
+
+    async fn output_asset(
+        path: FileSystemPath,
+        content: &str,
+    ) -> Result<ResolvedVc<Box<dyn OutputAsset>>> {
+        Vc::upcast::<Box<dyn OutputAsset>>(VirtualOutputAsset::new(
+            path,
+            AssetContent::file(FileContent::Content(File::from(content)).cell()),
+        ))
+        .to_resolved()
+        .await
+    }
+
+    #[turbo_tasks::function(operation, root)]
+    async fn hmr_chunk_list_paths_operation() -> Result<Vc<Completion>> {
+        let root = VirtualFileSystem::new_with_name(rcstr!("hmr-chunk-list-paths"))
+            .root()
+            .owned()
+            .await?;
+        let output_root = root.join("dist")?;
+        let environment = Environment::new(ExecutionEnvironment::Browser(
+            BrowserEnvironment {
+                dom: true,
+                web_worker: false,
+                service_worker: false,
+                browserslist_query: rcstr!("defaults"),
+            }
+            .resolved_cell(),
+        ))
+        .to_resolved()
+        .await?;
+        let before = output_asset(output_root.join("lazy.js")?, "export default 1;").await?;
+        let after = output_asset(output_root.join("lazy.js")?, "export default 2;").await?;
+        let before_chunks: Vc<OutputAssets> = Vc::cell(vec![before]);
+        let after_chunks: Vc<OutputAssets> = Vc::cell(vec![after]);
+        let evaluatable_assets = EvaluatableAssets::empty();
+        let entry_ident = AssetIdent::from_path(root.join("src/entry.js")?).into_vc();
+        let other_entry_ident = AssetIdent::from_path(root.join("src/other.js")?).into_vc();
+
+        for template in [
+            None,
+            Some("custom/[name].dev.js"),
+            Some("assets/[name].[contenthash:8].async.js"),
+            Some("lists/[contenthash:16].hmr.js"),
+        ] {
+            let mut builder = BrowserChunkingContext::builder(
+                root.clone(),
+                output_root.clone(),
+                rcstr!(".."),
+                output_root.clone(),
+                output_root.clone(),
+                output_root.clone(),
+                environment,
+                RuntimeType::Development,
+            )
+            .hot_module_replacement()
+            .current_chunk_method(CurrentChunkMethod::DocumentCurrentScript);
+            if let Some(template) = template {
+                builder = builder.chunk_filename(template.into());
+            }
+            let context = builder.build().to_resolved().await?;
+            let list = |ident, chunks, source| {
+                EcmascriptDevChunkList::new(*context, ident, evaluatable_assets, chunks, source)
+            };
+            let initial_list = list(
+                entry_ident,
+                before_chunks,
+                EcmascriptDevChunkListSource::Entry,
+            );
+            let updated_list = list(
+                entry_ident,
+                after_chunks,
+                EcmascriptDevChunkListSource::Entry,
+            );
+            let initial_path = initial_list.path().owned().await?;
+            assert_eq!(initial_path, updated_list.path().owned().await?);
+            assert_ne!(
+                initial_list
+                    .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
+                    .await?,
+                updated_list
+                    .content_hash(no_hash_salt(), HashAlgorithm::Xxh3Hash64Hex)
+                    .await?,
+            );
+            assert_ne!(
+                initial_path,
+                list(
+                    entry_ident,
+                    before_chunks,
+                    EcmascriptDevChunkListSource::Dynamic
+                )
+                .path()
+                .owned()
+                .await?,
+            );
+            assert_ne!(
+                initial_path,
+                list(
+                    other_entry_ident,
+                    before_chunks,
+                    EcmascriptDevChunkListSource::Entry
+                )
+                .path()
+                .owned()
+                .await?,
+            );
+
+            let logical_name = entry_ident
+                .owned()
+                .await?
+                .with_modifier(rcstr!("ecmascript dev chunk list"))
+                .into_vc()
+                .output_name(root.clone(), None, rcstr!(".js"))
+                .owned()
+                .await?;
+            let relative_path = output_root.get_path_to(&initial_path).unwrap();
+            match template {
+                None => assert_eq!(relative_path, format!("{logical_name}.js")),
+                Some("custom/[name].dev.js") => {
+                    assert_eq!(relative_path, format!("custom/{logical_name}.dev.js"));
+                }
+                Some(template) => {
+                    let suffix = if template.starts_with("assets/") {
+                        assert!(relative_path.starts_with(&format!("assets/{logical_name}.")));
+                        ".async.js"
+                    } else {
+                        assert!(relative_path.starts_with("lists/"));
+                        ".hmr.js"
+                    };
+                    let filename = initial_path.file_name().strip_suffix(suffix).unwrap();
+                    let hash = filename.rsplit('.').next().unwrap();
+                    assert_eq!(hash.len(), if template.contains(":8]") { 8 } else { 16 });
+                    assert!(hash.bytes().all(|byte| byte.is_ascii_hexdigit()));
+
+                    let before_path = context
+                        .chunk_path(Some(Vc::upcast(*before)), entry_ident, None, rcstr!(".js"))
+                        .owned()
+                        .await?;
+                    let after_path = context
+                        .chunk_path(Some(Vc::upcast(*after)), entry_ident, None, rcstr!(".js"))
+                        .owned()
+                        .await?;
+                    assert_ne!(before_path, after_path);
+                }
+            }
+        }
+        Ok(Completion::new())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn hmr_chunk_list_paths_survive_content_changes() {
+        let tt = TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async {
+            hmr_chunk_list_paths_operation()
+                .read_strongly_consistent()
+                .await?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[turbo_tasks::function(operation, root)]
+    async fn generated_async_loader_hmr_operation() -> Result<Vc<Completion>> {
+        let root = VirtualFileSystem::new_with_name(rcstr!("async-loader-hmr"))
+            .root()
+            .owned()
+            .await?;
+        let environment = Environment::new(ExecutionEnvironment::Browser(
+            BrowserEnvironment {
+                dom: true,
+                web_worker: false,
+                service_worker: false,
+                browserslist_query: rcstr!("defaults"),
+            }
+            .resolved_cell(),
+        ))
+        .to_resolved()
+        .await?;
+        let target = Vc::upcast::<Box<dyn ChunkableModule>>(CachedExternalModule::new(
+            rcstr!("test-target"),
+            None,
+            CachedExternalType::CommonJs,
+            CachedExternalTracingMode::Untraced,
+        ));
+        let graph = ModuleGraph::from_graphs(Vec::new(), None).connect();
+        let mut baseline = None;
+        for (runtime, hot, self_accept) in [
+            (RuntimeType::Development, false, false),
+            (RuntimeType::Development, true, true),
+            (RuntimeType::Production, false, false),
+            (RuntimeType::Production, true, false),
+        ] {
+            let mut builder = BrowserChunkingContext::builder(
+                root.clone(),
+                root.clone(),
+                rcstr!("."),
+                root.clone(),
+                root.clone(),
+                root.clone(),
+                environment,
+                runtime,
+            );
+            if hot {
+                builder = builder.hot_module_replacement();
+            }
+            let context = Vc::upcast::<Box<dyn ChunkingContext>>(builder.build());
+            assert_eq!(
+                *context.is_hot_module_replacement_enabled().await?,
+                self_accept
+            );
+            let loader = AsyncLoaderModule::new(target, context, AvailabilityInfo::root());
+            let content = loader
+                .chunk_item_content(context, graph, None, true)
+                .await?;
+            let code = content.inner_code.to_str()?;
+            let body = if self_accept {
+                code.strip_prefix("__turbopack_context__.m.hot.accept();\n")
+                    .expect("generated async loaders must accept metadata updates")
+            } else {
+                assert!(!code.contains(".hot.accept()"));
+                &code
+            };
+            if let Some(baseline) = &baseline {
+                assert_eq!(body, baseline);
+            } else {
+                baseline = Some(body.to_string());
+            }
+        }
+        Ok(Completion::new())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn generated_async_loaders_only_self_accept_with_development_hmr() {
+        let tt = TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async {
+            generated_async_loader_hmr_operation()
+                .read_strongly_consistent()
+                .await?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
 }

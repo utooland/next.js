@@ -44,3 +44,7 @@ turbopack-ecmascript-runtime = { workspace = true }
 turbopack-css = { workspace = true }
 turbopack-resolve = { workspace = true }
 
+[dev-dependencies]
+tokio = { workspace = true }
+turbo-tasks-backend = { workspace = true }
+
