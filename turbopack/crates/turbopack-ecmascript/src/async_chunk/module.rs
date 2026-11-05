@@ -22,7 +22,7 @@ use crate::{
         EcmascriptChunkItemContent, EcmascriptChunkItemOptions, EcmascriptChunkPlaceable,
         EcmascriptExports, data::EcmascriptChunkData, ecmascript_chunk_item,
     },
-    runtime_functions::{TURBOPACK_EXPORT_VALUE, TURBOPACK_LOAD},
+    runtime_functions::{TURBOPACK_EXPORT_VALUE, TURBOPACK_LOAD, TURBOPACK_MODULE},
     utils::{StringifyJs, StringifyModuleId},
 };
 
@@ -169,6 +169,16 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
             supports_arrow_functions,
             ..Default::default()
         };
+        let hot_module_replacement = *chunking_context.is_hot_module_replacement_enabled().await?;
+        let accept_loader_update = |code: String| {
+            if hot_module_replacement {
+                // Only the generated chunk URLs changed. The runtime looks up this loader by
+                // module ID on every import and tracks the imported module's original parent.
+                format!("{TURBOPACK_MODULE}.hot.accept();\n{code}")
+            } else {
+                code
+            }
+        };
         let parent_import_function = if supports_arrow_functions {
             "(parentImport) => {"
         } else {
@@ -199,7 +209,7 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
                 "#,
             };
             return Ok(EcmascriptChunkItemContent {
-                inner_code: code.into(),
+                inner_code: accept_loader_update(code).into(),
                 options,
                 ..Default::default()
             }
@@ -272,7 +282,7 @@ impl EcmascriptChunkPlaceable for AsyncLoaderModule {
         };
 
         Ok(EcmascriptChunkItemContent {
-            inner_code: code.into(),
+            inner_code: accept_loader_update(code).into(),
             options,
             ..Default::default()
         }
