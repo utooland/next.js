@@ -134,6 +134,7 @@ use crate::{
     transform::{remove_directives, remove_shebang},
 };
 pub use crate::{
+    merged_module::merged_ecmascript_module_members,
     references::{AnalyzeEcmascriptModuleResult, TURBOPACK_HELPER},
     static_code::StaticEcmascriptCode,
     swc_comments::swc_comments_to_single_threaded,

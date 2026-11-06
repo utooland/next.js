@@ -19,6 +19,24 @@ use crate::{
     },
 };
 
+/// Returns the original modules that contributed to a scope-hoisted chunk item.
+/// The merged module's identity alone names only its first entry point.
+pub async fn merged_ecmascript_module_members(
+    module: ResolvedVc<Box<dyn Module>>,
+) -> Result<Option<Vec<ResolvedVc<Box<dyn Module>>>>> {
+    let Some(merged) = ResolvedVc::try_downcast_type::<MergedEcmascriptModule>(module) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        merged
+            .await?
+            .modules
+            .iter()
+            .map(|&(module, _)| ResolvedVc::upcast(module))
+            .collect(),
+    ))
+}
+
 #[turbo_tasks::value(shared)]
 pub(crate) struct MergedEcmascriptModule {
     modules: Vec<(
