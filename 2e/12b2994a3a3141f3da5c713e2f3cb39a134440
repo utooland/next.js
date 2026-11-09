@@ -1,0 +1,28 @@
+crates/next-core/src/next_client/context.rs
+  h_05d0a07afcde4c 18-19
+turbopack/crates/turbopack-browser/src/chunking_context.rs
+  h_05d0a07afcde4c 1260-1281
+turbopack/crates/turbopack-browser/src/ecmascript/chunk.rs
+  h_05d0a07afcde4c 186-194
+turbopack/crates/turbopack-browser/src/ecmascript/evaluate/chunk.rs
+  h_05d0a07afcde4c 396-399,494-498
+turbopack/crates/turbopack-browser/src/ecmascript/evaluate/runtime.rs
+  h_05d0a07afcde4c 182-186
+turbopack/crates/turbopack-browser/src/ecmascript/worker.rs
+  h_05d0a07afcde4c 83-86,159-163
+turbopack/crates/turbopack-cli/src/build/mod.rs
+  h_05d0a07afcde4c 29
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/entry/chunk.rs
+  h_05d0a07afcde4c 186-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2e12b2994a3a3141f3da5c713e2f3cb39a134440",
+  "prompts": {},
+  "humans": {
+    "h_05d0a07afcde4c": {
+      "author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
