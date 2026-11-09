@@ -1,0 +1,21 @@
+turbopack/crates/turbopack-ecmascript/src/merged_module.rs
+  s_9866b691db6f9b::t_f29ac3d15339ff 22-39
+turbopack/crates/turbopack-ecmascript/src/lib.rs
+  s_9866b691db6f9b::t_f29ac3d15339ff 137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "891482597f04e42ca7bb3851105fd0555563fa98",
+  "prompts": {},
+  "sessions": {
+    "s_9866b691db6f9b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1af71-5078-72d2-a666-e23473ecef0a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
