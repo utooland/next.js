@@ -124,10 +124,10 @@ impl ActivityMonitor {
             let mut active_time = self.active_time.lock();
             let now = now();
             if is_idle {
-                active_time.stop_at(now.into_std());
+                active_time.stop_at(now);
                 *activity = BackendActivity::Idle { since: now };
             } else {
-                active_time.start_at(now.into_std());
+                active_time.start_at(now);
                 *activity = BackendActivity::Busy;
             }
             true
@@ -151,7 +151,7 @@ impl ActivityMonitor {
                 return false;
             }
             let mut active_time = self.active_time.lock();
-            active_time.stop_at(now().into_std());
+            active_time.stop_at(now());
             *activity = BackendActivity::Stopping;
             true
         })
@@ -192,12 +192,12 @@ impl ActivityMonitor {
 
     fn active_time_with(&self, now: impl FnOnce() -> Instant) -> Duration {
         let active_time = self.active_time.lock();
-        active_time.elapsed_at(now().into_std())
+        active_time.elapsed_at(now())
     }
 
     fn reset_active_time_with(&self, now: impl FnOnce() -> Instant) {
         let mut active_time = self.active_time.lock();
-        active_time.reset_at(now().into_std());
+        active_time.reset_at(now());
     }
 }
 

@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use tokio::time::{Duration, Instant};
 
 /// A simple accumulating stopwatch for measuring total elapsed time across multiple
 /// start/stop intervals.
@@ -61,7 +61,7 @@ impl Stopwatch {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use tokio::time::{Duration, Instant};
 
     use super::Stopwatch;
 
