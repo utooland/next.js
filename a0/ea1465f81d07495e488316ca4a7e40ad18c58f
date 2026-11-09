@@ -1,0 +1,21 @@
+turbopack/crates/turbo-tasks-backend/src/backend/activity.rs
+  s_520c270035d39b::t_daedf15ffb3d39 127,130,154,195,200
+turbopack/crates/turbo-tasks-backend/src/utils/stopwatch.rs
+  s_520c270035d39b::t_daedf15ffb3d39 1,64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a0ea1465f81d07495e488316ca4a7e40ad18c58f",
+  "prompts": {},
+  "sessions": {
+    "s_520c270035d39b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1bf75-6a0b-7c42-9932-23d66c8bcbb7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
