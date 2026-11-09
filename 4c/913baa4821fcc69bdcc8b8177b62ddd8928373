@@ -95,6 +95,8 @@ turbopack/crates/turbopack-node/src/transforms/postcss.rs
   s_520c270035d39b::t_3ec607fa77056d 6,8-9,68,111,123,131,152,168,174-180,351,353-366,376-378,387,391-406,410-413,416,420,422-494,498-501,514-515,519,526-597,599,687-711,713-719,738-742,760
 turbopack/crates/turbopack-nodejs/src/ecmascript/node/chunk.rs
   s_520c270035d39b::t_0ebb9430dbec42 51,54,75-78
+turbopack/crates/turbopack-test-utils/src/snapshot.rs
+  s_520c270035d39b::t_3d5e278d222f40 33-38,47-51,55,210-216
 ---
 {
   "schema_version": "authorship/3.0.0",
