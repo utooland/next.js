@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use bincode::{Decode, Encode};
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{
@@ -8,9 +8,11 @@ use turbo_tasks_fs::{File, FileContent, FileSystemPath};
 
 use crate::{
     asset::{Asset, AssetContent},
+    chunk::ChunkingContext,
+    ident::AssetIdent,
     introspect::{Introspectable, IntrospectableChildren},
     output::{OutputAsset, OutputAssetsReference},
-    source_map::{GenerateSourceMap, SourceMap},
+    source_map::{GenerateSourceMap, SourceMap, SourceMapType},
 };
 
 #[derive(PartialEq, Eq, NonLocalValue, ValueDebugFormat, Encode, Decode)]
@@ -18,39 +20,69 @@ enum PathType {
     Fixed {
         path: FileSystemPath,
     },
+    FromIdent {
+        chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
+        ident_for_path: ResolvedVc<AssetIdent>,
+        extension: RcStr,
+    },
     FromAsset {
         output_asset: ResolvedVc<Box<dyn OutputAsset>>,
     },
 }
 
-/// Represents the source map of an ecmascript asset.
+/// Represents the source map of an output asset.
 #[turbo_tasks::value]
 pub struct SourceMapAsset {
     path_ty: PathType,
+    source_map_ty: Option<SourceMapType>,
     generate_source_map: ResolvedVc<Box<dyn GenerateSourceMap>>,
 }
 
 #[turbo_tasks::value_impl]
 impl SourceMapAsset {
     #[turbo_tasks::function]
-    pub fn new(
-        output_asset: ResolvedVc<Box<dyn OutputAsset>>,
+    pub async fn new(
+        chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
+        ident_for_path: ResolvedVc<AssetIdent>,
         generate_source_map: ResolvedVc<Box<dyn GenerateSourceMap>>,
-    ) -> Vc<Self> {
-        SourceMapAsset {
-            path_ty: PathType::FromAsset { output_asset },
+        extension: RcStr,
+    ) -> Result<Vc<Self>> {
+        Ok(SourceMapAsset {
+            path_ty: PathType::FromIdent {
+                chunking_context,
+                ident_for_path,
+                extension,
+            },
+            source_map_ty: *chunking_context.emitted_source_map_type().await?,
             generate_source_map,
         }
-        .cell()
+        .cell())
+    }
+
+    /// Uses the emitted filename so the output and its map share the same content hash.
+    #[turbo_tasks::function]
+    pub async fn new_for_output_asset(
+        chunking_context: ResolvedVc<Box<dyn ChunkingContext>>,
+        output_asset: ResolvedVc<Box<dyn OutputAsset>>,
+        generate_source_map: ResolvedVc<Box<dyn GenerateSourceMap>>,
+    ) -> Result<Vc<Self>> {
+        Ok(SourceMapAsset {
+            path_ty: PathType::FromAsset { output_asset },
+            source_map_ty: *chunking_context.emitted_source_map_type().await?,
+            generate_source_map,
+        }
+        .cell())
     }
 
     #[turbo_tasks::function]
     pub fn new_fixed(
         path: FileSystemPath,
+        source_map_ty: SourceMapType,
         generate_source_map: ResolvedVc<Box<dyn GenerateSourceMap>>,
     ) -> Vc<Self> {
         SourceMapAsset {
             path_ty: PathType::Fixed { path },
+            source_map_ty: Some(source_map_ty),
             generate_source_map,
         }
         .cell()
@@ -68,6 +100,20 @@ impl OutputAsset for SourceMapAsset {
         // but this caused `all_assets_map` to be recomputed on every change.
         let this = self.await?;
         Ok(match &this.path_ty {
+            PathType::FromIdent {
+                chunking_context,
+                ident_for_path,
+                extension,
+            } => chunking_context
+                .chunk_path(
+                    Some(Vc::upcast(self)),
+                    **ident_for_path,
+                    None,
+                    extension.clone(),
+                )
+                .await?
+                .append(".map")?
+                .cell(),
             PathType::FromAsset { output_asset } => {
                 output_asset.path().await?.append(".map")?.cell()
             }
@@ -80,7 +126,10 @@ impl OutputAsset for SourceMapAsset {
 impl Asset for SourceMapAsset {
     #[turbo_tasks::function]
     async fn content(&self) -> Result<Vc<AssetContent>> {
-        let content = self.generate_source_map.generate_source_map();
+        let ty = self
+            .source_map_ty
+            .context("Cannot emit a source map asset when source maps are disabled")?;
+        let content = self.generate_source_map.generate_source_map(ty);
         if content.await?.is_content() {
             Ok(AssetContent::file(content))
         } else {

@@ -12,7 +12,7 @@ use turbopack_core::{
     code_builder::{Code, CodeBuilder},
     ident::AssetIdent,
     output::{OutputAsset, OutputAssetsReference, OutputAssetsWithReferenced},
-    source_map::{GenerateSourceMap, SourceMapAsset},
+    source_map::{GenerateSourceMap, SourceMapAsset, SourceMapGenerationOptions, SourceMapType},
 };
 use turbopack_ecmascript::minify::{get_compress_options_for_target, minify};
 
@@ -52,11 +52,6 @@ impl EcmascriptBrowserWorkerEntrypoint {
     async fn code(self: Vc<Self>) -> Result<Vc<Code>> {
         let this = self.await?;
 
-        let source_maps = *this
-            .chunking_context
-            .reference_chunk_source_maps(Vc::upcast(self))
-            .await?;
-
         let forwarded_globals = this.forwarded_globals.await?;
         // Exporting entries need their shared registry before the entry factory returns. Ordinary
         // entries instead queue their registrations before the shared runtime executes.
@@ -85,7 +80,10 @@ impl EcmascriptBrowserWorkerEntrypoint {
                 .await?;
             code = minify(
                 code,
-                source_maps,
+                this.chunking_context
+                    .emitted_source_map_type()
+                    .await?
+                    .is_some(),
                 mangle,
                 get_compress_options_for_target(compress, mangle, supports_arrow_functions),
             )?;
@@ -106,8 +104,13 @@ impl EcmascriptBrowserWorkerEntrypoint {
     }
 
     #[turbo_tasks::function]
-    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
-        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
+    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
+        let this = self.await?;
+        Ok(SourceMapAsset::new_for_output_asset(
+            *this.chunking_context,
+            Vc::upcast(self),
+            Vc::upcast(self),
+        ))
     }
 }
 
@@ -115,9 +118,18 @@ impl EcmascriptBrowserWorkerEntrypoint {
 impl OutputAssetsReference for EcmascriptBrowserWorkerEntrypoint {
     #[turbo_tasks::function]
     async fn references(self: Vc<Self>) -> Result<Vc<OutputAssetsWithReferenced>> {
-        Ok(OutputAssetsWithReferenced::from_assets(Vc::cell(vec![
-            ResolvedVc::upcast(self.source_map().to_resolved().await?),
-        ])))
+        let this = self.await?;
+        let mut references = Vec::new();
+        if *this
+            .chunking_context
+            .reference_chunk_source_maps(Vc::upcast(self))
+            .await?
+        {
+            references.push(ResolvedVc::upcast(self.source_map().to_resolved().await?));
+        }
+        Ok(OutputAssetsWithReferenced::from_assets(Vc::cell(
+            references,
+        )))
     }
 }
 
@@ -139,12 +151,17 @@ impl OutputAsset for EcmascriptBrowserWorkerEntrypoint {
 #[turbo_tasks::value_impl]
 impl Asset for EcmascriptBrowserWorkerEntrypoint {
     #[turbo_tasks::function]
-    fn content_hash(
+    async fn content_hash(
         self: Vc<Self>,
         salt: Vc<RcStr>,
         algorithm: HashAlgorithm,
-    ) -> Vc<Option<RcStr>> {
-        self.code().content_hash(salt, algorithm)
+    ) -> Result<Vc<Option<RcStr>>> {
+        let emitted_ty = *self
+            .await?
+            .chunking_context
+            .emitted_source_map_type()
+            .await?;
+        Ok(self.code().content_hash(salt, algorithm, emitted_ty))
     }
 
     #[turbo_tasks::function]
@@ -152,7 +169,14 @@ impl Asset for EcmascriptBrowserWorkerEntrypoint {
         Ok(AssetContent::file(
             FileContent::Content(File::from(
                 self.code()
-                    .to_rope_with_magic_comments(|| self.source_map())
+                    .to_rope_with_magic_comments(
+                        *self
+                            .await?
+                            .chunking_context
+                            .emitted_source_map_type()
+                            .await?,
+                        || self.source_map(),
+                    )
                     .await?,
             ))
             .cell(),
@@ -163,8 +187,8 @@ impl Asset for EcmascriptBrowserWorkerEntrypoint {
 #[turbo_tasks::value_impl]
 impl GenerateSourceMap for EcmascriptBrowserWorkerEntrypoint {
     #[turbo_tasks::function]
-    fn generate_source_map(self: Vc<Self>) -> Vc<FileContent> {
-        self.code().generate_source_map()
+    fn generate_source_map(self: Vc<Self>, ty: SourceMapType) -> Vc<FileContent> {
+        self.code().generate_source_map(ty)
     }
 }
 
@@ -177,7 +201,7 @@ fn generate_worker_bootstrap_code(
     shared_runtime: bool,
     entry_root_export: bool,
 ) -> Result<Code> {
-    let mut code: CodeBuilder = CodeBuilder::default();
+    let mut code: CodeBuilder = CodeBuilder::new(false, SourceMapGenerationOptions::NONE);
 
     // Generate the Object.assign properties for forwarded globals
     // params[0] = chunk URLs, params[1] = ASSET_SUFFIX,

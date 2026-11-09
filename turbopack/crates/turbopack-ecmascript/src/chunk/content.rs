@@ -3,13 +3,105 @@ use std::future::IntoFuture;
 use anyhow::Result;
 use either::Either;
 use turbo_tasks::{ResolvedVc, TryJoinIterExt, Vc};
-use turbopack_core::chunk::{ChunkItem, ChunkItems, batch_info};
-
-use crate::chunk::{
-    CodeModuleIdAndPath,
-    batch::{EcmascriptChunkItemBatchGroup, EcmascriptChunkItemOrBatchWithAsyncInfo},
-    batch_group_code_module_ids_and_paths, item_code_module_ids_and_paths,
+use turbopack_core::{
+    chunk::{
+        ChunkItem, ChunkItems, ChunkingContext, CompressType, MangleType, MinifyType, batch_info,
+    },
+    code_builder::Code,
 };
+
+use crate::{
+    chunk::{
+        CodeModuleIdAndPath,
+        batch::{EcmascriptChunkItemBatchGroup, EcmascriptChunkItemOrBatchWithAsyncInfo},
+        batch_group_code_module_ids_and_paths, item_code_module_ids_and_paths,
+    },
+    minify::{get_compress_options_for_target, minify},
+};
+
+/// How the code of an ecmascript chunk is minified: never, once per chunk item before the chunk
+/// is assembled, or once for the whole assembled chunk. Never both.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChunkMinification {
+    None,
+    /// Each chunk item is minified on its own (in parallel, cached per item). See
+    /// [`ChunkingContext::minify_before_chunking`].
+    PerItem {
+        mangle: Option<MangleType>,
+        compress: Option<CompressType>,
+        supports_arrow_functions: bool,
+    },
+    /// The assembled chunk is minified in one pass.
+    WholeChunk {
+        mangle: Option<MangleType>,
+        compress: Option<CompressType>,
+        supports_arrow_functions: bool,
+    },
+}
+
+impl ChunkMinification {
+    pub async fn for_chunking_context(
+        chunking_context: Vc<Box<dyn ChunkingContext>>,
+    ) -> Result<Self> {
+        Ok(match *chunking_context.minify_type().await? {
+            MinifyType::NoMinify => ChunkMinification::None,
+            MinifyType::Minify { mangle, compress } => {
+                let supports_arrow_functions = *chunking_context
+                    .environment()
+                    .runtime_versions()
+                    .supports_arrow_functions()
+                    .await?;
+                if *chunking_context.minify_before_chunking().await? {
+                    ChunkMinification::PerItem {
+                        mangle,
+                        compress,
+                        supports_arrow_functions,
+                    }
+                } else {
+                    ChunkMinification::WholeChunk {
+                        mangle,
+                        compress,
+                        supports_arrow_functions,
+                    }
+                }
+            }
+        })
+    }
+
+    /// The minification to apply to each chunk item before it is written into the chunk.
+    fn per_item(self) -> (MinifyType, bool) {
+        match self {
+            ChunkMinification::PerItem {
+                mangle,
+                compress,
+                supports_arrow_functions,
+            } => (
+                MinifyType::Minify { mangle, compress },
+                supports_arrow_functions,
+            ),
+            ChunkMinification::None | ChunkMinification::WholeChunk { .. } => {
+                (MinifyType::NoMinify, false)
+            }
+        }
+    }
+
+    /// Applies the whole-chunk minification, if any, to the assembled chunk.
+    pub fn finish_chunk(self, code: Code, source_maps: bool) -> Result<Code> {
+        match self {
+            ChunkMinification::WholeChunk {
+                mangle,
+                compress,
+                supports_arrow_functions,
+            } => minify(
+                code,
+                source_maps,
+                mangle,
+                get_compress_options_for_target(compress, mangle, supports_arrow_functions),
+            ),
+            ChunkMinification::None | ChunkMinification::PerItem { .. } => Ok(code),
+        }
+    }
+}
 
 #[turbo_tasks::value(shared)]
 pub struct EcmascriptChunkContent {
@@ -49,21 +141,48 @@ impl EcmascriptChunkContent {
 }
 
 impl EcmascriptChunkContent {
-    pub async fn chunk_item_code_module_ids_and_paths(&self) -> Result<Vec<CodeModuleIdAndPath>> {
+    /// Returns the code of every chunk item, minified if `minification` is
+    /// [`ChunkMinification::PerItem`].
+    pub async fn chunk_item_code_module_ids_and_paths(
+        &self,
+        minification: ChunkMinification,
+        source_maps: bool,
+    ) -> Result<Vec<CodeModuleIdAndPath>> {
+        let (minify, supports_arrow_functions) = minification.per_item();
+        // Source maps only affect the per-item minification. Normalize the flag otherwise so it
+        // doesn't fork the per-item tasks for chunks that are minified as a whole (or not at all).
+        let source_maps = source_maps && matches!(minify, MinifyType::Minify { .. });
         let chunk_item_groups = batch_info(
             &self.batch_groups,
             &self.chunk_items,
-            |batch| batch_group_code_module_ids_and_paths(batch).into_future(),
-            |item| item_code_module_ids_and_paths(item.clone()).into_future(),
+            |batch| {
+                batch_group_code_module_ids_and_paths(
+                    batch,
+                    minify,
+                    source_maps,
+                    supports_arrow_functions,
+                )
+                .into_future()
+            },
+            |item| {
+                item_code_module_ids_and_paths(
+                    item.clone(),
+                    minify,
+                    source_maps,
+                    supports_arrow_functions,
+                )
+                .into_future()
+            },
         )
         .await?;
         let mut chunk_items = chunk_item_groups
             .iter()
             .flat_map(|items| items.iter().cloned())
             .collect::<Vec<_>>();
-        // Sort all items by their module path so that similar modules stay
-        // together and the chunks gzip better.
-        chunk_items.sort_by(|a, b| (&a.path, &a.id).cmp(&(&b.path, &b.id)));
+        // Strict items come first so they form one contiguous group (see `write_module_factories`).
+        // Within each group, sort by module path so that similar modules stay together and the
+        // chunks gzip better.
+        chunk_items.sort_by(|a, b| (!a.strict, &a.path, &a.id).cmp(&(!b.strict, &b.path, &b.id)));
         Ok(chunk_items)
     }
 }

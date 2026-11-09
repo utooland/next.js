@@ -39,7 +39,6 @@ bincode = { workspace = true }
 concurrent-queue = { workspace = true }
 dashmap = { workspace = true }
 either = { workspace = true }
-erased-serde = { workspace = true }
 event-listener = "5.4.0"
 fixedbitset = { workspace = true }
 futures = { workspace = true }
@@ -47,8 +46,6 @@ indexmap = { workspace = true, features = ["serde"] }
 inventory = { workspace = true }
 parking_lot = { workspace = true, features = ["serde"] }
 pin-project-lite = { workspace = true }
-rayon = { workspace = true }
-regex = { workspace = true }
 rustc-hash = { workspace = true }
 scattered-collect = { workspace = true }
 serde = { workspace = true, features = ["rc", "derive"] }
@@ -62,16 +59,15 @@ tokio = { workspace = true, features = [
   "macros",
   "rt-multi-thread",
 ] }
-tokio-util = { workspace = true }
 tracing = { workspace = true }
 triomphe = { workspace = true, features = ["unsize", "unstable"] }
 turbo-bincode = { workspace = true }
+turbo-bitset = { workspace = true }
 turbo-dyn-eq-hash = { workspace = true }
 turbo-frozenmap = { workspace = true }
 turbo-rcstr = { workspace = true }
 turbo-tasks-hash = { workspace = true }
 turbo-tasks-macros = { workspace = true }
-turbo-tasks-malloc = { workspace = true }
 unsize = { workspace = true }
 
 # Only used by the benchmarks, which don't run on wasm. Gated by target so that
@@ -79,6 +75,7 @@ unsize = { workspace = true }
 # rayon, which refuses to compile for wasi, and cargo resolves dev-dependencies even for `--lib`.
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 criterion = { workspace = true, features = ["async_tokio"] }
+turbo-tasks-malloc = { workspace = true }
 tokio = { workspace = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]

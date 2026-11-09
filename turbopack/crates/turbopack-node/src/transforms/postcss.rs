@@ -14,11 +14,11 @@ use turbopack_core::{
     context::{AssetContext, ProcessResult},
     file_source::FileSource,
     ident::AssetIdent,
-    module_graph::{ModuleGraph, SingleModuleGraph},
+    module_graph::{ModuleGraph, ModuleGraphOptions, SingleModuleGraph},
     reference_type::{EntryReferenceSubType, InnerAssets, ReferenceType},
     resolve::{FindContextFileResult, find_context_file_or_package_key, options::ImportMapping},
     source::Source,
-    source_map::GenerateSourceMap,
+    source_map::{GenerateSourceMap, SourceMapType},
     source_transform::SourceTransform,
     virtual_source::VirtualSource,
 };
@@ -26,7 +26,7 @@ use turbopack_ecmascript::runtime_functions::TURBOPACK_EXTERNAL_IMPORT;
 
 use crate::{
     embed_js::embed_file_path,
-    evaluate::get_evaluate_entries,
+    evaluate::{EvaluateArg, get_evaluate_entries},
     execution_context::ExecutionContext,
     transforms::{
         util::{EmittedAsset, emitted_assets_to_virtual_sources},
@@ -274,20 +274,16 @@ async fn extra_configs_changed(
 }
 
 #[turbo_tasks::value]
-pub struct JsonSource {
-    pub path: FileSystemPath,
-    pub key: ResolvedVc<Option<RcStr>>,
-    pub allow_json5: bool,
+struct JsonSource {
+    path: FileSystemPath,
+    key: ResolvedVc<Option<RcStr>>,
+    allow_json5: bool,
 }
 
 #[turbo_tasks::value_impl]
 impl JsonSource {
     #[turbo_tasks::function]
-    pub fn new(
-        path: FileSystemPath,
-        key: ResolvedVc<Option<RcStr>>,
-        allow_json5: bool,
-    ) -> Vc<Self> {
+    fn new(path: FileSystemPath, key: ResolvedVc<Option<RcStr>>, allow_json5: bool) -> Vc<Self> {
         JsonSource {
             path,
             key,
@@ -350,7 +346,7 @@ impl Asset for JsonSource {
 }
 
 #[turbo_tasks::function]
-pub(crate) async fn config_loader_source(
+async fn config_loader_source(
     project_path: FileSystemPath,
     config_source: PostCssConfigSource,
 ) -> Result<Vc<Box<dyn Source>>> {
@@ -521,7 +517,7 @@ async fn postcss_executor(
     let config_asset = asset_context
         .process(
             config_loader_source(project_path.clone(), config_source),
-            ReferenceType::Entry(EntryReferenceSubType::Undefined),
+            ReferenceType::Entry(EntryReferenceSubType::default()),
         )
         .module()
         .to_resolved()
@@ -534,7 +530,7 @@ async fn postcss_executor(
                     project_path.clone(),
                     PostCssConfigSource::Inline(additional_config_content),
                 ),
-                ReferenceType::Entry(EntryReferenceSubType::Undefined),
+                ReferenceType::Entry(EntryReferenceSubType::default()),
             )
             .module()
             .to_resolved()
@@ -642,10 +638,10 @@ async fn find_config_in_location(
 #[turbo_tasks::value_impl]
 impl GenerateSourceMap for PostCssTransformedAsset {
     #[turbo_tasks::function]
-    async fn generate_source_map(&self) -> Result<Vc<FileContent>> {
+    async fn generate_source_map(&self, ty: SourceMapType) -> Result<Vc<FileContent>> {
         let source = ResolvedVc::try_sidecast::<Box<dyn GenerateSourceMap>>(self.source);
         match source {
-            Some(source) => Ok(source.generate_source_map()),
+            Some(source) => Ok(source.generate_source_map(ty)),
             None => Ok(FileContent::NotFound.cell()),
         }
     }
@@ -730,8 +726,7 @@ impl PostCssTransformedAsset {
         let module_graph = ModuleGraph::from_graphs(
             vec![SingleModuleGraph::new_with_entries(
                 entries.graph_entries().to_resolved().await?,
-                false,
-                false,
+                ModuleGraphOptions::default(),
             )],
             None,
         )
@@ -740,20 +735,11 @@ impl PostCssTransformedAsset {
         .await?;
 
         let source_ident = self.source.ident().await?;
-        let css_fs_path = source_ident.path.clone();
-
         // Prefer an absolute filesystem path for PostCSS `from`/`to`.
         // Some plugins resolve dependencies relative to these fields, and on
         // Windows a cwd-relative path can be joined against the wrong base when
         // the project path and root path differ.
-        let css_path = if let Some(css_path) = to_sys_path(css_fs_path.clone()).await? {
-            css_path.to_string_lossy().into_owned()
-        } else if let Some(css_path) = project_path.get_relative_path_to(&css_fs_path) {
-            css_path.into_owned()
-        } else {
-            // This shouldn't be an error since it can happen on virtual assets
-            "".into()
-        };
+        let css_path = EvaluateArg::AbsolutePath(source_ident.path.clone());
 
         let config_value = evaluate_webpack_loader(WebpackLoaderContext {
             entries,
@@ -767,9 +753,9 @@ impl PostCssTransformedAsset {
             resolve_options_context: None,
             asset_context: self.asset_context,
             args: vec![
-                ResolvedVc::cell(content.into()),
-                ResolvedVc::cell(css_path.into()),
-                ResolvedVc::cell(source_map.into()),
+                EvaluateArg::Vc(ResolvedVc::cell(content.into())),
+                css_path,
+                EvaluateArg::Vc(ResolvedVc::cell(source_map.into())),
             ],
             additional_invalidation,
             loader_names: vec![turbo_rcstr::rcstr!("postcss")],

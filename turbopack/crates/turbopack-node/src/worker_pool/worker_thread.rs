@@ -61,7 +61,7 @@ pub fn register_worker_scheduler(
         .map_err(|_| napi::Error::from_reason("Worker terminator already registered"))
 }
 
-pub async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
+pub(super) async fn create_worker(options: Arc<WorkerOptions>) -> anyhow::Result<u32> {
     let creator = WORKER_CREATOR
         .get()
         .ok_or_else(|| anyhow::anyhow!("Worker creator not registered"))?;
@@ -113,7 +113,7 @@ pub fn worker_created(worker_id: u32) {
     }
 }
 
-pub fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
+pub(super) fn terminate_worker(options: Arc<WorkerOptions>, worker_id: u32) {
     if let Some(terminator) = WORKER_TERMINATOR.get() {
         terminator.call(
             NapiWorkerTermination {

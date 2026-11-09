@@ -7,7 +7,7 @@ use turbopack_core::{
     chunk::{Chunk, ChunkingContext},
     introspect::{Introspectable, IntrospectableChildren},
     output::{OutputAsset, OutputAssetsReference, OutputAssetsWithReferenced},
-    source_map::{GenerateSourceMap, SourceMapAsset},
+    source_map::{GenerateSourceMap, SourceMapAsset, SourceMapType},
     version::VersionedContent,
 };
 use turbopack_ecmascript::chunk::{EcmascriptChunk, EcmascriptChunkContent};
@@ -46,8 +46,13 @@ impl EcmascriptBuildNodeChunk {
     }
 
     #[turbo_tasks::function]
-    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
-        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
+    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
+        let this = self.await?;
+        Ok(SourceMapAsset::new_for_output_asset(
+            Vc::upcast(*this.chunking_context),
+            Vc::upcast(self),
+            Vc::upcast(self),
+        ))
     }
 }
 
@@ -137,8 +142,8 @@ impl Asset for EcmascriptBuildNodeChunk {
 #[turbo_tasks::value_impl]
 impl GenerateSourceMap for EcmascriptBuildNodeChunk {
     #[turbo_tasks::function]
-    fn generate_source_map(self: Vc<Self>) -> Vc<FileContent> {
-        self.own_content().generate_source_map()
+    fn generate_source_map(self: Vc<Self>, ty: SourceMapType) -> Vc<FileContent> {
+        self.own_content().generate_source_map(ty)
     }
 }
 

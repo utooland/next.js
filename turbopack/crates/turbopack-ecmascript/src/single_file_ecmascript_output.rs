@@ -15,7 +15,7 @@ use turbopack_core::{
     chunk::ChunkingContext,
     output::{OutputAsset, OutputAssets, OutputAssetsReference, OutputAssetsWithReferenced},
     source::Source,
-    source_map::{GenerateSourceMap, SourceMapAsset},
+    source_map::{GenerateSourceMap, SourceMapAsset, SourceMapType},
 };
 
 use crate::parse::generate_js_source_map;
@@ -31,8 +31,13 @@ pub struct SingleFileEcmascriptOutput {
 #[turbo_tasks::value_impl]
 impl SingleFileEcmascriptOutput {
     #[turbo_tasks::function]
-    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
-        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
+    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
+        let this = self.await?;
+        Ok(SourceMapAsset::new_for_output_asset(
+            *this.chunking_context,
+            Vc::upcast(self),
+            Vc::upcast(self),
+        ))
     }
 }
 
@@ -66,6 +71,9 @@ impl Asset for SingleFileEcmascriptOutput {
         if !include_source_map {
             return Ok(this.source.content_hash(salt, algorithm));
         }
+        let Some(source_map_type) = *this.chunking_context.emitted_source_map_type().await? else {
+            return Ok(this.source.content_hash(salt, algorithm));
+        };
 
         let source_content = this.source.content().file_content().await?;
         let FileContent::Content(file) = &*source_content else {
@@ -77,7 +85,7 @@ impl Asset for SingleFileEcmascriptOutput {
         let mut content = RopeBuilder::default();
         content.concat(file.content());
         content.push_static_bytes(b"\0");
-        if let FileContent::Content(map) = &*self.generate_source_map().await? {
+        if let FileContent::Content(map) = &*self.generate_source_map(source_map_type).await? {
             content.concat(map.content());
         }
         Ok(FileContent::Content(File::from(content.build()))
@@ -109,7 +117,7 @@ impl SingleFileEcmascriptOutput {
 #[turbo_tasks::value_impl]
 impl GenerateSourceMap for SingleFileEcmascriptOutput {
     #[turbo_tasks::function]
-    pub async fn generate_source_map(&self) -> Result<Vc<FileContent>> {
+    pub async fn generate_source_map(&self, _ty: SourceMapType) -> Result<Vc<FileContent>> {
         let FileContent::Content(file) = &*self.source.content().file_content().await? else {
             return Ok(FileContent::NotFound.cell());
         };
@@ -148,11 +156,11 @@ impl GenerateSourceMap for SingleFileEcmascriptOutput {
 
         let map = generate_js_source_map(
             &*sm,
-            mappings,
+            &mappings,
             None::<&Rope>,
             true,
             true,
-            Default::default(),
+            &Default::default(),
         )?;
         Ok(FileContent::Content(File::from(map.to_rope())).cell())
     }

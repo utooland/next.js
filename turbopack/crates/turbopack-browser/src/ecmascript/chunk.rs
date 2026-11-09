@@ -9,7 +9,7 @@ use turbopack_core::{
     ident::AssetIdent,
     introspect::{Introspectable, IntrospectableChildren},
     output::{OutputAsset, OutputAssetsReference, OutputAssetsWithReferenced},
-    source_map::{GenerateSourceMap, SourceMapAsset},
+    source_map::{GenerateSourceMap, SourceMapAsset, SourceMapType},
     version::VersionedContent,
 };
 use turbopack_ecmascript::chunk::EcmascriptChunk;
@@ -41,8 +41,13 @@ impl EcmascriptBrowserChunk {
     }
 
     #[turbo_tasks::function]
-    fn source_map(self: Vc<Self>) -> Vc<SourceMapAsset> {
-        SourceMapAsset::new(Vc::upcast(self), Vc::upcast(self))
+    async fn source_map(self: Vc<Self>) -> Result<Vc<SourceMapAsset>> {
+        let this = self.await?;
+        Ok(SourceMapAsset::new_for_output_asset(
+            Vc::upcast(*this.chunking_context),
+            Vc::upcast(self),
+            Vc::upcast(self),
+        ))
     }
 }
 
@@ -173,12 +178,20 @@ impl OutputAsset for EcmascriptBrowserChunk {
 #[turbo_tasks::value_impl]
 impl Asset for EcmascriptBrowserChunk {
     #[turbo_tasks::function]
-    fn content_hash(
+    async fn content_hash(
         self: Vc<Self>,
         salt: Vc<RcStr>,
         algorithm: HashAlgorithm,
-    ) -> Vc<Option<RcStr>> {
-        self.own_content().code().content_hash(salt, algorithm)
+    ) -> Result<Vc<Option<RcStr>>> {
+        let emitted_ty = *self
+            .await?
+            .chunking_context
+            .emitted_source_map_type()
+            .await?;
+        Ok(self
+            .own_content()
+            .code()
+            .content_hash(salt, algorithm, emitted_ty))
     }
 
     #[turbo_tasks::function]
@@ -195,13 +208,13 @@ impl Asset for EcmascriptBrowserChunk {
 #[turbo_tasks::value_impl]
 impl GenerateSourceMap for EcmascriptBrowserChunk {
     #[turbo_tasks::function]
-    fn generate_source_map(self: Vc<Self>) -> Vc<FileContent> {
-        self.own_content().generate_source_map()
+    fn generate_source_map(self: Vc<Self>, ty: SourceMapType) -> Vc<FileContent> {
+        self.own_content().generate_source_map(ty)
     }
 
     #[turbo_tasks::function]
-    fn by_section(self: Vc<Self>, section: RcStr) -> Vc<FileContent> {
-        self.own_content().by_section(section)
+    fn by_section(self: Vc<Self>, section: RcStr, ty: SourceMapType) -> Vc<FileContent> {
+        self.own_content().by_section(section, ty)
     }
 }
 

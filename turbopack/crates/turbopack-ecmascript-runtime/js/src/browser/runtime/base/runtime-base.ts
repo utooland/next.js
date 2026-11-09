@@ -109,7 +109,8 @@ interface RuntimeBackend {
     params?: RuntimeParams
   ) => void
   /**
-   * Returns the same Promise for the same chunk URL.
+   * Returns the same Promise for the same chunk URL while it is loading or
+   * loaded. A failed load is not cached, so a later call retries it.
    */
   loadChunkCached: (sourceType: SourceType, chunkUrl: ChunkUrl) => Promise<void>
 }
@@ -120,9 +121,9 @@ interface DevRuntimeBackend {
   restart: () => void
 }
 
-const moduleFactories: ModuleFactories = new Map()
-contextPrototype.M = moduleFactories
-
+// The load caches below dedupe in-flight and successful loads. A failed load must not stay
+// cached, or every later load of the same chunk would reuse the rejection without requesting
+// the chunk again, so entries are added with `cacheLoadPromise`.
 const availableModules: Map<ModuleId, Promise<any> | true> = new Map()
 
 const availableModuleChunks: Map<ChunkPath, Promise<any> | true> = new Map()
@@ -144,6 +145,26 @@ function registerComponentChunkSizes(
       componentChunkSizes.set(componentChunks[i], size)
     }
   }
+}
+
+/**
+ * Caches `promise` under `key` and evicts it again if it rejects, so a later load retries
+ * instead of reusing the failure.
+ */
+function cacheLoadPromise<K>(
+  cache: Map<K, unknown>,
+  key: K,
+  promise: Promise<unknown>
+): void {
+  cache.set(key, promise)
+  promise.catch(() => {
+    // HMR's `disposeChunk` can delete the entry while this load is pending, and a later load
+    // can then cache a new promise under the same key. Only evict our own entry, or a late
+    // rejection here would drop the newer promise and cause a duplicate fetch.
+    if (cache.get(key) === promise) {
+      cache.delete(key)
+    }
+  })
 }
 
 type ChunkUrlOrMerged = ChunkUrl | [ChunkUrl, ChunkPath[], number[]]
@@ -212,7 +233,7 @@ async function loadChunkInternal(
     if (!availableModules.has(included)) {
       // It might be better to race old and new promises, but it's rare that the new promise will be faster than a request started earlier.
       // In production it's even more rare, because the chunk optimization tries to deduplicate modules anyway.
-      availableModules.set(included, promise)
+      cacheLoadPromise(availableModules, included, promise)
     }
   }
 
@@ -280,7 +301,7 @@ function loadComponentChunksOrWhole(
     for (const componentChunk of componentChunks) {
       if (!availableModuleChunks.has(componentChunk)) {
         const promise = loadChunkPath(sourceType, sourceData, componentChunk)
-        availableModuleChunks.set(componentChunk, promise)
+        cacheLoadPromise(availableModuleChunks, componentChunk, promise)
         componentChunkPromises.push(promise)
       }
     }
@@ -292,7 +313,7 @@ function loadComponentChunksOrWhole(
   const promise = loadChunkByUrlWhole(sourceType, sourceData, chunkUrl)
   for (const componentChunk of componentChunks) {
     if (!availableModuleChunks.has(componentChunk)) {
-      availableModuleChunks.set(componentChunk, promise)
+      cacheLoadPromise(availableModuleChunks, componentChunk, promise)
     }
   }
   return promise
@@ -381,7 +402,7 @@ function loadChunkByUrlInternal(
           components,
           chunkUrl
         )
-        splitChunkPromises.set(chunkUrl, promise)
+        cacheLoadPromise(splitChunkPromises, chunkUrl, promise)
       }
       return promise
     }
@@ -394,7 +415,7 @@ function loadChunkByUrlInternal(
       return existing === true ? loadedChunk : existing
     }
     const promise = loadChunkByUrlWhole(sourceType, sourceData, chunkUrl)
-    availableModuleChunks.set(chunkPath, promise)
+    cacheLoadPromise(availableModuleChunks, chunkPath, promise)
     return promise
   }
 
@@ -494,7 +515,8 @@ function resolvePathFromModule(
   this: TurbopackBaseContext<Module>,
   moduleId: string
 ): string {
-  const exported = this.r(moduleId)
+  const exported = getOrInstantiateModuleFromParent(moduleId, this.m)
+    .exports as Exports
   return exported?.default ?? exported
 }
 browserContextPrototype.R = resolvePathFromModule

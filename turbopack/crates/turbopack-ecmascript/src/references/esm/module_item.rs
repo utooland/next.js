@@ -26,15 +26,11 @@ use crate::{
 #[derive(PartialEq, Eq, ValueDebugFormat, NonLocalValue, Debug, Hash, Encode, Decode)]
 pub struct EsmModuleItem {
     pub path: AstPathId,
-    pub supports_block_scoping: bool,
 }
 
 impl EsmModuleItem {
-    pub fn new(path: AstPathId, supports_block_scoping: bool) -> Self {
-        EsmModuleItem {
-            path,
-            supports_block_scoping,
-        }
+    pub fn new(path: AstPathId) -> Self {
+        EsmModuleItem { path }
     }
 
     pub async fn code_generation(

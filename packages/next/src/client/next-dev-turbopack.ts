@@ -44,6 +44,7 @@ initialize({
     }
 
     connect({
+      initialHmrVersion: self.__nextHmrInitialVersion,
       addMessageListener(cb: (message: TurbopackMessageSentToBrowser) => void) {
         devClient.addTurbopackMessageListener(cb)
       },
