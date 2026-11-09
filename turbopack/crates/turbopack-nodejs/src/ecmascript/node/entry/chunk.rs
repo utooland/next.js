@@ -183,8 +183,9 @@ impl EcmascriptBuildNodeEntryChunk {
         // context that several independent per-transform graphs write to), a graph without async
         // modules would strip a helper that another graph's chunks call, and which variant lands
         // on disk depends on emission order.
-        let mut include_async_module_runtime = *self.chunking_context.shared_runtime_chunk().await?
-            || *self.module_graph.has_async_modules().await?;
+        let mut include_async_module_runtime =
+            *self.chunking_context.shared_runtime_chunk().await?
+                || *self.module_graph.has_async_modules().await?;
         if !include_async_module_runtime {
             let evaluatable_assets = self.evaluatable_assets.await?;
             for evaluatable_asset in &*evaluatable_assets {

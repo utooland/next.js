@@ -26,8 +26,7 @@ use turbopack_core::{
     asset::Asset,
     chunk::{
         ChunkingConfig, ChunkingContext, ChunkingContextExt, CompressType, ContentHashing,
-        EvaluatableAsset, MangleType, MinifyType,
-        availability_info::AvailabilityInfo,
+        EvaluatableAsset, MangleType, MinifyType, availability_info::AvailabilityInfo,
     },
     context::AssetContext,
     environment::{BrowserEnvironment, Environment, ExecutionEnvironment, NodeJsEnvironment},

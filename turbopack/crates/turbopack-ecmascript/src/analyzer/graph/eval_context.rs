@@ -796,7 +796,6 @@ mod tests {
                     &program,
                     &context,
                     AnalyzeMode::code_generation_and_tracing(),
-                    true,
                     SpecifiedModuleType::EcmaScript,
                     true,
                     false,

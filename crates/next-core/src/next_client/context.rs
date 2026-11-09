@@ -15,8 +15,8 @@ use turbopack_browser::{
 use turbopack_core::{
     chunk::{
         AssetSuffix, ChunkLoadRetry, ChunkingConfig, ChunkingContext, CompressType, ContentHashing,
-        CrossOrigin, MangleType, MinifyType, SourceMapSourceType, UnusedReferences,
-        UrlBehavior, chunk_id_strategy::ModuleIdStrategy,
+        CrossOrigin, MangleType, MinifyType, SourceMapSourceType, UnusedReferences, UrlBehavior,
+        chunk_id_strategy::ModuleIdStrategy,
     },
     compile_time_info::{CompileTimeDefines, CompileTimeInfo, FreeVarReference, FreeVarReferences},
     environment::{BrowserEnvironment, Environment, ExecutionEnvironment},

@@ -80,7 +80,10 @@ impl EcmascriptBrowserWorkerEntrypoint {
                 .await?;
             code = minify(
                 code,
-                this.chunking_context.emitted_source_map_type().await?.is_some(),
+                this.chunking_context
+                    .emitted_source_map_type()
+                    .await?
+                    .is_some(),
                 mangle,
                 get_compress_options_for_target(compress, mangle, supports_arrow_functions),
             )?;
@@ -153,7 +156,11 @@ impl Asset for EcmascriptBrowserWorkerEntrypoint {
         salt: Vc<RcStr>,
         algorithm: HashAlgorithm,
     ) -> Result<Vc<Option<RcStr>>> {
-        let emitted_ty = *self.await?.chunking_context.emitted_source_map_type().await?;
+        let emitted_ty = *self
+            .await?
+            .chunking_context
+            .emitted_source_map_type()
+            .await?;
         Ok(self.code().content_hash(salt, algorithm, emitted_ty))
     }
 

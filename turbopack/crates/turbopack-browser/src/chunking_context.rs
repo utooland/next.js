@@ -710,7 +710,6 @@ impl BrowserChunkingContext {
         }
     }
 
-    /// Returns the source map type.
     /// Returns the minify type.
     #[turbo_tasks::function]
     pub fn minify_type(&self) -> Vc<MinifyType> {
@@ -1258,29 +1257,28 @@ impl ChunkingContext for BrowserChunkingContext {
 
             if this.enable_hot_module_replacement {
                 let extra_chunks_ref = extra_chunks.await?;
-                let mut hmr_chunks: FxIndexSet<ResolvedVc<Box<dyn OutputAsset>>> = if this
-                    .enable_dynamic_hmr_chunk_lists
-                {
-                    // Dynamic groups register their own lists when loaded, so the entry only
-                    // tracks its directly-generated chunks.
-                    assets.iter().copied().collect()
-                } else {
-                    // Follow references (async loaders) to get actual dynamic component chunks,
-                    // so the single HMR chunk list covers all lazily-loaded modules. `inner=false`
-                    // avoids source maps and other asset-adjacent files that the DOM backend can't
-                    // reload.
-                    expand_output_assets(
-                        references
-                            .iter()
-                            .copied()
-                            .map(ExpandOutputAssetsInput::Reference)
-                            .chain(assets.iter().copied().map(ExpandOutputAssetsInput::Asset)),
-                        false,
-                    )
-                    .await?
-                    .into_iter()
-                    .collect()
-                };
+                let mut hmr_chunks: FxIndexSet<ResolvedVc<Box<dyn OutputAsset>>> =
+                    if this.enable_dynamic_hmr_chunk_lists {
+                        // Dynamic groups register their own lists when loaded, so the entry only
+                        // tracks its directly-generated chunks.
+                        assets.iter().copied().collect()
+                    } else {
+                        // Follow references (async loaders) to get actual dynamic component chunks,
+                        // so the single HMR chunk list covers all lazily-loaded modules.
+                        // `inner=false` avoids source maps and other asset-adjacent files that the
+                        // DOM backend can't reload.
+                        expand_output_assets(
+                            references
+                                .iter()
+                                .copied()
+                                .map(ExpandOutputAssetsInput::Reference)
+                                .chain(assets.iter().copied().map(ExpandOutputAssetsInput::Asset)),
+                            false,
+                        )
+                        .await?
+                        .into_iter()
+                        .collect()
+                    };
 
                 // Caller-provided chunks (for example RSC client references) are built outside
                 // this graph and must always remain in the entry list.

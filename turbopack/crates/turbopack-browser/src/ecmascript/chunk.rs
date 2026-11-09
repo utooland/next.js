@@ -183,8 +183,15 @@ impl Asset for EcmascriptBrowserChunk {
         salt: Vc<RcStr>,
         algorithm: HashAlgorithm,
     ) -> Result<Vc<Option<RcStr>>> {
-        let emitted_ty = *self.await?.chunking_context.emitted_source_map_type().await?;
-        Ok(self.own_content().code().content_hash(salt, algorithm, emitted_ty))
+        let emitted_ty = *self
+            .await?
+            .chunking_context
+            .emitted_source_map_type()
+            .await?;
+        Ok(self
+            .own_content()
+            .code()
+            .content_hash(salt, algorithm, emitted_ty))
     }
 
     #[turbo_tasks::function]
