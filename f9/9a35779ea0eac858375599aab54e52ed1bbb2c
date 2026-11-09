@@ -32,6 +32,15 @@ turbopack/crates/turbopack-node/src/worker_pool/worker_thread.rs
   s_520c270035d39b::t_ba29137b89dc23 3,14,36-44,49,65-71,84-87,90-98,108,110,112,129,134-135,137,155,163,188,201
 turbopack/crates/turbopack-node/src/worker_pool/mod.rs
   s_520c270035d39b::t_ba29137b89dc23 20-23,31-33,38-40,43-51,144,146-148,183-190,194-201
+  s_520c270035d39b::t_e9706a44238854 61,243,247
+turbopack/crates/turbopack-ecmascript/src/references/esm/module_item.rs
+  s_520c270035d39b::t_3e4323c2c366de 39,55
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/entry/chunk.rs
+  s_520c270035d39b::t_086ec952634f2f 9,11,33,71-93,186,188-196
+turbopack/crates/turbopack-browser/src/chunking_context.rs
+  s_520c270035d39b::t_086ec952634f2f 1-2,5-6,16,28,38,45,85-91,97-101,205-211,285-309,413-414,427-428,469,476-490,525,531,553-558,570,578,585-586,594,596-606,610,717-722,745-760,784-790,838,842-866,868-871,873-925,928-933,935-940,947-950,958-959,1009-1010,1012,1015-1049,1123-1124,1145,1151-1181,1255-1280,1308,1310-1311,1315-1322,1325-1350,1352,1361,1394-1406,1765-1811
+turbopack/crates/turbopack-node/src/process_pool/mod.rs
+  s_520c270035d39b::t_e9706a44238854 632,871,878
 ---
 {
   "schema_version": "authorship/3.0.0",
