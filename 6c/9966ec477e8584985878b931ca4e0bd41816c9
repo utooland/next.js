@@ -1,0 +1,35 @@
+turbopack/crates/turbopack-browser/Cargo.toml
+  s_b72af6d0954c28::t_2422dcfcd5da6f 47-50
+turbopack/crates/turbopack-core/src/chunk/chunking_context.rs
+  s_b72af6d0954c28::t_1873a82817024c 396-401
+turbopack/crates/turbopack-browser/src/chunking_context.rs
+  s_b72af6d0954c28::t_93c0a087b5ca03 1893
+  s_b72af6d0954c28::t_e098bae90ef752 1827-1829,1989-2074
+  s_b72af6d0954c28::t_2422dcfcd5da6f 1817-1826,1830-1838,1840-1864,1870-1892,1895,1906-1917,1926-1928,1937-1966,1968-1970,1972-1988,2075-2082
+  s_b72af6d0954c28::t_aeac9dc3eb4bf9 1896-1905,1918-1925,1929-1936
+  s_b72af6d0954c28::t_1873a82817024c 785-791
+  s_b72af6d0954c28::t_e2f3d9eccdeece 874-880,882
+  s_b72af6d0954c28::t_70b50ab7b0bcf3 1839,1865-1869,1894,1967,1971
+  s_b72af6d0954c28::t_b0e7ccba84ff39 14,859-863,896-909
+  s_b72af6d0954c28::t_3c0ca0e32376ea 784
+turbopack/crates/turbopack-ecmascript/src/async_chunk/module.rs
+  s_b72af6d0954c28::t_1873a82817024c 25,172-181
+Cargo.lock
+  s_b72af6d0954c28::t_f868b95dc065e3 9575,9580
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6c9966ec477e8584985878b931ca4e0bd41816c9",
+  "prompts": {},
+  "sessions": {
+    "s_b72af6d0954c28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a6a2-eabb-76f1-a003-90613806e942",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
