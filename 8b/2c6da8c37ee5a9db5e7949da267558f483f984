@@ -1,0 +1,68 @@
+turbopack/crates/turbopack-core/src/module_graph/binding_usage_info.rs
+  s_a09ed228621c85::t_89c7f5c8870e36 81-105,449,455-457,459
+turbopack/crates/turbopack-ecmascript/src/chunk/code_module_ids_and_paths.rs
+  s_a09ed228621c85::t_1c2a624e638c0d 18,25,37,41-48,80,90-96,111,115-118,124-126
+turbopack/crates/turbo-tasks-fs/src/watcher/mod.rs
+  s_a09ed228621c85::t_eb15ca73dbe600 1,17,26,37,44,51,53,62,165,318,324,334,1586
+  s_a09ed228621c85::t_90ee85134e0938 14-16
+  s_a09ed228621c85::t_1192ebe03d2e94 18-19
+  s_a09ed228621c85::t_e72c68eb9efca8 27-28
+  s_a09ed228621c85::t_4657f04f79c640 38-40
+  s_a09ed228621c85::t_71a5da90424e7e 45
+  s_a09ed228621c85::t_7a23b6b25b7fbf 52
+  s_a09ed228621c85::t_3b886aca27bfe9 54
+turbopack/crates/turbopack-ecmascript/src/minify.rs
+  s_a09ed228621c85::t_b263c1d4f89dc8 10-11,29,35,42-91,94-95,97-99,101-105,107-109,111-114,116-119,136,138,155,165,171,173,209,211-212,376,394-396,414,445-450,452-546,966,991,993-1026,1028-1053,1055-1073
+  s_a09ed228621c85::t_fa7538aaef5fb6 174-175,228-257,259-273,275-276,278-283,285-310,312-322,324-326,328,720-726,732-738,784-790,896-902
+turbopack/crates/turbopack-ecmascript/src/chunk/content.rs
+  s_a09ed228621c85::t_1c2a624e638c0d 7-9,19,31-32,37-38,48-53,55-59,61-65,72,74-84,91-100,151,158-175
+turbopack/crates/turbopack-browser/src/ecmascript/content.rs
+  s_a09ed228621c85::t_48c38a18c3b1af 62-68,72-77,136-137
+turbopack/crates/turbo-tasks-fs/Cargo.toml
+  s_a09ed228621c85::t_7ca1f7111c610c 65
+  s_a09ed228621c85::t_f2b2acd3b1ae5e 62-64
+  s_a09ed228621c85::t_d441b37c4566de 66-68
+turbopack/crates/turbopack-ecmascript/src/references/esm/export.rs
+  s_520c270035d39b::t_ba29137b89dc23 42-44,1174,1176-1230,1232-1241,1243,1247-1249,1253-1286
+turbopack/crates/turbopack-node/src/evaluate.rs
+  s_520c270035d39b::t_ba29137b89dc23 37-40,62-65,72-81,348-354,987-1008
+turbopack/crates/turbopack-node/src/lib.rs
+  s_520c270035d39b::t_ba29137b89dc23 30
+turbopack/crates/turbopack-node/src/worker_pool/worker_thread.rs
+  s_520c270035d39b::t_ba29137b89dc23 3,14,36-44,49,65-71,84-87,90-98,108,110,112,129,134-135,137,155,163,188,201
+turbopack/crates/turbopack-node/src/worker_pool/mod.rs
+  s_520c270035d39b::t_ba29137b89dc23 20-23,31-33,38-40,43-51,144,146-148,183-190,194-201
+  s_520c270035d39b::t_e9706a44238854 61,243,247
+turbopack/crates/turbopack-ecmascript/src/references/esm/module_item.rs
+  s_520c270035d39b::t_3e4323c2c366de 39,55
+turbopack/crates/turbopack-nodejs/src/ecmascript/node/entry/chunk.rs
+  s_520c270035d39b::t_086ec952634f2f 9,11,33,71-93,186,188-196
+turbopack/crates/turbopack-browser/src/chunking_context.rs
+  s_520c270035d39b::t_086ec952634f2f 1-2,6-7,17,29,46,86-92,98-102,215-221,295-319,419-420,433-434,476,483-497,532,538,561-566,578,586,593-594,602,604-614,618,720-725,748-763,801-807,855,859-883,885-888,895-936,939-944,946-951,958-961,969-970,1007-1008,1010,1013-1047,1121-1122,1143,1149-1179,1253-1278,1306,1308-1309,1313-1320,1323-1348,1350,1359,1392-1404,1763-1809
+turbopack/crates/turbopack-node/src/process_pool/mod.rs
+  s_520c270035d39b::t_e9706a44238854 632,871,878
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8b2c6da8c37ee5a9db5e7949da267558f483f984",
+  "prompts": {},
+  "sessions": {
+    "s_520c270035d39b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1bf75-6a0b-7c42-9932-23d66c8bcbb7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    },
+    "s_a09ed228621c85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1a026-acf7-7392-a873-6b4a84dcfce7",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
