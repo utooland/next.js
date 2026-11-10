@@ -1,0 +1,21 @@
+turbopack/crates/turbopack-ecmascript/src/references/esm/export.rs
+  s_fc70035ec6ca69::t_1afbf237b6beb3 1226-1245,1250
+  s_fc70035ec6ca69::t_11d2534c347e75 1008-1015,1017-1029,1046-1052,1149-1159,1199-1203,1275-1276,1278,1291-1292,1294-1299,1301-1302,1314-1315,1322-1324,1327,1329,1350-1351
+  s_fc70035ec6ca69::t_69d89a36b59bc3 1016,1195-1197,1277,1293,1300,1352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5a81367993a213fef23c62946ebeb01f1d1ca410",
+  "prompts": {},
+  "sessions": {
+    "s_fc70035ec6ca69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1be65-7997-7ca3-ac19-d0c16ac7324d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
