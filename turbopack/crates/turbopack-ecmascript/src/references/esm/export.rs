@@ -1005,6 +1005,28 @@ struct CompactReexports {
     subsume_imports: bool,
 }
 
+fn export_getter(value: Expr, supports_arrow_functions: bool) -> Expr {
+    if supports_arrow_functions {
+        quote!("() => $value" as Expr, value: Expr = value)
+    } else {
+        quote!("function() { return $value; }" as Expr, value: Expr = value)
+    }
+}
+
+fn export_setter(target: AssignTarget, parameter: Ident, supports_arrow_functions: bool) -> Expr {
+    if supports_arrow_functions {
+        quote!("($new) => $target = $new" as Expr,
+            target: AssignTarget = target,
+            new = parameter,
+        )
+    } else {
+        quote!("function($new) { return $target = $new; }" as Expr,
+            target: AssignTarget = target,
+            new = parameter,
+        )
+    }
+}
+
 impl EsmExports {
     pub(crate) async fn code_generation(
         self: Vc<Self>,
@@ -1021,6 +1043,13 @@ impl EsmExports {
             .module_export_usage(*ResolvedVc::upcast(module))
             .await?;
         let expanded = self.expand_exports(*export_usage_info.export_usage).await?;
+        // Export registration is generated after source transforms. Its callbacks must obey
+        // the target too, including live bindings in transform helpers and module cycles.
+        let supports_arrow_functions = *chunking_context
+            .environment()
+            .runtime_versions()
+            .supports_arrow_functions()
+            .await?;
 
         if scope_hoisting_context.skip_module_exports() && expanded.dynamic_exports.is_empty() {
             // If the current module is not exposed, no need to generate exports.
@@ -1117,9 +1146,17 @@ impl EsmExports {
                 continue;
             }
             let exprs: ExportBinding = match local {
-                EsmExport::Error => ExportBinding::Getter(quote!(
-                    "(() => { throw new Error(\"Failed binding. See build errors!\"); })" as Expr,
-                )),
+                EsmExport::Error => ExportBinding::Getter(if supports_arrow_functions {
+                    quote!(
+                        "(() => { throw new Error(\"Failed binding. See build errors!\"); })"
+                            as Expr
+                    )
+                } else {
+                    quote!(
+                        "(function() { throw new Error(\"Failed binding. See build errors!\"); })"
+                            as Expr
+                    )
+                }),
                 EsmExport::LocalBinding(name, liveness) => {
                     // TODO ideally, this information would just be stored in
                     // EsmExport::LocalBinding and we wouldn't have to re-correlated this
@@ -1155,15 +1192,15 @@ impl EsmExports {
                         (Liveness::Constant, false) => ExportBinding::Value(Expr::Ident(local)),
                         // If the value might change or we are a circuit breaker we must bind a
                         // getter to avoid capturing the value at the wrong time.
-                        (Liveness::Live, _) | (Liveness::Constant, true) => {
-                            ExportBinding::Getter(quote!("() => $local" as Expr, local = local))
-                        }
+                        (Liveness::Live, _) | (Liveness::Constant, true) => ExportBinding::Getter(
+                            export_getter(local.into(), supports_arrow_functions),
+                        ),
                         (Liveness::Mutable, _) => ExportBinding::GetterSetter(
-                            quote!("() => $local" as Expr, local = local.clone()),
-                            quote!(
-                                "($new) => $local = $new" as Expr,
-                                local: AssignTarget = AssignTarget::Simple(local.into()),
-                                new = Ident::new(format!("new_{name}").into(), DUMMY_SP, ctxt),
+                            export_getter(local.clone().into(), supports_arrow_functions),
+                            export_setter(
+                                AssignTarget::Simple(local.into()),
+                                Ident::new(format!("new_{name}").into(), DUMMY_SP, ctxt),
+                                supports_arrow_functions,
                             ),
                         ),
                     }
@@ -1186,21 +1223,31 @@ impl EsmExports {
                                     },
                             } if export_usage_info.is_circuit_breaker => {
                                 let id = asset.chunk_item_id(chunking_context).await?;
-                                quote!(
-                                    "($namespace ?? $turbopack_import($id))[$export]" as Expr,
-                                    namespace = Ident::new(
-                                        namespace_ident.as_str().into(),
-                                        DUMMY_SP,
-                                        ctxt.unwrap_or_default(),
-                                    ),
-                                    turbopack_import: Expr = TURBOPACK_IMPORT.into(),
-                                    id: Expr = module_id_to_lit(&id),
+                                let namespace = Ident::new(
+                                    namespace_ident.as_str().into(),
+                                    DUMMY_SP,
+                                    ctxt.unwrap_or_default(),
+                                );
+                                let namespace = if supports_arrow_functions {
+                                    quote!("$namespace ?? $turbopack_import($id)" as Expr,
+                                        namespace = namespace,
+                                        turbopack_import: Expr = TURBOPACK_IMPORT.into(),
+                                        id: Expr = module_id_to_lit(&id),
+                                    )
+                                } else {
+                                    quote!("$namespace == null ? $turbopack_import($id) : $namespace" as Expr,
+                                        namespace = namespace,
+                                        turbopack_import: Expr = TURBOPACK_IMPORT.into(),
+                                        id: Expr = module_id_to_lit(&id),
+                                    )
+                                };
+                                quote!("($namespace)[$export]" as Expr,
+                                    namespace: Expr = namespace,
                                     export: Expr = Lit::Str(Str {
                                         span: DUMMY_SP,
                                         value: export.as_str().into(),
                                         raw: None,
-                                    })
-                                    .into(),
+                                    }).into(),
                                 )
                             }
                             _ => {
@@ -1225,9 +1272,10 @@ impl EsmExports {
                                         // In the constant case, we could still export as a value if
                                         // we knew that the module
                                         // came _before_ us, but we don't at this point.
-                                        ExportBinding::Getter(
-                                            quote!("() => $local" as Expr, local: Expr = read_expr),
-                                        )
+                                        ExportBinding::Getter(export_getter(
+                                            read_expr,
+                                            supports_arrow_functions,
+                                        ))
                                     }
                                     (Liveness::Mutable, _) => {
                                         let assign_target = AssignTarget::Simple(
@@ -1240,11 +1288,18 @@ impl EsmExports {
                                                 .into_inner(),
                                         );
                                         ExportBinding::GetterSetter(
-                                            quote!("() => $local" as Expr, local: Expr= read_expr.clone()),
-                                            quote!(
-                                                "($new) => $lhs = $new" as Expr,
-                                                lhs: AssignTarget = assign_target,
-                                                new = Ident::new(format!("new_{name}").into(), DUMMY_SP, *ctxt),
+                                            export_getter(
+                                                read_expr.clone(),
+                                                supports_arrow_functions,
+                                            ),
+                                            export_setter(
+                                                assign_target,
+                                                Ident::new(
+                                                    format!("new_{name}").into(),
+                                                    DUMMY_SP,
+                                                    *ctxt,
+                                                ),
+                                                supports_arrow_functions,
                                             ),
                                         )
                                     }
@@ -1256,24 +1311,22 @@ impl EsmExports {
                                 // The namespace variable can still be undefined while a cyclic
                                 // dependency is evaluating this getter. In that case, import the
                                 // module directly so we read from its already-created namespace.
-                                let getter = quote!(
-                                    "() => $expr" as Expr,
-                                    expr: Expr = read_expr.clone()
-                                );
+                                let getter =
+                                    export_getter(read_expr.clone(), supports_arrow_functions);
                                 let assign_target =
                                     AssignTarget::try_from(Box::new(read_expr.clone()))
                                         .expect("imported binding must be assignable");
                                 if *mutable {
                                     ExportBinding::GetterSetter(
                                         getter,
-                                        quote!(
-                                            "($new) => $lhs = $new" as Expr,
-                                            lhs: AssignTarget = assign_target,
-                                            new = Ident::new(
+                                        export_setter(
+                                            assign_target,
+                                            Ident::new(
                                                 format!("new_{name}").into(),
                                                 DUMMY_SP,
-                                                Default::default()
+                                                Default::default(),
                                             ),
+                                            supports_arrow_functions,
                                         ),
                                     )
                                 } else {
@@ -1294,9 +1347,9 @@ impl EsmExports {
                         .map(|ident| {
                             let imported = ident.as_expr(DUMMY_SP, false);
                             if export_usage_info.is_circuit_breaker {
-                                ExportBinding::Getter(quote!(
-                                    "(() => $imported)" as Expr,
-                                    imported: Expr = imported
+                                ExportBinding::Getter(export_getter(
+                                    imported,
+                                    supports_arrow_functions,
                                 ))
                             } else {
                                 ExportBinding::Value(imported)
