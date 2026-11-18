@@ -1,0 +1,31 @@
+turbopack/crates/turbo-tasks-fs/src/watcher/mod.rs
+  s_de4c608d34aebf::t_b6b9e1a04a9307 293,329,348-354,708-723,801,941-948,952,956,2046,2061-2062,2065,2078,2085
+  s_de4c608d34aebf::t_b5f70effca18cb 22,24,42-43,294-295,312-313,324-326,331-332,683-704,749-753,763,765,802,808,911,921,932-934,939-940,949-950,954-955,957-958,979-980,983,1018,1060,1064-1066,1069-1074,1083-1095
+  s_de4c608d34aebf::t_4784fa5046401f 327-328,330
+  s_de4c608d34aebf::t_4b2b9bfbc22dfc 705-707,1067-1068,2072-2077
+  s_de4c608d34aebf::t_092f3f1c06f80d 969-970,2069,2071,2079
+  s_de4c608d34aebf::t_06a3f05f1c599a 951,953,2037-2045,2047-2060,2063-2064,2066-2068,2070
+  s_de4c608d34aebf::t_7f3cc4fadee0c7 724
+  s_de4c608d34aebf::t_5cde52a9e1a076 2080-2084
+  s_de4c608d34aebf::t_a88332ead15a81 2086
+turbopack/crates/turbo-tasks-fs/src/disk.rs
+  s_de4c608d34aebf::t_b5f70effca18cb 568-574
+turbopack/crates/turbo-tasks-fs/src/watcher/batch_schedule.rs
+  s_de4c608d34aebf::t_b5f70effca18cb 15,75,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "37f85a9c55e5876884471c0b407d96093c7f0c56",
+  "prompts": {},
+  "sessions": {
+    "s_de4c608d34aebf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1ecb4-09be-78b1-b98f-96aa351a4b02",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
