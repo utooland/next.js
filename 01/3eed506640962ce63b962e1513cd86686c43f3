@@ -1,0 +1,19 @@
+turbopack/crates/turbopack-node/src/evaluate.rs
+  s_7d037fdbd82675::t_895919ad2516cd 592,655-664
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "013eed506640962ce63b962e1513cd86686c43f3",
+  "prompts": {},
+  "sessions": {
+    "s_7d037fdbd82675": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1eca7-4bf7-7350-b1ce-04a75eac6311",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
