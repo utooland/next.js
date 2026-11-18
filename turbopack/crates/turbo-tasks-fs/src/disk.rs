@@ -565,6 +565,13 @@ impl DiskFileSystem {
         self.inner.start_watching_internal().await
     }
 
+    /// Hold or release pending watcher invalidations while continuing to collect file changes.
+    /// Releases leave the normal batching window in place. In-flight builds can still finish.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    pub async fn set_watch_batch_hold(&self, held: bool) -> Result<()> {
+        self.inner.watcher.set_batch_hold(held).await
+    }
+
     pub async fn stop_watching(&self) {
         self.inner.watcher.stop_watching().await;
     }
