@@ -589,7 +589,7 @@ pub async fn get_evaluate_entries(
     let runtime_asset = asset_context
         .process(
             Vc::upcast(FileSource::new(
-                embed_file_path(runtime_module_path).owned().await?,
+                embed_file_path(runtime_module_path.clone()).owned().await?,
             )),
             ReferenceType::Internal(InnerAssets::empty().to_resolved().await?),
         )
@@ -652,7 +652,16 @@ pub async fn get_evaluate_entries(
             .copied()
             .chain(iter::once(ResolvedVc::try_downcast(entry_module).unwrap()))
             .collect(),
-        main_entry_ident: module_asset.ident().to_resolved().await?,
+        // Evaluation pools can share an output directory. Each backend needs its own
+        // entrypoint so that a worker cannot start with a child process bootstrap.
+        main_entry_ident: module_asset
+            .ident()
+            .owned()
+            .await?
+            .with_modifier(runtime_module_path)
+            .into_vc()
+            .to_resolved()
+            .await?,
     }
     .cell())
 }
