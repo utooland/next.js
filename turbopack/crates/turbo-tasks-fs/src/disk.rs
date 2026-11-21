@@ -572,6 +572,13 @@ impl DiskFileSystem {
         self.inner.watcher.set_batch_hold(held).await
     }
 
+    /// Flush all tracked input invalidators while the watcher remains held.
+    /// The caller must finish its writes before requesting this barrier.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    pub async fn flush_watch_batch(&self, batch_id: String) -> Result<String> {
+        self.inner.watcher.flush_batch(batch_id).await
+    }
+
     pub async fn stop_watching(&self) {
         self.inner.watcher.stop_watching().await;
     }
@@ -2041,6 +2048,111 @@ mod tests {
             anyhow::Ok(())
         })
         .await
+    }
+
+    #[turbo_tasks::function(operation, root)]
+    fn batch_read_operation(path: FileSystemPath) -> Vc<FileContent> {
+        path.read()
+    }
+
+    #[turbo_tasks::function(operation, root)]
+    fn batch_type_operation(path: FileSystemPath) -> Vc<crate::FileSystemEntryType> {
+        path.get_type()
+    }
+
+    #[turbo_tasks::function(operation, root)]
+    fn batch_directory_operation(path: FileSystemPath) -> Vc<crate::DirectoryContent> {
+        path.read_dir()
+    }
+
+    #[turbo_tasks::function(operation, root)]
+    fn batch_input_effect_operation(path: FileSystemPath) -> Vc<()> {
+        path.write(FileContent::Content(File::from_bytes(b"effect".to_vec())).cell())
+    }
+
+    #[cfg(not(miri))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn held_batch_flush_reads_final_disk_without_waiting_for_notify() -> Result<()> {
+        let scratch = tempfile::tempdir()?;
+        let root = std::fs::canonicalize(scratch.path())?;
+        std::fs::write(root.join("input.txt"), "before")?;
+        std::fs::create_dir(root.join("switch"))?;
+        let tt = turbo_tasks::TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async move {
+            let fs_vc = external_tracking_filesystem(RcStr::from(root.to_string_lossy().as_ref()))
+                .resolve().strongly_consistent().await?;
+            let fs = fs_vc.await?;
+            let root_path = FileSystemPath { fs: ResolvedVc::upcast(fs_vc), path: rcstr!("") };
+            fs.start_watching().await?;
+            let input = root_path.join("input.txt")?;
+            let missing = root_path.join("missing.txt")?;
+            let switch = root_path.join("switch")?;
+            let read = batch_read_operation(input.clone());
+            let before = read.read_strongly_consistent().await?;
+            assert!(matches!(&*before, FileContent::Content(file) if file.content().to_str()? == "before"));
+            assert!(matches!(&*batch_read_operation(missing.clone()).read_strongly_consistent().await?, FileContent::NotFound));
+            assert_eq!(*batch_type_operation(switch.clone()).read_strongly_consistent().await?, crate::FileSystemEntryType::Directory);
+            let _ = batch_directory_operation(switch.clone()).read_strongly_consistent().await?;
+            fs.set_watch_batch_hold(true).await?;
+
+            let previous_mtime = std::fs::metadata(root.join("input.txt"))?.modified()?;
+            std::fs::write(root.join("input.txt"), "after!")?;
+            std::fs::File::options().write(true).open(root.join("input.txt"))?.set_modified(previous_mtime)?;
+            std::fs::write(root.join("missing.txt"), "found!")?;
+            std::fs::remove_dir(root.join("switch"))?;
+            std::fs::write(root.join("switch"), "file")?;
+            // No quiet window or poll: flush must register even an as-yet undelivered change.
+            assert_eq!(fs.flush_watch_batch("first".to_owned()).await?, "first");
+            let after = read.read_strongly_consistent().await?;
+            assert!(matches!(&*after, FileContent::Content(file) if file.content().to_str()? == "after!"));
+            assert!(matches!(&*batch_read_operation(missing.clone()).read_strongly_consistent().await?, FileContent::Content(file) if file.content().to_str()? == "found!"));
+            assert_eq!(*batch_type_operation(switch.clone()).read_strongly_consistent().await?, crate::FileSystemEntryType::File);
+
+            // A subsequent edit remains held; another explicit flush observes the final value.
+            std::fs::write(root.join("input.txt"), "last!!")?;
+            std::fs::remove_file(root.join("switch"))?;
+            std::fs::create_dir(root.join("switch"))?;
+            std::fs::write(root.join("switch/new.txt"), "new")?;
+            assert_eq!(fs.flush_watch_batch("second".to_owned()).await?, "second");
+            assert!(matches!(&*read.read_strongly_consistent().await?, FileContent::Content(file) if file.content().to_str()? == "last!!"));
+            assert_eq!(*batch_type_operation(switch.clone()).read_strongly_consistent().await?, crate::FileSystemEntryType::Directory);
+            assert!(matches!(&*batch_directory_operation(switch).read_strongly_consistent().await?, crate::DirectoryContent::Entries(entries) if entries.contains_key(&rcstr!("new.txt"))));
+            fs.stop_watching().await;
+            Ok(())
+        }).await
+    }
+
+    #[cfg(not(miri))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn held_watcher_does_not_isolate_input_effect_writes() -> Result<()> {
+        let scratch = tempfile::tempdir()?;
+        let root = std::fs::canonicalize(scratch.path())?;
+        std::fs::write(root.join("input.txt"), "before")?;
+        let tt = turbo_tasks::TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async move {
+            let fs_vc = external_tracking_filesystem(RcStr::from(root.to_string_lossy().as_ref()))
+                .resolve().strongly_consistent().await?;
+            let fs = fs_vc.await?;
+            let path = FileSystemPath { fs: ResolvedVc::upcast(fs_vc), path: rcstr!("input.txt") };
+            fs.start_watching().await?;
+            let read = batch_read_operation(path.clone());
+            let _ = read.read_strongly_consistent().await?;
+            fs.set_watch_batch_hold(true).await?;
+            // This is a scope probe, not a claim of whole-project isolation:
+            // input effects invalidate reads directly, without watcher release or flush.
+            turbo_tasks::read_strongly_consistent_and_apply_effects(
+                extract_effects_operation(batch_input_effect_operation(path)), |effects| effects,
+            ).await?;
+            assert!(matches!(&*read.read_strongly_consistent().await?, FileContent::Content(file) if file.content().to_str()? == "effect"));
+            fs.stop_watching().await;
+            Ok(())
+        }).await
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
