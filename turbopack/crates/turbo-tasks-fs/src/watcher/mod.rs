@@ -328,6 +328,10 @@ enum WatchMessage {
         held: bool,
         applied: oneshot::Sender<Result<()>>,
     },
+    FlushBatch {
+        batch_id: String,
+        applied: oneshot::Sender<Result<String>>,
+    },
 }
 
 /// A thin wrapper around [`RecommendedWatcher`] and [`PollWatcher`].
@@ -683,7 +687,27 @@ impl DiskWatcher {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub(crate) async fn set_batch_hold(&self, held: bool) -> Result<()> {
         let (applied, acknowledgement) = oneshot::channel();
-        let message = WatchMessage::SetBatchHold { held, applied };
+        self.send_control(WatchMessage::SetBatchHold { held, applied })
+            .await?;
+        // Applying the hold on the watcher thread serializes it with any flush in progress.
+        acknowledgement
+            .await
+            .context("Filesystem watcher stopped")?
+    }
+
+    /// Invalidates tracked input reads while staying held; ACK is not a build-completion signal.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    pub(crate) async fn flush_batch(&self, batch_id: String) -> Result<String> {
+        let (applied, acknowledgement) = oneshot::channel();
+        self.send_control(WatchMessage::FlushBatch { batch_id, applied })
+            .await?;
+        acknowledgement
+            .await
+            .context("Filesystem watcher stopped during batch flush")?
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    async fn send_control(&self, message: WatchMessage) -> Result<()> {
         let sent = match &self.state {
             State::Recursive(state) => {
                 let state = state.read().await;
@@ -700,11 +724,7 @@ impl DiskWatcher {
                 watcher.messages.send(message)
             }
         };
-        sent.context("Filesystem watcher stopped")?;
-        // Applying the hold on the watcher thread serializes it with any flush in progress.
-        acknowledgement
-            .await
-            .context("Filesystem watcher stopped")?
+        sent.context("Filesystem watcher stopped")
     }
 
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -954,6 +974,38 @@ impl DiskWatcher {
                         }
                         batch_held = held;
                         let _ = applied.send(Ok(()));
+                    }
+                    Ok(WatchMessage::FlushBatch { batch_id, applied }) => {
+                        if !batch_held {
+                            let _ = applied
+                                .send(Err(anyhow::anyhow!("Batch flush requires a held watcher")));
+                            continue;
+                        }
+                        let Some(_turbo_tasks) = fs.turbo_tasks() else {
+                            let _ = applied
+                                .send(Err(anyhow::anyhow!("Filesystem task engine stopped")));
+                            break 'outer;
+                        };
+                        // A recreated directory may not have delivered its notification yet.
+                        // Restore the existing watches before readers re-register their paths.
+                        if let State::NonRecursive(non_recursive) = &watcher.state {
+                            fs.tokio_handle().block_on(
+                                non_recursive_helpers::restore_all_watched_ignore_errors(
+                                    non_recursive,
+                                    fs.root_path(),
+                                ),
+                            );
+                        }
+                        let _guard = fs.tokio_handle().enter();
+                        let _lock = fs.invalidation_lock().blocking_write();
+                        // Reuse the tracked read/dir/metadata sets, rather than trusting that
+                        // the caller's final OS notification has already reached this thread.
+                        fs.invalidate_all();
+                        batch.clear();
+                        schedule.reset();
+                        needs_rescan = false;
+                        released_at = None;
+                        let _ = applied.send(Ok(batch_id));
                     }
                     Ok(WatchMessage::FileEvent(Ok(event))) => {
                         // TODO: We might benefit from some user-facing diagnostics if it rescans
@@ -2082,6 +2134,53 @@ mod tests {
         })
         .await
         .unwrap();
+    }
+
+    #[cfg(not(miri))]
+    #[rstest]
+    #[case::recursive(DiskWatcherRecursiveMode::Recursive)]
+    #[case::non_recursive(DiskWatcherRecursiveMode::NonRecursive)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn held_flush_acknowledges_invalidation_without_releasing(
+        #[case] recursive_mode: DiskWatcherRecursiveMode,
+    ) -> Result<()> {
+        let tt = TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async move {
+            let fs = MockFileSystem::new(DiskWatcherConfig {
+                recursive_mode: Some(recursive_mode),
+                poll_interval: Some(Duration::from_secs(60)),
+                ..Default::default()
+            });
+            let file = fs.root_path.join("input.txt");
+            fs::write(&file, "before")?;
+            DiskWatcher::start_watching(fs.clone()).await?;
+            assert_eq!(fs.tracked_read_strongly_consistent(&file).await, 1);
+            assert!(fs.watcher.flush_batch("not-held".to_owned()).await.is_err());
+            fs.watcher.set_batch_hold(true).await?;
+            fs::write(&file, "first!")?;
+            assert_eq!(
+                fs.watcher.flush_batch("batch-1".to_owned()).await?,
+                "batch-1"
+            );
+            let runs = fs.tracked_read_strongly_consistent(&file).await;
+            assert!(runs > 1);
+            fs::write(&file, "last!!")?;
+            tokio::task::block_in_place(|| fs.watcher.poll_now(fs.tokio_handle()))?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert_eq!(fs.tracked_read_strongly_consistent(&file).await, runs);
+            assert_eq!(
+                fs.watcher.flush_batch("batch-2".to_owned()).await?,
+                "batch-2"
+            );
+            assert!(fs.tracked_read_strongly_consistent(&file).await > runs);
+            fs.watcher.stop_watching().await;
+            assert!(fs.watcher.flush_batch("stopped".to_owned()).await.is_err());
+            Ok(())
+        })
+        .await
     }
 
     /// Events for paths that nobody has read must not extend the batch: a stream of writes to an

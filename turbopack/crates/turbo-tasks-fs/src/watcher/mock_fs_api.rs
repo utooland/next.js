@@ -141,7 +141,21 @@ impl DiskFileSystemWatcherApi for MockFileSystem {
         &self.invalidation_lock
     }
 
-    fn invalidate_all(&self) {}
+    fn invalidate_all(&self) {
+        let Some(turbo_tasks) = self.turbo_tasks.upgrade() else {
+            return;
+        };
+        let maps = [
+            &self.invalidator_map,
+            &self.dir_invalidator_map,
+            &self.metadata_invalidator_map,
+        ];
+        let invalidators = maps
+            .into_iter()
+            .flat_map(|map| std::mem::take(&mut *map.lock().unwrap()))
+            .flat_map(|(_, invalidators)| invalidators);
+        turbo_tasks::Invalidator::invalidate_all(invalidators, &*turbo_tasks);
+    }
 
     fn invalidate_all_with_reason<R: InvalidationReason + Clone>(
         &self,
