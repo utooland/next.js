@@ -916,12 +916,15 @@ impl DiskFileSystem {
     ///
     /// Entries in `watched_ignored` prefixed with `!node_modules/` are package-name regular
     /// expressions that opt matching dependencies back into watching.
+    ///
+    /// `map` provides other configured filesystems for resolving symlink targets.
     pub fn new_with_options_and_watched_ignored(
         name: RcStr,
         root: Vc<RcStr>,
         denied_paths: Vec<RcStr>,
         watcher_config: DiskWatcherConfig,
         watched_ignored: Vec<RcStr>,
+        map: OperationVc<DiskFileSystemMap>,
     ) -> Vc<Self> {
         for denied_path in &denied_paths {
             debug_assert!(!denied_path.is_empty(), "denied_path must not be empty");
@@ -935,7 +938,7 @@ impl DiskFileSystem {
             root,
             denied_paths,
             watcher_config,
-            DiskFileSystemMap::empty(),
+            map,
             watched_ignored,
         )
     }
