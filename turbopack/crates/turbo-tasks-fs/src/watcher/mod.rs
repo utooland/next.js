@@ -99,6 +99,9 @@ pub struct DiskWatcherConfig {
     /// This costs an extra allocation per invalidated path, so it's only worth enabling when
     /// something actually consumes the reasons.
     pub report_invalidation_reason: bool,
+    /// Match watch ignores against paths within the watched root. By default, watch ignores
+    /// match components of the absolute event path, including the root and its ancestors.
+    pub ignore_paths_relative_to_root: bool,
 
     /// How long to keep a batch of filesystem events open, waiting for more events, before
     /// flushing invalidations. Batching coalesces bursts (e.g. a `git checkout`) into a single
@@ -129,6 +132,7 @@ impl Default for DiskWatcherConfig {
             recursive_mode: None,
             poll_interval: None,
             report_invalidation_reason: false,
+            ignore_paths_relative_to_root: false,
             batch_delay: Duration::from_millis(10),
             extended_batch_delay_matcher: None,
             extended_batch_delay_duration: Duration::from_millis(200),
@@ -657,6 +661,17 @@ impl DiskWatcher {
         )
     }
 
+    fn filter_event(&self, event: Event, root_path: &Path) -> Option<Event> {
+        filter_event_paths(event, |path| {
+            let path = if self.config.ignore_paths_relative_to_root {
+                path.strip_prefix(root_path).unwrap_or(path)
+            } else {
+                path
+            };
+            self.should_ignore_path(path)
+        })
+    }
+
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn start_watching<FsApi: DiskFileSystemWatcherApi>(fs: Arc<FsApi>) -> Result<()> {
         let watcher: &Self = fs.watcher();
@@ -762,16 +777,15 @@ impl DiskWatcher {
         }
 
         let root_path = fs.root_path().to_path_buf();
-        let ignored_paths = watcher.ignored_paths.clone();
-        let node_modules_regexes = watcher.node_modules_regexes.clone();
         let recursive_mode = watcher.state.recursive_mode();
         let report_invalidation_reason = watcher.config.report_invalidation_reason;
         let callback_fs = fs.clone();
         wasm_fs_offload::CLIENT
             .watch_dir(&root_path, true, move |event| {
-                let Some(event) = filter_event_paths(event, |path| {
-                    should_ignore_path(path, &ignored_paths, node_modules_regexes.as_deref())
-                }) else {
+                let Some(event) = callback_fs
+                    .watcher()
+                    .filter_event(event, callback_fs.root_path())
+                else {
                     return;
                 };
 
@@ -911,9 +925,7 @@ impl DiskWatcher {
                             break;
                         }
 
-                        let Some(event) =
-                            filter_event_paths(event, |path| watcher.should_ignore_path(path))
-                        else {
+                        let Some(event) = watcher.filter_event(event, fs.root_path()) else {
                             continue;
                         };
 
@@ -2364,6 +2376,38 @@ mod tests {
             "project/node_modules/rc-util/node_modules/@scope",
         )));
         assert!(!watcher.should_ignore_path(Path::new("project/src/index.js")));
+    }
+
+    #[test]
+    fn filters_events_relative_to_watched_root() {
+        let root = Path::new("/global/lib/node_modules");
+        let ignored_paths = vec![
+            "node_modules".into(),
+            "generated".into(),
+            "!node_modules/@scope/watched".into(),
+        ];
+        let watcher = DiskWatcher::new_with_ignored_paths(
+            DiskWatcherConfig {
+                ignore_paths_relative_to_root: true,
+                ..Default::default()
+            },
+            ignored_paths.clone(),
+        );
+
+        let source = root.join("linked/index.js");
+        let watched_dependency = root.join("linked/node_modules/@scope/watched/index.js");
+        let event = Event::new(EventKind::Any)
+            .add_path(source.clone())
+            .add_path(root.join("linked/generated/index.js"))
+            .add_path(root.join("linked/node_modules/ignored/index.js"))
+            .add_path(watched_dependency.clone());
+        let event = watcher.filter_event(event, root).unwrap();
+        assert_eq!(event.paths, [source.clone(), watched_dependency]);
+
+        let default_watcher =
+            DiskWatcher::new_with_ignored_paths(DiskWatcherConfig::default(), ignored_paths);
+        let event = Event::new(EventKind::Any).add_path(source);
+        assert!(default_watcher.filter_event(event, root).is_none());
     }
 
     #[test]
