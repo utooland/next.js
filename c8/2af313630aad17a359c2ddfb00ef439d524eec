@@ -1,0 +1,20 @@
+turbopack/crates/turbo-tasks-fs/src/disk.rs
+  s_d9c15402d5894b::t_b908358167d6ea 941
+  s_d9c15402d5894b::t_68191105649766 919-920,927
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c82af313630aad17a359c2ddfb00ef439d524eec",
+  "prompts": {},
+  "sessions": {
+    "s_d9c15402d5894b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20640-463d-7e73-aab1-eb21c2999f20",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
