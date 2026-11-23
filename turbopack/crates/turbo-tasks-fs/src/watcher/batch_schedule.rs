@@ -12,7 +12,7 @@ use turbo_tasks::message_queue::{CompilationEvent, Severity};
 
 use crate::{
     DiskWatcherConfig,
-    watcher::{BatchedInvalidations, fs_api::DiskFileSystemWatcherApi},
+    watcher::{BatchedInvalidations, WatchMessage, fs_api::DiskFileSystemWatcherApi},
 };
 
 /// Decides how long a batch of watcher events stays open, and emits a repeated
@@ -72,10 +72,10 @@ impl BatchSchedule {
     /// more is queued, so the batch is complete and should be flushed.
     pub fn recv_event<FsApi: DiskFileSystemWatcherApi>(
         &mut self,
-        rx: &Receiver<notify::Result<notify::Event>>,
+        rx: &Receiver<WatchMessage>,
         fs: &FsApi,
         batch: &BatchedInvalidations,
-    ) -> Result<notify::Result<notify::Event>, RecvTimeoutError> {
+    ) -> Result<WatchMessage, RecvTimeoutError> {
         let max_event_delay = self.settling_event_max_delay;
         loop {
             let Some(pending) = &mut self.pending else {

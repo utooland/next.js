@@ -19,8 +19,9 @@ use std::{
     env,
     sync::{
         LazyLock,
-        mpsc::{Receiver, RecvTimeoutError, channel},
+        mpsc::{Receiver, RecvTimeoutError, Sender, channel},
     },
+    time::Instant,
 };
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -38,6 +39,8 @@ use indexmap::map::{RawEntryApiV1, raw_entry_v1::RawEntryMut};
 use notify::{Config, PollWatcher, RecommendedWatcher, Watcher};
 use notify_types::event::{Event, EventKind, MetadataKind, ModifyKind, RenameMode};
 use regex::RegexSet;
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use tokio::sync::oneshot;
 use tokio::sync::{RwLock, RwLockWriteGuard};
 use tracing::instrument;
 use turbo_rcstr::RcStr;
@@ -287,7 +290,9 @@ enum RecursiveState {
     Watching {
         /// Hold onto the watcher: When this is dropped, it will cause the channel to disconnect
         #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-        _notify_watcher: NotifyWatcher,
+        notify_watcher: NotifyWatcher,
+        #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+        messages: Sender<WatchMessage>,
     },
 }
 
@@ -304,6 +309,8 @@ enum NonRecursiveState {
 struct NonRecursiveWatchingState {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     notify_watcher: NotifyWatcher,
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    messages: Sender<WatchMessage>,
     /// Keeps track of which directories are currently or were previously watched by
     /// [`Self::notify_watcher`].
     ///
@@ -312,6 +319,15 @@ struct NonRecursiveWatchingState {
     ///   [`DiskWatcher::start_watching`].
     /// - Contains all parent directories up to `root_path` for every entry.
     watched: BTreeSet<PathBuf>,
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+enum WatchMessage {
+    FileEvent(notify::Result<notify::Event>),
+    SetBatchHold {
+        held: bool,
+        applied: oneshot::Sender<Result<()>>,
+    },
 }
 
 /// A thin wrapper around [`RecommendedWatcher`] and [`PollWatcher`].
@@ -327,6 +343,13 @@ impl NotifyWatcher {
         match self {
             Self::Recommended(watcher) => watcher.watch(path, recursive_mode),
             Self::Polling(watcher) => watcher.watch(path, recursive_mode),
+        }
+    }
+
+    fn poll_if_polling(&self) -> notify::Result<()> {
+        match self {
+            Self::Recommended(_) => Ok(()),
+            Self::Polling(watcher) => watcher.poll_blocking(),
         }
     }
 }
@@ -658,6 +681,48 @@ impl DiskWatcher {
     }
 
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    pub(crate) async fn set_batch_hold(&self, held: bool) -> Result<()> {
+        let (applied, acknowledgement) = oneshot::channel();
+        let message = WatchMessage::SetBatchHold { held, applied };
+        let sent = match &self.state {
+            State::Recursive(state) => {
+                let state = state.read().await;
+                let RecursiveState::Watching { messages, .. } = &*state else {
+                    anyhow::bail!("Filesystem watcher is not running");
+                };
+                messages.send(message)
+            }
+            State::NonRecursive(state) => {
+                let state = state.read().await;
+                let NonRecursiveState::Watching(watcher) = &*state else {
+                    anyhow::bail!("Filesystem watcher is not running");
+                };
+                watcher.messages.send(message)
+            }
+        };
+        sent.context("Filesystem watcher stopped")?;
+        // Applying the hold on the watcher thread serializes it with any flush in progress.
+        acknowledgement
+            .await
+            .context("Filesystem watcher stopped")?
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn poll_now(&self, runtime: &tokio::runtime::Handle) -> Result<()> {
+        let result = match &self.state {
+            State::Recursive(state) => match &*runtime.block_on(state.read()) {
+                RecursiveState::Watching { notify_watcher, .. } => notify_watcher.poll_if_polling(),
+                RecursiveState::Stopped => return Ok(()),
+            },
+            State::NonRecursive(state) => match &*runtime.block_on(state.read()) {
+                NonRecursiveState::Watching(state) => state.notify_watcher.poll_if_polling(),
+                NonRecursiveState::Stopped => return Ok(()),
+            },
+        };
+        result.context("Polling filesystem watcher before releasing a batch")
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     pub async fn start_watching<FsApi: DiskFileSystemWatcherApi>(fs: Arc<FsApi>) -> Result<()> {
         let watcher: &Self = fs.watcher();
 
@@ -681,7 +746,11 @@ impl DiskWatcher {
         }
 
         // Create a channel to receive the events.
-        let (tx, rx) = channel();
+        let (messages, rx) = channel();
+        let tx = messages.clone();
+        let on_event = move |event| {
+            let _ = tx.send(WatchMessage::FileEvent(event));
+        };
         // Create a watcher object, delivering debounced events.
         // The notification back-end is selected based on the platform.
         let config = Config::default();
@@ -691,9 +760,9 @@ impl DiskWatcher {
 
         let mut notify_watcher = if let Some(poll_interval) = watcher.config.poll_interval {
             let config = config.with_poll_interval(poll_interval);
-            NotifyWatcher::Polling(PollWatcher::new(tx, config)?)
+            NotifyWatcher::Polling(PollWatcher::new(on_event, config)?)
         } else {
-            NotifyWatcher::Recommended(RecommendedWatcher::new(tx, config)?)
+            NotifyWatcher::Recommended(RecommendedWatcher::new(on_event, config)?)
         };
 
         // TOCTOU: we must watch `root_path` before calling any invalidators and setting up the
@@ -729,12 +798,14 @@ impl DiskWatcher {
         match state_guard {
             StateWriteGuard::Recursive(mut recursive) => {
                 *recursive = RecursiveState::Watching {
-                    _notify_watcher: notify_watcher,
+                    notify_watcher,
+                    messages,
                 }
             }
             StateWriteGuard::NonRecursive(mut non_recursive) => {
                 *non_recursive = NonRecursiveState::Watching(NonRecursiveWatchingState {
                     notify_watcher,
+                    messages,
                     watched: BTreeSet::new(),
                 })
             }
@@ -837,8 +908,7 @@ impl DiskWatcher {
             State::Recursive(state) => *state.write().await = RecursiveState::Stopped,
             State::NonRecursive(state) => *state.write().await = NonRecursiveState::Stopped,
         }
-        // thread will detect the stop because the channel is disconnected when `NotifyWatcher` is
-        // dropped
+        // Dropping the watching state disconnects the thread's channel.
     }
 
     /// Internal thread that processes the events from the watcher
@@ -848,7 +918,7 @@ impl DiskWatcher {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     fn watch_thread<FsApi: DiskFileSystemWatcherApi>(
         fs: Arc<FsApi>,
-        rx: Receiver<notify::Result<notify::Event>>,
+        rx: Receiver<WatchMessage>,
         extended_batch_delay_matcher: Option<TraitRef<Box<dyn DiskWatcherPathMatcher>>>,
     ) {
         let watcher: &Self = fs.watcher();
@@ -859,11 +929,33 @@ impl DiskWatcher {
             config.poll_interval.is_some(),
         );
         let mut schedule = BatchSchedule::new(config);
+        let mut batch_held = false;
+        let mut released_at: Option<Instant> = None;
+        let mut needs_rescan = false;
 
         'outer: loop {
             loop {
                 match schedule.recv_event(&rx, &*fs, &batch) {
-                    Ok(Ok(event)) => {
+                    Ok(WatchMessage::SetBatchHold { held, applied }) => {
+                        if batch_held && !held {
+                            // In polling mode, finish a scan so the final writes are queued
+                            // without waiting for the next periodic scan.
+                            if config.poll_interval.is_some()
+                                && let Err(error) = watcher.poll_now(fs.tokio_handle())
+                            {
+                                let _ = applied.send(Err(error));
+                                continue;
+                            }
+                            // The caller's last write might still have a notification in flight.
+                            released_at = Some(Instant::now());
+                            if needs_rescan || batch.has_pending_invalidations() {
+                                schedule.extend(config.batch_delay);
+                            }
+                        }
+                        batch_held = held;
+                        let _ = applied.send(Ok(()));
+                    }
+                    Ok(WatchMessage::FileEvent(Ok(event))) => {
                         // TODO: We might benefit from some user-facing diagnostics if it rescans
                         // occur frequently (i.e. more than X times in Y minutes)
                         //
@@ -874,19 +966,9 @@ impl DiskWatcher {
                         // echo 3 | sudo tee /proc/sys/fs/inotify/max_queued_events
                         // ```
                         if event.need_rescan() {
-                            let _lock = fs.invalidation_lock().blocking_write();
-
-                            // flush the whole mpsc queue, we're about to rescan, we don't need to
-                            // process any other update events that have already happened
-                            while rx.try_recv().is_ok() {}
-
+                            // Resume collecting events from recreated directories even if the
+                            // full invalidation is held.
                             if let State::NonRecursive(non_recursive) = &watcher.state {
-                                // we can't narrow this down to a smaller set of paths: Rescan
-                                // events (at least when tested on
-                                // Linux) come with no `paths`, and we use
-                                // only one global `notify::Watcher` instance.
-                                //
-                                // TODO: Report diagnostics if an error happens
                                 fs.tokio_handle().block_on(
                                     non_recursive_helpers::restore_all_watched_ignore_errors(
                                         non_recursive,
@@ -894,20 +976,11 @@ impl DiskWatcher {
                                     ),
                                 );
                             }
-
-                            if report_invalidation_reason {
-                                fs.invalidate_all_with_reason(|path| InvalidateRescan {
-                                    // this path is just used for display purposes
-                                    path: RcStr::from(path.to_string_lossy()),
-                                });
-                            } else {
-                                fs.invalidate_all();
-                            }
-
-                            // no need to process the rest of the batch as we just
-                            // invalidated everything
+                            // A full rescan supersedes the pending path-specific invalidations.
+                            // Leave queued commands in order so the next hold can be applied.
                             batch.clear();
                             schedule.reset();
+                            needs_rescan = true;
                             break;
                         }
 
@@ -942,7 +1015,7 @@ impl DiskWatcher {
                         }
                     }
                     // Error raised by notify watcher itself
-                    Ok(Err(notify::Error { kind, paths })) => {
+                    Ok(WatchMessage::FileEvent(Err(notify::Error { kind, paths }))) => {
                         // A path removed while the watcher was scanning it is expected (e.g.
                         // `PollWatcher` walking a tree that is being deleted), so don't report
                         // it. The invalidation below still covers it.
@@ -984,10 +1057,21 @@ impl DiskWatcher {
                         |path| batch.mark_restored_path(path),
                     ));
             }
-            if !batch.has_pending_invalidations() {
+            if !needs_rescan && !batch.has_pending_invalidations() {
                 batch.clear();
                 continue;
             }
+            if batch_held {
+                continue;
+            }
+            if let Some(delay) = released_at
+                .and_then(|released_at| config.batch_delay.checked_sub(released_at.elapsed()))
+            {
+                // Restoring a directory watch or receiving a rescan can interrupt the wait.
+                schedule.extend(delay);
+                continue;
+            }
+            released_at = None;
 
             let Some(turbo_tasks) = fs.turbo_tasks() else {
                 // TurboTasks was dropped, stop watching
@@ -996,6 +1080,19 @@ impl DiskWatcher {
             let _guard = fs.tokio_handle().enter();
 
             let _lock = fs.invalidation_lock().blocking_write();
+            if needs_rescan {
+                if report_invalidation_reason {
+                    fs.invalidate_all_with_reason(|path| InvalidateRescan {
+                        path: RcStr::from(path.to_string_lossy()),
+                    });
+                } else {
+                    fs.invalidate_all();
+                }
+                batch.clear();
+                needs_rescan = false;
+                continue;
+            }
+
             // All invalidators of the batch are invalidated together, with one reason per path.
             let mut invalidators = Vec::new();
             // The changed paths, for the span and (when enabled) the invalidation reasons.
@@ -1930,6 +2027,56 @@ mod tests {
             fs::write(sub_dir.join("new.txt"), "new")?;
             wait_for_rerun(&fs, &sub_dir, dir_runs).await;
 
+            fs.watcher.stop_watching().await;
+            anyhow::Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    #[cfg(not(miri))]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn holds_watcher_invalidations_until_released() {
+        let tt = TurboTasks::new(TurboTasksBackend::new(
+            BackendOptions::default(),
+            noop_backing_storage(),
+        ));
+        tt.run_once(async move {
+            let fs = MockFileSystem::new(DiskWatcherConfig {
+                poll_interval: Some(Duration::from_secs(60)),
+                ..Default::default()
+            });
+            let first = fs.root_path.join("first.txt");
+            let second = fs.root_path.join("second.txt");
+            for path in [&first, &second] {
+                fs::write(path, "initial")?;
+                backdate(path);
+            }
+            DiskWatcher::start_watching(fs.clone()).await?;
+            assert_eq!(fs.tracked_read_strongly_consistent(&first).await, 1);
+            assert_eq!(fs.tracked_read_strongly_consistent(&second).await, 1);
+
+            fs.watcher.set_batch_hold(true).await?;
+            fs::write(&first, "updated")?;
+            tokio::task::block_in_place(|| fs.watcher.poll_now(fs.tokio_handle()))?;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert_eq!(fs.tracked_read_strongly_consistent(&first).await, 1);
+
+            // Release must scan again. The next automatic poll is after the test's timeout.
+            fs::write(&second, "updated")?;
+            fs.watcher.set_batch_hold(false).await?;
+            wait_for_rerun(&fs, &first, 1).await;
+            wait_for_rerun(&fs, &second, 1).await;
+
+            let first_runs = fs.tracked_read_strongly_consistent(&first).await;
+            fs::write(&first, "updated again")?;
+            // PollWatcher compares mtime at whole-second resolution.
+            fs::File::options()
+                .write(true)
+                .open(&first)?
+                .set_modified(SystemTime::now() + Duration::from_secs(10))?;
+            tokio::task::block_in_place(|| fs.watcher.poll_now(fs.tokio_handle()))?;
+            wait_for_rerun(&fs, &first, first_runs).await;
             fs.watcher.stop_watching().await;
             anyhow::Ok(())
         })
