@@ -1,0 +1,21 @@
+turbopack/crates/turbo-tasks-fs/src/watcher/mod.rs
+  s_d9c15402d5894b::t_1f7c43e642d82a 785-787
+  s_d9c15402d5894b::t_e4fffdfef8707a 102-104,135,664-674,788,928,2381-2411
+  s_d9c15402d5894b::t_5054c90beef7b4 2412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "148cd5cc81ef4f2613d4f3ba9796789c64167fc3",
+  "prompts": {},
+  "sessions": {
+    "s_d9c15402d5894b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a20640-463d-7e73-aab1-eb21c2999f20",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "zoomdong <1344492820@qq.com>"
+    }
+  }
+}
